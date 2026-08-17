@@ -43,6 +43,8 @@ a{color:var(--accent);text-decoration:none}
 .toc-row .tw{width:0;height:0;border:5px solid transparent;border-left-color:var(--muted);flex:0 0 auto;transition:transform .15s}
 .toc-row.branch.open>.tw{transform:rotate(90deg)}
 .toc-row .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.toc-kids{display:none}
+.toc-row.open + .toc-kids{display:block}
 .side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 #theme-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px}
 #theme-btn:hover{border-color:var(--accent)}
@@ -168,25 +170,26 @@ function renderNode(n, depth){
     tw.className = 'tw';
     tw.title = openSet.has(n.i) ? '折叠' : '展开';
     row.appendChild(tw);
-    row.addEventListener('click', function(e){
-      if (e.target === tw || e.target === row) {
-        if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
-        row.classList.toggle('open');
-        tw.title = openSet.has(n.i) ? '折叠' : '展开';
-        saveOpen();
-      }
+    // 箭头：仅折叠/展开（阻止冒泡，避免触发打开页面）
+    tw.addEventListener('click', function(e){
+      e.stopPropagation();
+      if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
+      row.classList.toggle('open');
+      tw.title = openSet.has(n.i) ? '折叠' : '展开';
+      saveOpen();
     });
+    // 分支整行：打开该节点自身页面（若有）
+    if (n.u) {
+      row.addEventListener('click', function(){ openPage(n.u); });
+    }
+  } else if (n.u) {
+    // 叶子整行：打开页面
+    row.addEventListener('click', function(){ openPage(n.u); });
   }
   var label = document.createElement('span');
   label.className = 'tt';
   label.textContent = n.n || '';
   row.appendChild(label);
-  if (n.u) {
-    row.addEventListener('click', function(e){
-      if (e.target !== label) return;
-      openPage(n.u);
-    });
-  }
   div.appendChild(row);
   if (n.c) {
     var kids = document.createElement('div');
