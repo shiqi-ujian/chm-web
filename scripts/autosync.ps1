@@ -45,7 +45,7 @@ function Invoke-Git {
     param([string]$Git, [string]$Cwd = $Repo)
     # 把参数拆成数组逐个传给 git，避免 git 把这个长字符串当成一个命令名
     # （否则会报 "git: 'fetch origin main' is not a git command"，并打印帮助文本）。
-    $parts = $Git.Trim() -split '\s+'
+    $parts = $Git.Trim() -split ' ' | Where-Object { $_ -ne '' }
     $raw = & git -C $Cwd --no-pager @parts 2>&1
     $text = (($raw | ForEach-Object { "$_" }) -join "`n").Trim()
     $ok = ($LASTEXITCODE -eq 0)
