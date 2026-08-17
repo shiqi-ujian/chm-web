@@ -1,9 +1,10 @@
 ﻿# 
 # chm-web 本地自动同步脚本
-# 作用：每轮做 提交(commit) + 拉取(fetch/rebase) + 推送(push) 双向同步。
+# 作用：每轮做 拉取(fetch/rebase) + 推送(push) 双向同步。
+# 【注意】不再自动提交(commit)：提交由人手动做（提交不受网络限制）。
 # 网络很差时失败也不报错，留到下一轮再试（由计划任务每隔几分钟跑一次）。
 # 仅处理这一个仓库（脚本所在目录），不做全局扫描。
-# 由 Windows 计划任务调用，窗口由 vbs 隐藏。
+# 计划任务直接以 powershell.exe 隐藏窗口调用，不再经过 wscript/vbs。
 #
 # 用法:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File "...\autosync.ps1"
@@ -87,20 +88,13 @@ function Send-Notice {
 
 Write-Log ('==== 自动同步开始 ==== repo=' + $Repo)
 
-# ---------- 1) 提交本地改动 ----------
-$status = (@(& git -C $Repo status --porcelain 2>$null) -join "`n").Trim()
-if ([string]::IsNullOrWhiteSpace($status)) {
-    Write-Log '无未提交改动，跳过 commit'
+# 【按你的要求】本脚本只做拉取+推送，不做自动提交。
+# 提交需要你手动执行（提交是在本地、不受网络限制）；这里只测一下是否有未提交改动，仅供日志参考。
+$uncommitted = ( (@(& git -C $Repo status --porcelain 2>$null)) -join "`n").Trim()
+if ($uncommitted) {
+    Write-Log ('（提醒）有未提交改动，暂不自动提交，等待人工提交：' + (($uncommitted -split "`n" | Select-Object -First 3) -join '; '))
 } else {
-    if ($DiscoverOnly) {
-        Write-Log ('[Discover] 有改动待提交：' + (($status -split "`n" | Select-Object -First 3) -join '; '))
-    } else {
-        & git -C $Repo add -A 2>&1 | Out-Host
-        $commitMsg = 'auto: 本地改动自动提交 ' + (Get-Date -Format 'yyyy-MM-dd HH:mm')
-        $cm = Invoke-Git ('commit -m "' + $commitMsg + '"')
-        if ($cm.Ok) { Write-Log ("提交完成: $commitMsg") }
-        else { Write-Log ("提交结果：" + $cm.Out) }
-    }
+    Write-Log '没有未提交改动。'
 }
 
 if ($DiscoverOnly) { Write-Log '[Discover] 不执行 fetch/push。'; Write-Log '==== end (Discover) ===='; exit 0 }
