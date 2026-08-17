@@ -4,5 +4,7 @@ data/
 samples/*.chm
 *.tmp
 logs/
+# 视觉工具临时目录
+.dsh-vision-toolkit/
 # 运行时生成的站点索引（非手工维护）
 docs/_index.json

@@ -537,7 +537,9 @@ function build({ outDir, docs, token }) {
   fs.mkdirSync(dir, { recursive: true });
   const docsJson = JSON.stringify(docs || []);
   const tok = token ? JSON.stringify(String(token)) : '""';
-  let html = LANDING_HTML.replace('__DOCS_JSON__', docsJson).replace('__AUTH_TOKEN__', tok);
+  // 全局替换（/g）：模板中 __DOCS_JSON__ / __AUTH_TOKEN__ 出现多次，
+  // 只替换第一个会导致三元表达式真分支残留裸标识符 → ReferenceError。
+  let html = LANDING_HTML.replace(/__DOCS_JSON__/g, docsJson).replace(/__AUTH_TOKEN__/g, tok);
   fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
   // 全站聚合检索索引
   fs.writeFileSync(path.join(dir, 'site-index.json'),

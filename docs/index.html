@@ -148,7 +148,7 @@
 (function(){
   // 部署到公网时若开启了 EXPORT_TOKEN，构建期把 token 注入 ""，
   // 前端下载导出与整站 zip 时带上 X-Auth-Token。
-  var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
+  var AUTH_TOKEN = (typeof ""!=='undefined' && "") ? "" : '';
   function authHeaders(){ return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {}; }
 
   // ---- M2 账号：登录/注册/退出（token 存 localStorage，请求带 X-User-Token）----
@@ -341,7 +341,7 @@
   var selectedDocs = {};   // id -> true，用于“导出选中”
   function renderDocs(list){
     var box=document.getElementById('docsList');
-    var arr = (list && list.length) ? list : (typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}]!=='undefined'?__DOCS_JSON__:[]); /* __DOCS_JSON__ injected at build */
+    var arr = (list && list.length) ? list : (typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}]!=='undefined'?[{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}]:[]); /* [{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}] injected at build */
     if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>';
       updateExportSelBtn(); return; }
     box.innerHTML=arr.map(function(d){
@@ -410,8 +410,8 @@
     b.textContent = n ? ('导出选中('+n+') zip ⬇') : '导出选中 zip ⬇';
     b.style.opacity = n ? '1' : '.5';
   }
-  // 可选请求头：服务于部署到公网时带 key —— 由构建期注入 __AUTH_TOKEN__
-  var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
+  // 可选请求头：服务于部署到公网时带 key —— 由构建期注入 ""
+  var AUTH_TOKEN = (typeof ""!=='undefined' && "") ? "" : '';
   function authHeaders(){
     return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {};
   }
