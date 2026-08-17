@@ -1,0 +1,86 @@
+'use strict';
+// translations.js — 目录树节点名中英对照表。
+// 后续遇到新 CHM 的英文章节名，往 DICT 里加一行即可。
+// Key = .hhc 里的原始英文名（原样匹配），Value = 中文显示名。
+
+const DICT = {
+  // 7-Zip 帮助书的章节（demo 用；可继续扩充）
+  '7-Zip Start Page': '7-Zip 起始页',
+  'General Information': '基本信息',
+  'Supported formats': '支持的格式',
+  '7z format': '7z 格式',
+  'Performance': '性能',
+  'Frequently Asked Questions': '常见问题',
+  'License': '许可协议',
+  'Thanks': '致谢',
+  'File Manager': '文件管理器',
+  'Menu Items and Shortcut Keys': '菜单项与快捷键',
+  'Options Dialog Box': '选项对话框',
+  'Benchmark': '基准测试',
+  'Delete Temporary Files': '删除临时文件',
+  'About Dialog Box': '关于对话框',
+  'Plugins': '插件',
+  '7-Zip': '7-Zip',
+  'Add to Archive Dialog Box': '添加到压缩包对话框',
+  'Extract Dialog Box': '解压对话框',
+  'Command Line Version': '命令行版本',
+  'Syntax': '语法',
+  'Exit Codes': '退出代码',
+  'Commands': '命令',
+  'a (Add)': 'a（添加）',
+  'b (Bench)': 'b（基准测试）',
+  'd (Delete)': 'd（删除）',
+  'e (Extract)': 'e（解压）',
+  'h (Hash)': 'h（哈希）',
+  'l (List)': 'l（列出）',
+  'rn (Rename)': 'rn（重命名）',
+  't (Test)': 't（测试）',
+  'u (Update)': 'u（更新）',
+  'x (eXtract with full paths)': 'x（完整路径解压）',
+  'Switches': '开关选项',
+  '-- (Stop switches parsing)': '--（停止解析开关）',
+  '-ai (Include archive filenames)': '-ai（包含压缩包文件名）',
+  '-an (Disable parsing of archive_name)': '-an（禁用压缩包名解析）',
+  '-ao (Overwrite mode)': '-ao（覆盖模式）',
+  '-ax (Exclude archive filenames)': '-ax（排除压缩包文件名）',
+  '-bb (Set output log level) switch': '-bb（设置输出日志级别）开关',
+  '-bs (Set output stream for output/error/progress line) switch': '-bs（设置输出/错误/进度流）开关',
+  '-i (Include filenames)': '-i（包含文件名）',
+  '-m (Set Compression Method)': '-m（设置压缩方式）',
+  '-o (Set Output directory)': '-o（设置输出目录）',
+  '-p (Set Password)': '-p（设置密码）',
+  '-r (Recurse subdirectories)': '-r（递归子目录）',
+  '-sa (Set Archive name mode)': '-sa（设置压缩包命名方式）',
+  '-scc (Set charset for console input/output)': '-scc（设置控制台输入输出字符集）',
+  '-scs (Set charset for list files)': '-scs（设置列表文件字符集）',
+  '-scrc (Set hash function)': '-scrc（设置哈希算法）',
+  '-sdel (Delete files after including to archive)': '-sdel（加入压缩包后删除文件）',
+  '-seml (Send archive by email)': '-seml（通过电子邮件发送压缩包）',
+  '-sfx (Create SFX archive)': '-sfx（创建自解压压缩包）',
+  '-si (Read data from StdIn)': '-si（从标准输入读取数据）',
+  '-so (Write data to StdOut)': '-so（将数据写入标准输出）',
+  '-slp (Set Large Pages mode)': '-slp（设置大页模式）',
+  '-slt (Show technical information)': '-slt（显示技术信息）',
+  '-sni (Store NT security information)': '-sni（存储 NT 安全信息）',
+  '-sns (Store NTFS alternate Streams)': '-sns（存储 NTFS 备用数据流）',
+  '-spf (Use fully qualified file paths)': '-spf（使用完整文件路径）',
+  '-spm (Require path separator mark for directory path)': '-spm（要求目录路径带分隔符）',
+  '-ssc (Set Sensitive Case mode)': '-ssc（设置大小写敏感模式）',
+  '-ssw (Compress files open for writing)': '-ssw（压缩正在写入的文件）',
+  '-stl (Set archive timestamp from the most recently modified file)': '-stl（用最新修改文件的日期作为压缩包时间戳）',
+  '-stx (Exclude archive type)': '-stx（排除压缩包类型）',
+  '-t (Set Type of archive)': '-t（设置压缩包类型）',
+  '-u (Update options)': '-u（更新选项）',
+  '-v (Create Volumes)': '-v（创建分卷）',
+  '-w (Set Working directory)': '-w（设置工作目录）',
+  '-x (Exclude filenames)': '-x（排除文件名）',
+  '-y (Assume Yes on all queries)': '-y（所有询问一律回答“是”）',
+};
+
+/** 把英文节点名翻译成中文；查不到则原样返回。 */
+function translate(name) {
+  if (name == null) return name;
+  return Object.prototype.hasOwnProperty.call(DICT, name) ? DICT[name] : name;
+}
+
+module.exports = { translate, DICT };

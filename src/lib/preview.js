@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { parseHhcFile } = require('./hhc');
 const parseHhk = require('./hhk').parseHhk;
+const { translate } = require('./translations');
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -26,7 +27,7 @@ function renderNodes(nodes, dir) {
     const href = relPath(dir, n.href);
     const kids = hasKids ? '<ul>' + renderNodes(n.children, dir) + '</ul>' : '';
     const cls = hasKids ? ' folder' : '';
-    return `<li class="${cls.trim()}"><a href="${esc(href)}">${esc(n.name || '(untitled)')}</a>${kids}</li>`;
+    return `<li class="${cls.trim()}"><a href="${esc(href)}">${esc(translate(n.name) || '(无标题)')}</a>${kids}</li>`;
   }).join('\n');
 }
 
