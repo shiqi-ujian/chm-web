@@ -1,0 +1,178 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7z-demo</title>
+<style>
+  :root{--b:#f7f8fa;--card:#fff;--ink:#1f2328;--mut:#57606a;--line:#d8dee4;--acc:#0969da;--accbg:#ddf4ff;--shadow:0 1px 3px rgba(0,0,0,.12)}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--b)}
+  a{color:var(--acc);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:50;height:52px;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px;box-shadow:var(--shadow)}
+  .topbar .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;color:var(--ink);line-height:1}
+  .topbar .btn:hover{background:var(--b)}
+  .topbar .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .topbar .search{flex:1;max-width:360px;min-width:120px;margin-left:auto}
+  .topbar input[type=text]{width:100%;padding:6px 26px 6px 10px;border:1px solid var(--line);border-radius:20px;font-size:14px;outline:none}
+  .topbar input[type=text]:focus{border-color:var(--acc)}
+  .btn.close{flex:0 0 auto}
+  .main{position:fixed;top:52px;left:0;right:0;bottom:0;display:flex}
+  .toc{width:300px;min-width:300px;overflow:auto;background:var(--card);border-right:1px solid var(--line)}
+  .content{flex:1;min-width:0;position:relative;background:#fff}
+  #frame{width:100%;height:100%;border:0}
+  #toc ul{list-style:none;padding-left:14px;margin:0}
+  #toc > ul{padding-left:10px}
+  #toc li{line-height:1.7;position:relative;margin:0}
+  #toc li a{display:block;padding:4px 6px 4px 18px;color:var(--ink);border-radius:6px;font-size:13.5px}
+  #toc li a:hover{background:var(--b)}
+  #toc li.active > a{background:var(--accbg);color:var(--acc);font-weight:600}
+  #toc li.folder > ul{display:none}
+  #toc li.folder.open > ul{display:block}
+  #toc .tw{position:absolute;left:2px;top:8px;width:0;height:0;border:5px solid transparent;border-left-color:var(--mut);cursor:pointer}
+  #toc li.folder.open > .tw{border-left-color:transparent;border-top-color:var(--mut)}
+  #toc li:not(.folder) .tw{display:none}
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:55;display:none}
+  .mask.on{display:block}
+  .closeBtn{display:none}
+  @media(max-width:680px){
+    .topbar .title{max-width:34vw}
+    .main{display:block}
+    .content{position:absolute;top:52px;left:0;right:0;bottom:0}
+    #frame{height:100%}
+    .toc{position:fixed;left:0;top:52px;bottom:0;width:86vw;max-width:340px;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18)}
+    .toc.open{transform:translateX(0)}
+    .closeBtn{display:inline-block}
+  }
+</style>
+</head><body>
+<div class="topbar">
+  <button class="btn" id="btnMenu" type="button" aria-label="目录">☰</button>
+  <span class="title" id="docTitle">7z-demo</span>
+  <div class="search"><input type="text" id="q" placeholder="搜索目录…" autocomplete="off"></div>
+  <button class="btn close closeBtn" id="btnClose" aria-label="关闭" title="关闭目录">✕</button>
+</div>
+<div class="mask" id="mask"></div>
+<div class="main">
+  <aside class="toc" id="tocPane"><nav id="toc"><ul><li class="" data-href="start.htm"><span class="tw"></span><a href="start.htm">7-Zip 起始页</a></li>
+<li class="folder" data-href="general/index.htm"><span class="tw toggle"></span><a href="general/index.htm">基本信息</a><ul><li class="" data-href="general/formats.htm"><span class="tw"></span><a href="general/formats.htm">支持的格式</a></li>
+<li class="" data-href="general/7z.htm"><span class="tw"></span><a href="general/7z.htm">7z 格式</a></li>
+<li class="" data-href="general/performance.htm"><span class="tw"></span><a href="general/performance.htm">性能</a></li>
+<li class="" data-href="general/faq.htm"><span class="tw"></span><a href="general/faq.htm">常见问题</a></li>
+<li class="" data-href="general/license.htm"><span class="tw"></span><a href="general/license.htm">许可协议</a></li>
+<li class="" data-href="general/thanks.htm"><span class="tw"></span><a href="general/thanks.htm">致谢</a></li></ul></li>
+<li class="folder" data-href="fm/index.htm"><span class="tw toggle"></span><a href="fm/index.htm">文件管理器</a><ul><li class="" data-href="fm/Menu.htm"><span class="tw"></span><a href="fm/Menu.htm">菜单项与快捷键</a></li>
+<li class="" data-href="fm/options.htm"><span class="tw"></span><a href="fm/options.htm">选项对话框</a></li>
+<li class="" data-href="fm/benchmark.htm"><span class="tw"></span><a href="fm/benchmark.htm">基准测试</a></li>
+<li class="" data-href="fm/temp.htm"><span class="tw"></span><a href="fm/temp.htm">删除临时文件</a></li>
+<li class="" data-href="fm/about.htm"><span class="tw"></span><a href="fm/about.htm">关于对话框</a></li>
+<li class="folder" data-href="fm/plugins/index.htm"><span class="tw toggle"></span><a href="fm/plugins/index.htm">插件</a><ul><li class="folder" data-href="fm/plugins/7-zip/index.htm"><span class="tw toggle"></span><a href="fm/plugins/7-zip/index.htm">7-Zip</a><ul><li class="" data-href="fm/plugins/7-zip/add.htm"><span class="tw"></span><a href="fm/plugins/7-zip/add.htm">添加到压缩包对话框</a></li>
+<li class="" data-href="fm/plugins/7-zip/extract.htm"><span class="tw"></span><a href="fm/plugins/7-zip/extract.htm">解压对话框</a></li></ul></li></ul></li></ul></li>
+<li class="folder" data-href="cmdline/index.htm"><span class="tw toggle"></span><a href="cmdline/index.htm">命令行版本</a><ul><li class="" data-href="cmdline/syntax.htm"><span class="tw"></span><a href="cmdline/syntax.htm">语法</a></li>
+<li class="" data-href="cmdline/exit_codes.htm"><span class="tw"></span><a href="cmdline/exit_codes.htm">退出代码</a></li>
+<li class="folder" data-href="cmdline/commands/index.htm"><span class="tw toggle"></span><a href="cmdline/commands/index.htm">命令</a><ul><li class="" data-href="cmdline/commands/add.htm"><span class="tw"></span><a href="cmdline/commands/add.htm">a（添加）</a></li>
+<li class="" data-href="cmdline/commands/bench.htm"><span class="tw"></span><a href="cmdline/commands/bench.htm">b（基准测试）</a></li>
+<li class="" data-href="cmdline/commands/delete.htm"><span class="tw"></span><a href="cmdline/commands/delete.htm">d（删除）</a></li>
+<li class="" data-href="cmdline/commands/extract.htm"><span class="tw"></span><a href="cmdline/commands/extract.htm">e（解压）</a></li>
+<li class="" data-href="cmdline/commands/hash.htm"><span class="tw"></span><a href="cmdline/commands/hash.htm">h（哈希）</a></li>
+<li class="" data-href="cmdline/commands/list.htm"><span class="tw"></span><a href="cmdline/commands/list.htm">l（列出）</a></li>
+<li class="" data-href="cmdline/commands/rename.htm"><span class="tw"></span><a href="cmdline/commands/rename.htm">rn（重命名）</a></li>
+<li class="" data-href="cmdline/commands/test.htm"><span class="tw"></span><a href="cmdline/commands/test.htm">t（测试）</a></li>
+<li class="" data-href="cmdline/commands/update.htm"><span class="tw"></span><a href="cmdline/commands/update.htm">u（更新）</a></li>
+<li class="" data-href="cmdline/commands/extract_full.htm"><span class="tw"></span><a href="cmdline/commands/extract_full.htm">x（完整路径解压）</a></li></ul></li>
+<li class="folder" data-href="cmdline/switches/index.htm"><span class="tw toggle"></span><a href="cmdline/switches/index.htm">开关选项</a><ul><li class="" data-href="cmdline/switches/stop_switch.htm"><span class="tw"></span><a href="cmdline/switches/stop_switch.htm">--（停止解析开关）</a></li>
+<li class="" data-href="cmdline/switches/ar_include.htm"><span class="tw"></span><a href="cmdline/switches/ar_include.htm">-ai（包含压缩包文件名）</a></li>
+<li class="" data-href="cmdline/switches/ar_no.htm"><span class="tw"></span><a href="cmdline/switches/ar_no.htm">-an（禁用压缩包名解析）</a></li>
+<li class="" data-href="cmdline/switches/overwrite.htm"><span class="tw"></span><a href="cmdline/switches/overwrite.htm">-ao（覆盖模式）</a></li>
+<li class="" data-href="cmdline/switches/ar_exclude.htm"><span class="tw"></span><a href="cmdline/switches/ar_exclude.htm">-ax（排除压缩包文件名）</a></li>
+<li class="" data-href="cmdline/switches/bb.htm"><span class="tw"></span><a href="cmdline/switches/bb.htm">-bb（设置输出日志级别）开关</a></li>
+<li class="" data-href="cmdline/switches/bs.htm"><span class="tw"></span><a href="cmdline/switches/bs.htm">-bs（设置输出/错误/进度流）开关</a></li>
+<li class="" data-href="cmdline/switches/include.htm"><span class="tw"></span><a href="cmdline/switches/include.htm">-i（包含文件名）</a></li>
+<li class="" data-href="cmdline/switches/method.htm"><span class="tw"></span><a href="cmdline/switches/method.htm">-m（设置压缩方式）</a></li>
+<li class="" data-href="cmdline/switches/output_dir.htm"><span class="tw"></span><a href="cmdline/switches/output_dir.htm">-o（设置输出目录）</a></li>
+<li class="" data-href="cmdline/switches/password.htm"><span class="tw"></span><a href="cmdline/switches/password.htm">-p（设置密码）</a></li>
+<li class="" data-href="cmdline/switches/recurse.htm"><span class="tw"></span><a href="cmdline/switches/recurse.htm">-r（递归子目录）</a></li>
+<li class="" data-href="cmdline/switches/sa.htm"><span class="tw"></span><a href="cmdline/switches/sa.htm">-sa（设置压缩包命名方式）</a></li>
+<li class="" data-href="cmdline/switches/scc.htm"><span class="tw"></span><a href="cmdline/switches/scc.htm">-scc（设置控制台输入输出字符集）</a></li>
+<li class="" data-href="cmdline/switches/charset.htm"><span class="tw"></span><a href="cmdline/switches/charset.htm">-scs（设置列表文件字符集）</a></li>
+<li class="" data-href="cmdline/switches/scrc.htm"><span class="tw"></span><a href="cmdline/switches/scrc.htm">-scrc（设置哈希算法）</a></li>
+<li class="" data-href="cmdline/switches/sdel.htm"><span class="tw"></span><a href="cmdline/switches/sdel.htm">-sdel（加入压缩包后删除文件）</a></li>
+<li class="" data-href="cmdline/switches/email.htm"><span class="tw"></span><a href="cmdline/switches/email.htm">-seml（通过电子邮件发送压缩包）</a></li>
+<li class="" data-href="cmdline/switches/sfx.htm"><span class="tw"></span><a href="cmdline/switches/sfx.htm">-sfx（创建自解压压缩包）</a></li>
+<li class="" data-href="cmdline/switches/stdin.htm"><span class="tw"></span><a href="cmdline/switches/stdin.htm">-si（从标准输入读取数据）</a></li>
+<li class="" data-href="cmdline/switches/stdout.htm"><span class="tw"></span><a href="cmdline/switches/stdout.htm">-so（将数据写入标准输出）</a></li>
+<li class="" data-href="cmdline/switches/large_pages.htm"><span class="tw"></span><a href="cmdline/switches/large_pages.htm">-slp（设置大页模式）</a></li>
+<li class="" data-href="cmdline/switches/list_tech.htm"><span class="tw"></span><a href="cmdline/switches/list_tech.htm">-slt（显示技术信息）</a></li>
+<li class="" data-href="cmdline/switches/sni.htm"><span class="tw"></span><a href="cmdline/switches/sni.htm">-sni（存储 NT 安全信息）</a></li>
+<li class="" data-href="cmdline/switches/sns.htm"><span class="tw"></span><a href="cmdline/switches/sns.htm">-sns（存储 NTFS 备用数据流）</a></li>
+<li class="" data-href="cmdline/switches/spf.htm"><span class="tw"></span><a href="cmdline/switches/spf.htm">-spf（使用完整文件路径）</a></li>
+<li class="" data-href="cmdline/switches/spm.htm"><span class="tw"></span><a href="cmdline/switches/spm.htm">-spm（要求目录路径带分隔符）</a></li>
+<li class="" data-href="cmdline/switches/ssc.htm"><span class="tw"></span><a href="cmdline/switches/ssc.htm">-ssc（设置大小写敏感模式）</a></li>
+<li class="" data-href="cmdline/switches/shared.htm"><span class="tw"></span><a href="cmdline/switches/shared.htm">-ssw（压缩正在写入的文件）</a></li>
+<li class="" data-href="cmdline/switches/stl.htm"><span class="tw"></span><a href="cmdline/switches/stl.htm">-stl（用最新修改文件的日期作为压缩包时间戳）</a></li>
+<li class="" data-href="cmdline/switches/stx.htm"><span class="tw"></span><a href="cmdline/switches/stx.htm">-stx（排除压缩包类型）</a></li>
+<li class="" data-href="cmdline/switches/type.htm"><span class="tw"></span><a href="cmdline/switches/type.htm">-t（设置压缩包类型）</a></li>
+<li class="" data-href="cmdline/switches/update.htm"><span class="tw"></span><a href="cmdline/switches/update.htm">-u（更新选项）</a></li>
+<li class="" data-href="cmdline/switches/volume.htm"><span class="tw"></span><a href="cmdline/switches/volume.htm">-v（创建分卷）</a></li>
+<li class="" data-href="cmdline/switches/working_dir.htm"><span class="tw"></span><a href="cmdline/switches/working_dir.htm">-w（设置工作目录）</a></li>
+<li class="" data-href="cmdline/switches/exclude.htm"><span class="tw"></span><a href="cmdline/switches/exclude.htm">-x（排除文件名）</a></li>
+<li class="" data-href="cmdline/switches/yes.htm"><span class="tw"></span><a href="cmdline/switches/yes.htm">-y（所有询问一律回答“是”）</a></li></ul></li></ul></li></ul></nav></aside>
+  <section class="content"><iframe id="frame" src=""></iframe></section>
+</div>
+<script>
+(function(){
+  var frame=document.getElementById('frame');
+  var toc=document.getElementById('toc');
+  var pane=document.getElementById('tocPane');
+  var mask=document.getElementById('mask');
+  var btnMenu=document.getElementById('btnMenu');
+  var btnClose=document.getElementById('btnClose');
+  var q=document.getElementById('q');
+  var links=document.querySelectorAll('#toc a');
+
+  // 目录默认全部展开（更直观）
+  document.querySelectorAll('#toc li.folder').forEach(function(li){ li.classList.add('open'); });
+
+  // 折叠箭头
+  document.querySelectorAll('#toc li.folder > .tw').forEach(function(tw){
+    tw.addEventListener('click',function(e){ e.stopPropagation(); tw.parentElement.classList.toggle('open'); });
+  });
+
+  // 手机：汉堡开抽屉
+  btnMenu.addEventListener('click',function(){ pane.classList.add('open'); mask.classList.add('on'); });
+  if(btnClose) btnClose.addEventListener('click',function(){ pane.classList.remove('open'); mask.classList.remove('on'); });
+  mask.addEventListener('click',function(){ pane.classList.remove('open'); mask.classList.remove('on'); });
+
+  // 默认首页 + 恢复 hash
+  var home=(location.hash||'').replace('#','');
+  if(!home){ home='start.htm'; }
+  frame.src=home;
+  if(home){ links.forEach(function(a){ if(a.getAttribute('href')===home){ a.parentElement.classList.add('active'); } }); }
+
+  // 点目录 → 载页 + 高亮 + 更新 hash
+  links.forEach(function(a){
+    a.addEventListener('click',function(ev){
+      ev.preventDefault();
+      var href=a.getAttribute('href');
+      if(href && href!=='#'){ frame.src=href; }
+      links.forEach(function(x){ x.parentElement.classList.remove('active'); });
+      a.parentElement.classList.add('active');
+      if(href){ try{ history.replaceState(null,'','#'+href); }catch(e){} }
+      pane.classList.remove('open'); mask.classList.remove('on');
+    });
+  });
+
+  // 目录搜索过滤
+  q.addEventListener('input',function(){
+    var s=q.value.trim().toLowerCase();
+    document.querySelectorAll('#toc li').forEach(function(li){
+      var self=(li.textContent||'').toLowerCase().indexOf(s)!==-1;
+      if(!s){ li.style.display=''; return; }
+      var childShow=false;
+      li.querySelectorAll(':scope > ul li').forEach(function(c){ if(c.style.display!=='none') childShow=true; });
+      li.style.display=(self||childShow)?'':'none';
+      if(li.classList.contains('folder')&&childShow){ li.classList.add('open'); }
+    });
+  });
+})();
+</script>
+</body></html>

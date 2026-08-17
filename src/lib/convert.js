@@ -1,8 +1,10 @@
 'use strict';
 // convert.js — end-to-end: unpack a .chm + build the browseable shell.
 const path = require('path');
+const fs = require('fs');
 const { extractChm, scan } = require('./chm');
 const { build } = require('./preview');
+const landing = require('./landing');
 
 async function convert(input, outArg) {
   const abs = path.resolve(input);
@@ -19,4 +21,29 @@ async function convert(input, outArg) {
   return { dir, files, preview, extracted };
 }
 
-module.exports = { convert };
+/**
+ * 生成一个“站点”：欢迎页在根 + 文档放在子目录。
+ * 站点根目录结构：
+ *   <siteRoot>/
+ *     index.html        欢迎页（标题 + 上传入口 + 我的文档）
+ *     __docs/<name>/    文档转换产物（含各自的 index.html 阅读壳）
+ * @param {string} siteRoot 站点输出根目录
+ * @param {Array<{name, chmFile}>} docs 要转换的文档
+ */
+async function buildSite(siteRoot, docs, { title } = {}) {
+  const root = path.resolve(siteRoot);
+  fs.mkdirSync(root, { recursive: true });
+  const docRoot = path.join(root, '__docs');
+  const docLinks = [];
+  for (const d of docs || []) {
+    const id = (d.id || d.name || 'doc').replace(/[^\w\u4e00-\u9fa5-]/g, '_');
+    const outDir = path.join(docRoot, id);
+    const r = await convert(d.chmFile, outDir);
+    docLinks.push({ id, name: d.name || id, href: '__docs/' + id + '/' });
+  }
+  // 欢迎页
+  landing.build({ outDir: root, docs: docLinks.map((d) => ({ name: d.name, href: d.href })) });
+  return { root, docLinks };
+}
+
+module.exports = { convert, buildSite };

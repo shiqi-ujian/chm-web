@@ -1,4 +1,17 @@
-<!doctype html><html lang="zh"><head><meta charset="utf-8">
+'use strict';
+// landing.js — 站点欢迎页（首页）：标题说明 + 上传入口 + 我的文档。
+// 纯静态自包含页（内联 CSS/JS），可直接被静态托管托管；上传到位后，
+// form 的 action/接口地址可换成真实后端，无需改这套 UI。
+const fs = require('fs');
+const path = require('path');
+
+function esc(s) {
+  return String(s == null ? '' : '' + s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHM 网页 · 免费在线阅读工具</title>
 <style>
@@ -78,7 +91,7 @@
   var chosen=null;
 
   // 文档列表数据（由生成时注入）
-  var DOCS = [{"name":"7-Zip 帮助手册（演示）","href":"__docs/7z-demo/"}];
+  var DOCS = __DOCS_JSON__;
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function escH(s){ return esc(s).replace(/'/g,'&#39;'); }
 
@@ -110,4 +123,19 @@
   });
 })();
 </script>
-</body></html>
+</body></html>`;
+
+/**
+ * 生成欢迎页到 outDir/index.html，并引用文档根入口。
+ * @param {object} o { outDir, docs } docs 形如 [{ name, href }]，注入“我的文档”
+ */
+function build({ outDir, docs }) {
+  const dir = path.resolve(outDir);
+  fs.mkdirSync(dir, { recursive: true });
+  const docsJson = JSON.stringify(docs || []);
+  let html = LANDING_HTML.replace('__DOCS_JSON__', docsJson);
+  fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
+  return { outFile: path.join(dir, 'index.html'), docs };
+}
+
+module.exports = { build, LANDING_HTML };
