@@ -18,7 +18,7 @@
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M1 | CHM 解包 + 转静态 HTML | ✅ 已完成（7z 解包、.hhc 目录树、.hhk 关键字、阅读壳） |
-| M2 | 双端可浏览 + 可见性权限 | 🔶 部分完成（可浏览/手机抽屉目录；**可见性、账号、上传真实闭环未做**） |
+| M2 | 双端可浏览 + 可见性权限 | 🔶 部分完成（可浏览/手机抽屉目录 + **真实上传闭环已通**；**可见性、账号未做**） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
 | M4 | 批量 + 私有部署导出 | ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
 | Rails部署 | 接正式后端（B 形态） | 🟡 进行中：已加 `HOST` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌开关（不设则不锁）；`7zz` 候选；`deploy/` 脚手架（Dockerfile / systemd / Caddy 示例）+ 根 `Dockerfile`/`.dockerignore` 供 Railway 直接用 |
@@ -37,7 +37,9 @@
 - `src/lib/serve.js`：零依赖 http 静态服务器。
 - `src/lib/sanitize.js`：复制文档产物时剔除 CHM 内部 `#`/`$` 元数据文件。
 - `src/lib/translations.js`：目录节点名中英对照（示例做了 7-Zip 手册）。
-- `scripts/autosync.ps1` + `autosync_hidden.vbs`：计划任务「提交+拉取+推送」自动同步，失败留到下一轮。
+- `src/lib/upload.js`：上传→转换→存盘→更新"我的文档"索引 的完整管线（`processUpload`）。
+- `src/server.js`：真实后端（静态托管 + `POST /api/upload` + `GET /api/docs` + 批量导出/整站导出接口）。
+- `scripts/autosync.ps1` + `autosync_run.vbs`：计划任务「拉取+推送」自动同步（**不做自动提交**），失败留到下一轮。
 - GitHub Pages 已启用，仓库 `chm-web`（公开），文档放 `docs/` 目录。
 
 **线上**：https://shiqi-ujian.github.io/chm-web/ （欢迎页 → 我的文档 → 打开 7-Zip 手册）。
@@ -86,7 +88,7 @@
 
 ## 五、仍待办 / 下一步
 
-- [ ] **真实上传闭环**：把欢迎页「上传」按钮接到真实后端。需要一台能跑 Node + 7z 的服务器（约 ¥50/月档）——当前按钮只提示"服务器即将开放"。（本地后端已验证可用；部署待有服务器）
+- [ ] **公网真实部署上线**：本地上传闭环已验证可用，待接 Railway / 自有服务器（部署后设 `UPLOAD_TOKEN` / `EXPORT_TOKEN` + 持久盘）。
 - [ ] **账号 + 可见性**（M2 剩余）：私密/公开/分享链接，「我的上传」列表。属于需要后端的账号体系。
 - [ ] **转换完成整批自动打包下载**（M4 可选增强）：目前是「逐个转换入库 → 勾选导出」；可再加「一次批量上传即直接打包整批下载」。
 - [ ] 正文中文翻译：目录树已中文化；正文目前是原文（7-Zip 手册全部英文）。
@@ -110,8 +112,8 @@ src/lib/
   sanitize.js   剔除 CHM 内部 #/$ 元数据
   translations.js  目录名中英对照
 scripts/
-  autosync.ps1      自动同步(commit+pull+push)
-  autosync_hidden.vbs  隐藏启动
+  autosync.ps1      自动同步(拉取+推送，不自动提交)
+  autosync_run.vbs  隐藏启动 autosync.ps1
  docs/          站点/发布产物（GitHub Pages 根）
 ```
 （另 `test-export-docs.js`：选中多篇导出独立裸站 zip 的自测，随 `npm test` 跑。）
