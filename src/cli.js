@@ -3,7 +3,9 @@
 const { convert } = require('./lib/convert');
 const { extractChm, scan } = require('./lib/chm');
 const { serve } = require('./lib/serve');
+const { exportSite } = require('./lib/site-export');
 const path = require('path');
+const fs = require('fs');
 
 const [, , cmd, input, arg2, arg3] = process.argv;
 
@@ -15,6 +17,7 @@ Usage:
   node bin/cli.js extract <input.chm> [outDir]   # unpack only
   node bin/cli.js scan <dir>                     # inspect a dir
   node bin/cli.js serve <dir> [port]             # static server
+  node bin/cli.js export-site <siteRoot> [out.zip]  # pack whole site into a deployable zip
   node bin/cli.js help
 `);
 }
@@ -34,6 +37,11 @@ async function main() {
   } else if (cmd === 'serve') {
     const { server, port } = await serve(path.resolve(input));
     console.log(`serving ${input} → http://localhost:${port}`);
+  } else if (cmd === 'export-site') {
+    const outZip = arg2 || 'site-export-' + Date.now() + '.zip';
+    const r = exportSite({ siteRoot: path.resolve(input) });
+    fs.writeFileSync(path.resolve(outZip), r.zip);
+    console.log(`exported site (${r.manifest.fileCount} files, ${Math.round(r.manifest.totalBytes / 1024)} KB) → ${path.resolve(outZip)}`);
   } else {
     printHelp();
   }

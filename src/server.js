@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { processUpload, UploadError } = require('./lib/upload');
 const landing = require('./lib/landing');
+const { exportSite } = require('./lib/site-export');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
@@ -110,12 +111,26 @@ function listDocs() {
     .map((id) => ({ id, name: id, href: 'd/' + id + '/', url: '/d/' + id + '/' , updated: fs.statSync(path.join(d, id)).mtimeMs }));
 }
 
+/** 打包整站为 zip 下载 */
+function handleSiteExport(req, res) {
+  const r = exportSite({ siteRoot: SITE_ROOT });
+  const name = 'chm-web-site-' + Date.now() + '.zip';
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Length': r.zip.length,
+    'Content-Disposition': 'attachment; filename="' + name + '"',
+  });
+  res.end(r.zip);
+}
+
 const server = http.createServer((req, res) => {
   const urlPath = (new URL(req.url, 'http://x')).pathname;
   if (req.method === 'POST' && urlPath === '/api/upload') {
     handleUpload(req, res);
   } else if (req.method === 'GET' && urlPath === '/api/docs') {
     sendJSON(res, 200, { docs: listDocs() });
+  } else if (req.method === 'GET' && urlPath === '/site-export.zip') {
+    handleSiteExport(req, res);
   } else {
     serveStatic(req, res);
   }
@@ -127,5 +142,6 @@ server.listen(Number(PORT), () => {
   console.log('  site root :', SITE_ROOT);
   console.log('  POST /api/upload  → 上传 .chm 并转换');
   console.log('  GET  /api/docs    → 已发布文档列表');
+  console.log('  GET  /site-export.zip → 下载整站 zip');
   console.log('  直接打开首页: http://localhost:' + port + '/');
 });

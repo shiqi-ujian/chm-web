@@ -20,6 +20,7 @@
 | M1 | CHM 解包 + 转静态 HTML | ✅ 已完成（7z 解包、.hhc 目录树、.hhk 关键字、阅读壳） |
 | M2 | 双端可浏览 + 可见性权限 | 🔶 部分完成（可浏览/手机抽屉目录；**可见性、账号、上传真实闭环未做**） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
+| M4 | 批量 + 私有部署导出 | 🟡 起步（**整站导出 zip 已做**：欢迎页按钮 + CLI `export-site` + 后端 `GET /site-export.zip` + manifest.json；批量上传/批量导出待做） |
 | M4 | 批量 + 私有部署导出 | ◻️ 未开始 |
 
 ---
@@ -74,7 +75,7 @@
 
 - [ ] **真实上传闭环**：把欢迎页「上传」按钮接到真实后端。需要一台能跑 Node + 7z 的服务器（约 ¥50/月档）——当前按钮只提示"服务器即将开放"。（本地后端已验证可用；部署待有服务器）
 - [ ] **账号 + 可见性**（M2 剩余）：私密/公开/分享链接，「我的上传」列表。属于需要后端的账号体系。
-- [ ] **M4 批量 + 私有导出**：一次多个 CHM、打包 zip/静态站点。
+- [ ] **M4 批量**：支持一次多个 CHM 批量上传；批量 / 选中导出为 zip / 静态站点。（站点级单包导出已做）
 - [ ] 正文中文翻译：目录树已中文化；正文目前是原文（7-Zip 手册全部英文）。
 - [ ] autosync 在多台设备上的部署说明。
 
@@ -89,6 +90,8 @@ src/lib/
   hhk.js        .hhk 关键字解析
   preview.js    阅读壳(index.html) + 目录/关键字/全文检索 + search-index.json
   landing.js    欢迎页(index.html) + 全站聚合检索 site-index.json
+  zip.js        零依赖 zip 打包器（STORE + DEFLATE）
+  site-export.js  整站导出（含 manifest.json）：exportSite()/collectFiles()
   convert.js    convert() + buildSite()
   serve.js      零依赖静态服务器
   sanitize.js   剔除 CHM 内部 #/$ 元数据

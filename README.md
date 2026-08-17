@@ -61,8 +61,9 @@
 - **验收**：搜到 CHM 内页标题 / 关键字，手机端可用（✅ 已在欢迎页与阅读壳打通）
 
 ### M4 — 批量 + 私有部署
+- [x] 站点级导出：整站打 zip（含 `manifest.json` 清单），欢迎页「导出整站 zip ⬇」按钮直达，CLI `export-site` / 后端 `GET /site-export.zip` 均可
 - [ ] 支持一个 / 多个 CHM 批量上传
-- [ ] "打包下载 / 导出为站点"= 打 zip / 静态站点
+- [ ] 批量 / 选中导出为 zip / 静态站点（自托管）
 - **验收**：选中多个 CHM，一次转换后整包导出为 zip / 静态站点
 
 ---
@@ -99,11 +100,14 @@ chm-web/
 │     ├─ preview.js  # 生成 index.html / __chm_nav.html / keywords.json / search-index.json
 │     ├─ serve.js    # 零依赖静态服务器
 │     ├─ landing.js  # 欢迎页 + 全站聚合检索 site-index.json
+│     ├─ zip.js      # 零依赖 zip 打包器
+│     ├─ site-export.js  # 整站导出（含 manifest.json）
 │     └─ convert.js  # 端到端转换编排
 ├─ test-hhc.js      # 目录树解析自测
 ├─ test-serve.js    # 静态服务自测
 ├─ test-fulltext.js # 全文检索索引自测
 ├─ test-site.js     # 欢迎页全站搜索烟测
+├─ test-zip.js      # zip 打包 / 整站导出自测
 └─ out/             # （git 忽略）转换产物输出目录
 ```
 
@@ -153,7 +157,7 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
 - [x] **M2（浏览部分）：双端可浏览 + 阅读壳检索**
 - [x] **M3：全库检索**（阅读壳单文档 + 欢迎页跨文档统搜；纯静态可托管）
 - [ ] M2：可见性 + 账号（私密/公开/分享链接；待服务器）
-- [ ] M4：批量 + 私有导出
+- [ ] M4：批量上传 + 批量导出（站点级导出已完成）
 
 ---
 

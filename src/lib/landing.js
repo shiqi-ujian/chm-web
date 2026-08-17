@@ -58,7 +58,9 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .step b{font-size:15px}
   .step p{font-size:13px;color:var(--mut);margin:6px 0 0}
   .docs{max-width:680px;margin:0 auto 48px}
-  .docs h2{font-size:18px;margin:0 0 12px}
+  .docs h2{font-size:18px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between}
+  .docs h2 .export{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:#eaf3ff;border-radius:20px;padding:4px 12px}
+  .docs h2 .export:hover{background:#d6e9ff}
   .doc-row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
   .doc-row .name{font-weight:600;font-size:15px}
   .doc-row .tag{font-size:12px;color:var(--mut);background:#f0f2f5;border-radius:20px;padding:2px 10px}
@@ -95,7 +97,7 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   </div>
 
   <div class="docs">
-    <h2>我的文档</h2>
+    <h2>我的文档 <a class="export" id="exportBtn" href="javascript:void(0)" title="把整站打包成可部署的 zip 下载">导出整站 zip ⬇</a></h2>
     <div id="docsList"></div>
   </div>
 
@@ -103,6 +105,19 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 </div>
 <script>
 (function(){
+  var exportBtn=document.getElementById('exportBtn');
+  if(exportBtn){
+    exportBtn.addEventListener('click',function(e){
+      e.preventDefault();
+      if(window.location.protocol==='file:'){ alert('纯静态打开时无法打包，请用本地服务或线上站点访问后导出。'); return; }
+      exportBtn.textContent='打包中…';
+      var dl=document.createElement('a');
+      dl.href='site-export.zip';
+      dl.download='site-export.zip';
+      document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
+      setTimeout(function(){ exportBtn.textContent='⬇ 导出整站 zip ⬇'; }, 800);
+    });
+  }
   var drop=document.getElementById('drop');
   var file=document.getElementById('file');
   var pick=document.getElementById('filePick');
