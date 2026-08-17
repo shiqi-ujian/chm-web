@@ -1,0 +1,42 @@
+'use strict';
+// cli.js — CLI entry for chm-web
+const { convert } = require('./lib/convert');
+const { extractChm, scan } = require('./lib/chm');
+const { serve } = require('./lib/serve');
+const path = require('path');
+
+const [, , cmd, input, arg2, arg3] = process.argv;
+
+function printHelp() {
+  console.log(`chm-web — CHM → browseable static site
+
+Usage:
+  node bin/cli.js convert <input.chm> [outDir]   # unpack + build preview
+  node bin/cli.js extract <input.chm> [outDir]   # unpack only
+  node bin/cli.js scan <dir>                     # inspect a dir
+  node bin/cli.js serve <dir> [port]             # static server
+  node bin/cli.js help
+`);
+}
+
+async function main() {
+  if (cmd === 'convert') {
+    const r = await convert(input, arg2);
+    console.log(JSON.stringify({ dir: r.dir, files: r.files, preview: r.preview && r.preview.navHtml ? undefined : r.preview }, null, 2).slice(0, 500));
+    console.log(`Converted → ${r.dir}`);
+  } else if (cmd === 'extract') {
+    const out = arg2 || input.replace(/\.chm$/i, '');
+    const r = await extractChm(input, path.resolve(out));
+    const s = scan(r.dir);
+    console.log(`extracted → ${r.dir}  html:${s.html.length} hhc:${s.hhc.length} hhk:${s.hhk.length}`);
+  } else if (cmd === 'scan') {
+    console.log(JSON.stringify(scan(path.resolve(input)), null, 2));
+  } else if (cmd === 'serve') {
+    const { server, port } = await serve(path.resolve(input));
+    console.log(`serving ${input} → http://localhost:${port}`);
+  } else {
+    printHelp();
+  }
+}
+
+main().catch((e) => { console.error(e && e.stack || e); process.exit(1); });

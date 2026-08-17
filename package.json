@@ -1,0 +1,13 @@
+{
+  "name": "chm-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CHM → 可浏览/搜索静态网站（免费·非营利） / M1: CHM 解包 + 静态预览",
+  "bin": { "chm-web": "bin/cli.js" },
+  "scripts": {
+    "convert": "node bin/cli.js convert",
+    "serve": "node bin/cli.js serve",
+    "test": "node test-serve.js && node test-hhc.js"
+  },
+  "license": "UNLICENSED"
+}

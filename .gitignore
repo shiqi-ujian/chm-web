@@ -1,19 +1,5 @@
-# 依赖 / 构建产物
-node_modules/
-dist/
-build/
+﻿node_modules/
 out/
-
-# 运行时产物 / 数据
 data/
-uploads/
-*.chm
+samples/*.chm
 *.tmp
-
-# 日志 / 系统文件
-*.log
-npm-debug.log*
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
