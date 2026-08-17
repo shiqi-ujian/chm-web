@@ -1,7 +1,9 @@
 node_modules/
 out/
 data/
+# 测试样本：仅保留 7-zip.chm（开源 LGPL），其余 chm 不入库
 samples/*.chm
+!samples/7-zip.chm
 *.tmp
 logs/
 # 视觉工具临时目录

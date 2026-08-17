@@ -1,0 +1,37 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 转换/上传测试需要 7-Zip
+      - name: Install 7-Zip
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends p7zip-full 7zip
+
+      - name: Run tests
+        run: |
+          node test-serve.js docs/d/7-zip
+          node test-hhc.js docs/d/7-zip
+          node test-fulltext.js
+          node test-fixlinks.js
+          node test-site.js
+          node test-zip.js
+          node test-export-docs.js
+          node test-auth.js samples/7-zip.chm
+
+      # 全站导出冒烟（生成 site-export.zip 验证打包链路）
+      - name: Export smoke
+        run: |
+          node bin/cli.js export-site docs /tmp/site-export.zip
+          test -s /tmp/site-export.zip && echo "export OK"

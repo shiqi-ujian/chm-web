@@ -91,6 +91,25 @@
 
 ---
 
+## 新电脑/工位开发上手（5 分钟）
+
+1. **clone + 装环境**：`git clone https://github.com/shiqi-ujian/chm-web.git`；装 **Node.js ≥ 16**（零依赖，无需 npm install）和 **7-Zip**（转换/测试必需）。
+2. **配置 git 身份**（仓库不随 push 带身份，新机器必须配）：
+   ```bash
+   git config user.name "qiujian.shi"
+   git config user.email "qiujian.shi@ui-surgical.com"
+   ```
+3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`）。本地快速验证也可：
+   `node test-serve.js docs/d/7-zip` 等（见 `.github/workflows/test.yml` 里的命令序列）。
+4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 8 项测试，红了先看 CI 报错再提交。
+5. **上线部署**：
+   - 平时：push 到 main → Railway 自动部署（约 1-2 分钟）。
+   - GitHub 异常/webhook 失效时：装 Railway CLI（`npm i -g @railway/cli`）→ `railway login`（浏览器授权）→ `railway redeploy --from-source -y`。
+6. **敏感信息**：部署令牌 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 只在本机 `data/deploy-tokens.txt`（gitignored）和 Railway 变量里；新机器如需手动部署，从 Railway 项目 Variables 里复制（勿提交进仓库）。
+7. **提交纪律**：保持单 `main` 直推（单人项目）；提交信息用 `feat:/fix:/docs:/deploy:` 前缀；`data/`、`out/`、`logs/`、`.dsh-vision-toolkit/` 永不提交。
+
+---
+
 ## 最后，我一开始的建议
 
 1. **先做 P0 (MVP)**：`7z` 解一个 CHM → 起个静态服务 → 手机能开：真正体验“核心闭环”。
