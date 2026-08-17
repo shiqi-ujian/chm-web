@@ -46,6 +46,8 @@ function Invoke-Git {
 }
 
 # ---- 推送成功桌面提醒（一次性，不阻塞）----
+# 注意：计划任务通过 vbs 隐藏窗口启动，NotifyIcon 放到一个临时的 hidden
+# PowerShell 进程里足够弹出气泡；但若当前没有交互式桌面(锁屏/无人登录)，会失败并被忽略。
 function Send-Notice {
     param([string]$Title, [string]$Text)
     try {
@@ -85,24 +87,37 @@ if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) {
 if ($DiscoverOnly) { Write-Log '[Discover] 不执行 fetch/push。'; Write-Log '==== end (Discover) ===='; exit 0 }
 
 # ---------- 2) 拉取远端（fetch + rebase），失败就跳过 ----------
+# 网络极差的机器上，git fetch 常会中途断；这里用 first-parent 单测对象绝对路径，避免误判。
 $branch = (& git -C $Repo symbolic-ref --short HEAD 2>$null)
 if (-not $branch) { $branch = 'main' }
+$haveRemote = & git -C $Repo show-ref --verify -q "refs/remotes/origin/$branch" 2>$null; $haveRemote = ($LASTEXITCODE -eq 0)
 
-$f = Invoke-Git ('fetch origin ' + $branch + ' 2>&1')
+$f = Invoke-Git ('fetch origin ' + $branch)
 if (-not $f.Ok) {
     Write-Log ("拉取失败（网络不通？），本轮跳过。 " + $f.Out)
 } else {
     # 检测 rebase 未完成则先放弃（一向冲突自动放弃）
     $inRebase = Test-Path (Join-Path $Repo '.git/rebase-merge')
     if ($inRebase) { & git -C $Repo rebase --abort 2>&1 | Out-Host }
-    $r = Invoke-Git ('rebase origin/' + $branch)
-    if ($r.Ok) { Write-Log 'rebase 完成' }
-    else { Write-Log ("rebase 失败：" + $r.Out) }
+    if ($haveRemote) {
+        $r = Invoke-Git ('rebase origin/' + $branch)
+        if ($r.Ok) { Write-Log 'rebase 完成' }
+        else { Write-Log ("rebase 失败（留给处理）：" + $r.Out) }
+    } else {
+        Write-Log '尚未有本地 origin 引用，跳过 rebase'
+    }
 }
 
 # ---------- 3) 推送未推送的提交（带重试）----------
-$pending = Invoke-Git ("rev-list --count origin/$branch..HEAD")
-$pendingCount = if ($pending.Ok) { try { [int]$pending.Out } catch { 0 } } else { 0 }
+# 仅在确实有远端引用时才统计并推送；绝不能让 git help 的输出或某个
+# “对象不存在”的误读干扰计数，更不要在缺少 origin 时盲目 push。
+$pendingCount = 0
+if ($haveRemote) {
+    $pending = Invoke-Git ("rev-list --count origin/$branch..HEAD")
+    $pendingCount = if ($pending.Ok) { try { [int]$pending.Out } catch { 0 } } else { 0 }
+} else {
+    Write-Log '未找到远端引用，不计算待推送数（可能首次/克隆后未 fetch）。'
+}
 if ($pendingCount -le 0) {
     Write-Log '无待推送提交。'
 } else {
