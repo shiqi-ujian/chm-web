@@ -288,6 +288,7 @@ function rebuildSite() {
       outDir: SITE_ROOT,
       docs: listDocs(null).map((d) => ({ name: d.name, href: d.href, id: d.id })),
       token: EXPORT_TOKEN,
+      uploadToken: UPLOAD_TOKEN,
     });
   } catch (e) { console.error('site rebuild failed', e); }
 }

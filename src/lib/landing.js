@@ -179,6 +179,9 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   // 前端下载导出与整站 zip 时带上 X-Auth-Token。
   var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
   function authHeaders(){ return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {}; }
+  // 上传用独立的 UPLOAD_TOKEN（注入 __UPLOAD_TOKEN__），与导出 token 分离。
+  var UPLOAD_TOKEN = (typeof __UPLOAD_TOKEN__!=='undefined' && __UPLOAD_TOKEN__) ? __UPLOAD_TOKEN__ : '';
+  function uploadHeaders(){ return UPLOAD_TOKEN ? { 'X-Auth-Token': UPLOAD_TOKEN } : {}; }
 
   // ---- M2 账号：登录/注册/退出（token 存 localStorage，请求带 X-User-Token）----
   var USER_TOKEN = (function(){ try { return localStorage.getItem('chm_user') || ''; } catch(e){ return ''; } })();
@@ -505,7 +508,9 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
     var fd=new FormData();
     fd.append('file', file);
     fd.append('visibility', currentVisibility());
-    fetch('/api/upload',{method:'POST',body:fd,headers:userHeaders()})
+    var h = uploadHeaders();
+    if (USER_TOKEN) h['X-User-Token'] = USER_TOKEN;
+    fetch('/api/upload',{method:'POST',body:fd,headers:h})
       .then(function(res){ return res.json().then(function(j){ return {st:res.status,j:j}; }); })
       .then(function(x){ cb(null, x); })
       .catch(function(e){ cb(e); });
@@ -548,14 +553,15 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
  * @param {object} o { outDir, docs, token? } docs 形如 [{ name, href }]，注入“我的文档”；
  *   token 可选：非空则注入 __AUTH_TOKEN__，供前端上传/导出时自动带上 X-Auth-Token。
  */
-function build({ outDir, docs, token }) {
+function build({ outDir, docs, token, uploadToken }) {
   const dir = path.resolve(outDir);
   fs.mkdirSync(dir, { recursive: true });
   const docsJson = JSON.stringify(docs || []);
   const tok = token ? JSON.stringify(String(token)) : '""';
-  // 全局替换（/g）：模板中 __DOCS_JSON__ / __AUTH_TOKEN__ 出现多次，
+  const upTok = uploadToken ? JSON.stringify(String(uploadToken)) : '""';
+  // 全局替换（/g）：模板中 __DOCS_JSON__ / __AUTH_TOKEN__ / __UPLOAD_TOKEN__ 出现多次，
   // 只替换第一个会导致三元表达式真分支残留裸标识符 → ReferenceError。
-  let html = LANDING_HTML.replace(/__DOCS_JSON__/g, docsJson).replace(/__AUTH_TOKEN__/g, tok);
+  let html = LANDING_HTML.replace(/__DOCS_JSON__/g, docsJson).replace(/__AUTH_TOKEN__/g, tok).replace(/__UPLOAD_TOKEN__/g, upTok);
   fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
   // 全站聚合检索索引
   fs.writeFileSync(path.join(dir, 'site-index.json'),
