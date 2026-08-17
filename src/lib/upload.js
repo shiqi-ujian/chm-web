@@ -97,6 +97,8 @@ async function convertOne(input, outDir, id, name) {
   await extractChm(input, tmp);
   copyDocContent(tmp, outDir);
   fs.rmSync(tmp, { recursive: true, force: true });
+  // 修复链接大小写与实际文件不一致（Linux 严格区分大小写）
+  try { require('./fixlinks').fixLinks(outDir); } catch (e) { console.error('fixlinks failed', e); }
   // 生成阅读壳 index.html + keywords.json（复用 preview parser）
   try {
     const preview = require('./preview');

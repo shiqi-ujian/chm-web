@@ -6,12 +6,15 @@ const { extractChm, scan } = require('./chm');
 const { build } = require('./preview');
 const landing = require('./landing');
 const { copyDocContent } = require('./sanitize');
+const { fixLinks } = require('./fixlinks');
 
 async function convert(input, outArg) {
   const abs = path.resolve(input);
   let out = path.resolve(outArg || abs.replace(/\.chm$/i, ''));
   const extracted = await extractChm(abs, out);
   const dir = out;
+  // 修复 hhc/hhk/正文链接大小写与实际文件不一致（Linux 严格区分大小写）
+  fixLinks(dir);
   const files = scan(dir);
 
   let hhc = files.hhc.length ? path.join(dir, files.hhc[0]) : null;

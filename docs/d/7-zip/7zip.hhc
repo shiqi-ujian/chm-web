@@ -51,7 +51,7 @@
   <UL>
     <LI> <OBJECT type="text/sitemap">
       <param name="Name" value="Menu Items and Shortcut Keys">
-      <param name="Local" value="fm/Menu.htm">
+      <param name="Local" value="fm/menu.htm">
       </OBJECT>
     <LI> <OBJECT type="text/sitemap">
       <param name="Name" value="Options Dialog Box">
