@@ -45,7 +45,9 @@ function renderTree(nodes, dir) {
   return '<ul>' + renderNodes(nodes, dir) + '</ul>';
 }
 
-// tree → __TOC__ JSON：[{i,n,u,c}]，u 为相对阅读壳的 URL（leaf 才有），c 为子树
+// tree → __TOC__ JSON：[{i,n,u,c}]，u 为相对阅读壳的 URL（leaf 才有），c 为子树。
+// i 全局唯一递增：递归子节点后必须用返回的 next 推进计数器，否则父级后续
+// 兄弟与子节点编号冲突 → setActive/折叠记忆按 i 匹配会错乱（多行同时高亮）。
 function toTocJson(nodes, dir, start) {
   let i = start;
   const out = [];
@@ -53,7 +55,11 @@ function toTocJson(nodes, dir, start) {
     const node = { i: i++, n: translate(n.name) || n.name || '' };
     const href = relPath(dir, n.href);
     if (href && href !== '#') node.u = href;
-    if (n.children && n.children.length) node.c = toTocJson(n.children, dir, i).nodes;
+    if (n.children && n.children.length) {
+      const sub = toTocJson(n.children, dir, i);
+      node.c = sub.nodes;
+      i = sub.next; // 关键：子节点占用过的编号要跳过
+    }
     out.push(node);
   }
   return { nodes: out, next: i };
