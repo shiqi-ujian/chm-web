@@ -116,8 +116,10 @@ chm-web/
 ## 环境要求
 
 - **Node.js** ≥ 16（推荐最新 LTS；转换用 `node bin/cli.js`）
-- **7-Zip** 已安装，默认路径 `C:\Program Files\7-Zip\7z.exe`
-  （若装在其他位置，设环境变量 `SEVENZ=/path/to/7z.exe`）
+- **7-Zip** 命令行版。解析顺序（见 `src/lib/chm.js`）：
+  1. 环境变量 `SEVENZ`（最高优先，可指向任意路径）
+  2. PATH 里的 `7z` / `7za`（跨平台，**部署 Linux 服务器时推荐**，`apt install p7zip-full` 后即走 PATH）
+  3. Windows 默认安装路径 `C:\Program Files\7-Zip\7z.exe`（仅本机兜底）
 
 ## 如何运行
 

@@ -3,9 +3,20 @@ const http = require('http');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-const root = 'C:/Users/qiujian.shi/Desktop/chm-web';
-const chm = 'C:/Program Files/7-Zip/7-zip.chm';
+// 项目根目录取本文件所在目录，不再写死绝对路径
+const root = __dirname;
+// 待上传的样例 chm：优先取命令行参数 ./e2e-test.js <x.chm>，否则尝试 7-Zip 自带样例
+const chm = process.argv[2] || (
+  process.platform === 'win32' && fs.existsSync('C:/Program Files/7-Zip/7-zip.chm')
+    ? 'C:/Program Files/7-Zip/7-zip.chm'
+    : null
+);
 const PORT = 18080;
+
+if (!chm || !fs.existsSync(chm)) {
+  console.error('未指定待上传的 CHM 文件。用法：node e2e-test.js <sample.chm>');
+  process.exit(1);
+}
 
 const srv = spawn(process.execPath, [root + '/src/server.js'], {
   cwd: root, env: { ...process.env, PORT: String(PORT) }, stdio: 'pipe'

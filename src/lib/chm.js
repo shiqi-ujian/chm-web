@@ -4,17 +4,36 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const SEVENSEZ = 'C:\\Program Files\\7-Zip\\7z.exe';
+// 7z 可执行文件的解析顺序：
+// 1) 环境变量 SEVENZ（显式指定，最高优先，可指向任意路径）
+// 2) PATH 里的 7z / 7za（跨平台，部署到 Linux 服务器时最常用）
+// 3) Windows 常见默认安装路径（仅本机兜底，可移植性最差所以放最后）
+const DEFAULT_SEVENSEZ = 'C:\\Program Files\\7-Zip\\7z.exe';
+const CANDIDATES = [process.env.SEVENZ, '7z', '7za', DEFAULT_SEVENSEZ].filter(Boolean);
+
+/** 从候选里挑一个真实存在/可用的 7z 可执行文件；找不到则抛错 */
+function resolveSeven() {
+  for (const c of CANDIDATES) {
+    // '7z'/'7za' 是 PATH 里的命令，可能不带扩展名，用 existsSync 无法判断，
+    // 统一交给 spawnSync 去探。绝对路径才做文件存在性预检。
+    if (path.isAbsolute(c)) {
+      if (fs.existsSync(c)) return c;
+      continue;
+    }
+    return c; // 交给 PATH 解析
+  }
+  throw new Error(
+    `找不到 7-Zip：请安装 7-Zip，或设置环境变量 SEVENZ 指向 7z 可执行文件` +
+      `（例如 SEVENZ="C:\\Program Files\\7-Zip\\7z.exe"，Linux 上通常是 PATH 里的 7z）`
+  );
+}
 
 /**
- * Extract a .chm into a folder (html + .hhc + .hhk...).
+ * Extract a .chm file into a folder (extract .hhc .hhk★...).
  * Uses 7-Zip. Returns { ok, dir, files }.
  */
 async function extractChm(input, outDir) {
-  const seven = process.env.SEVENZ || SEVENSEZ;
-  if (!fs.existsSync(seven)) {
-    throw new Error(`7zip not found at ${seven} — install 7-Zip or set SEVEN env var`);
-  }
+  const seven = resolveSeven();
   fs.mkdirSync(outDir, { recursive: true });
   const res = spawnSync(seven, ['x', input, `-o${outDir}`, '-y'], { stdio: 'pipe' });
   if (res.status !== 0) {

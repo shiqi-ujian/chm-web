@@ -12,17 +12,19 @@ class UploadError extends Error {
 }
 
 /**
- * 生成安全文档 id（小写字母数字+短横，最长 40）。
+ * 生成安全文档 id（小写字母数字+中文+短横，最长 40）。
+ * 保留中文（文档常以中文命名），剔除其它符号；若剔除后为空则退回 'doc'。
  */
 function safeId(seed) {
-  const base = String(seed || 'doc').toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\w\u4e00-\u9fa5-]+/g, '-')
-    .replace(/[^a-z0-9-]+/g, '-')
+  let base = String(seed || 'doc')
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[^\w\u4e00-\u9fa5]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40);
+  if (!base) base = 'doc';
   const u = crypto.randomBytes(3).toString('hex');
-  return (base || 'doc') + '-' + u;
+  return base + '-' + u;
 }
 
 /**
