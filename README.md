@@ -34,7 +34,7 @@ CHM 解包出来后本来就是**写死的 HTML 页面 + `.hhc` 目录 + `.hhk` 
 
 | 模块 | 选型 | 理由 |
 |------|------|------|
-| 运行环境 | Node.js + TypeScript（或纯 JS） | 无框架依赖、起静态服务方便 |
+| 运行环境 | Node.js（纯 JS，无框架依赖） | 转换脚本用；产物本身是纯静态 HTML |
 | CHM 解包 | 7z / mspack / chmlib（解析 ITSF 表 + LZX 解压） | 现成开源，免造轮子 |
 | 解包产物 | 静态 HTML + `.hhc` 目录树 + `.hhk` 关键字索引 | 7-zip 即能解出 |
 | 双端体验 | 移动 / 桌面都用响应式 HTML | 移动端可读可搜，桌面端做批量 / 部署 |
@@ -48,10 +48,10 @@ CHM 解包出来后本来就是**写死的 HTML 页面 + `.hhc` 目录 + `.hhk` 
 
 ### M1 — CHM 解包 + 转静态 HTML（地基）
 - [x] 输入 `.chm` → 输出同名目录（内嵌 HTML + `.hhc` + `.hhk`）
-- [ ] 用 7-Zip 校验解包产物结构正确
-- [ ] 能正确画出 `.hhc` 目录树
-- [ ] 记录 `.hhk` 关键字，后续"站内搜索"用
-- **验收**：`a.chm` → `a/` 目录可浏览首页
+- [x] 用 7-Zip 校验解包产物结构正确
+- [x] 能正确画出 `.hhc` 目录树
+- [x] 记录 `.hhk` 关键字，后续"站内搜索"用
+- **验收**：`a.chm` → `a/` 目录可浏览首页（✅ 已用 7-zip.chm 跑通，`npm run convert` 一步生成预览站）
 
 ### M2 — 双端可浏览 + 可见性权限
 - [ ] 移动端 / 桌面端起本地静态服务，可翻页浏览
@@ -88,25 +88,70 @@ CHM 解包出来后本来就是**写死的 HTML 页面 + `.hhc` 目录 + `.hhk` 
 
 ```
 chm-web/
-├─ README.md      # 本文件：项目定位、技术栈、里程碑
-├─ PLAN.md        # 开发计划（技术选型、里程碑、成本、风险）
-├─ HANDOFF.md     # 交接文档（新对话接手无需读历史对话）
-└─ ...            # （后续）上传 / 解包 / 静态托管等代码
+├─ README.md        # 本文件：项目定位、技术栈、里程碑
+├─ PLAN.md          # 开发计划（技术选型、里程碑、成本、风险）
+├─ HANDOFF.md       # 交接文档（新对话接手无需读历史对话）
+├─ 上传网页教程.md   # 把转换好的站点上传到静态托管的图文步骤
+├─ package.json     # 依赖清单 + convert/serve/test 脚本
+├─ bin/cli.js       # CLI 入口
+├─ src/
+│  ├─ cli.js        # convert / extract / scan / serve 命令
+│  └─ lib/
+│     ├─ chm.js      # 7-Zip 解包 + 扫描
+│     ├─ hhc.js      # 解析 .hhc 目录树
+│     ├─ hhk.js      # 解析 .hhk 关键字
+│     ├─ preview.js  # 生成 index.html / __chm_nav.html / keywords.json
+│     ├─ serve.js    # 零依赖静态服务器
+│     └─ convert.js  # 端到端转换编排
+├─ test-hhc.js      # 目录树解析自测
+├─ test-serve.js    # 静态服务自测
+└─ out/             # （git 忽略）转换产物输出目录
 ```
 
 ---
 
+## 环境要求
+
+- **Node.js** ≥ 16（推荐最新 LTS；转换用 `node bin/cli.js`）
+- **7-Zip** 已安装，默认路径 `C:\Program Files\7-Zip\7z.exe`
+  （若装在其他位置，设环境变量 `SEVENZ=/path/to/7z.exe`）
+
 ## 如何运行
 
-> 开发骨架尚未搭建，运行说明将在 M1 完成后补充。
+> **M1 已完成**：把一个 `.chm` 转成可浏览的静态站。
+
+```bash
+# 1) 一步转换：解包 + 生成目录树 + 关键字 + 预览首页
+node bin\cli.js convert 你的文档.chm 输出目录
+
+# 2) 本地浏览（起静态服务）
+node bin\cli.js serve 输出目录 8080
+# 浏览器打开 http://localhost:8080/ ，左侧目录树可折叠，右侧预览正文
+
+# 3) 其它命令
+node bin\cli.js scan  输出目录            # 查看一个目录里有哪些 html/hhc/hhk
+node bin\cli.js extract 你的文档.chm 输出目录   # 仅解包，不生成预览
+```
+
+npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir> [port]`、`npm test`（自测）。
+
+**性能**：转换耗时几乎全部花在 7-Zip 解包上；常见 CHM（几十 KB ~ 几 MB、几十上百页）实测 **约 0.4 秒**，解析目录/关键字、生成页面均在毫秒级。
+
+**转换产物（输出目录内）**：
+- `index.html` — 主入口：左侧 `.hhc` 目录树 + 右侧正文 iframe
+- `__chm_nav.html` — 独立目录树页
+- `keywords.json` — 由 `.hhk` 生成的关键字表（供后期站内检索）
+- 解包出来的真实 `.htm/.css` 等页面
+
+整套产物是**纯静态文件**，可整包打 zip，或直接部署到任意静态托管平台（见《上传网页教程》）。
 
 ---
 
 ## 当前进度
 
 - [x] 文档与规划（README / PLAN / HANDOFF）
-- [ ] M1：CHM 解包 + 转静态 HTML（下一个开始）
-- [ ] M2：双端可浏览 + 可见性
+- [x] **M1：CHM 解包 + 转静态 HTML**（7z 解包、目录树、关键字、预览站全部落地自测通过）
+- [ ] M2：双端可浏览 + 可见性（下一步）
 - [ ] M3：全文检索
 - [ ] M4：批量 + 私有导出
 
