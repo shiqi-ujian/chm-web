@@ -62,11 +62,41 @@
   .doc-row a{color:var(--acc);text-decoration:none;font-size:14px}
   .doc-row a:hover{text-decoration:underline}
   .foot{text-align:center;color:var(--mut);font-size:13px;padding:20px 0 32px}
-  @media(max-width:560px){.steps{grid-template-columns:1fr}.top h1{font-size:24px}}
+  .authbar{max-width:680px;margin:0 auto 20px;display:flex;justify-content:flex-end;align-items:center;gap:10px}
+  .authbar .who{font-size:13px;color:var(--mut)}
+  .authbar .link{font-size:13px;color:var(--acc);cursor:pointer;background:#fff;border:1px solid var(--acc);border-radius:20px;padding:4px 14px}
+  .authbar .link:hover{background:#eaf3ff}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:200}
+  .modal.on{display:flex}
+  .modal .box{background:#fff;border-radius:14px;padding:24px;width:min(92vw,360px);box-shadow:0 10px 40px rgba(0,0,0,.2)}
+  .modal h3{margin:0 0 14px;font-size:17px}
+  .modal label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+  .modal input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none}
+  .modal input:focus{border-color:var(--acc)}
+  .modal .row{display:flex;gap:10px;margin-top:16px}
+  .modal .row .btn{margin:0;flex:1;text-align:center}
+  .modal .ghost{background:#fff;color:var(--acc);border:1px solid var(--acc)}
+  .modal .err{color:var(--err);font-size:12.5px;margin-top:10px;min-height:16px}
+  .visrow{margin-top:12px;font-size:13.5px;color:var(--mut);display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap}
+  .visrow label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+  .visrow input{accent-color:var(--acc)}
+  .tag.pub{background:#e6ffec;color:#1a7f37}
+  .tag.priv{background:#fff1e6;color:#b35900}
+  .doc-row .mid{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .doc-row .ops{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+  .op-btn{font-size:12px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:20px;padding:3px 10px;cursor:pointer}
+  .op-btn:hover{background:var(--b)}
+  .op-btn.warn:hover{background:#fff1e6;color:#b35900;border-color:#ffd9b3}
+  .mine{font-size:11px;color:var(--acc);background:#eaf3ff;border-radius:20px;padding:1px 8px;flex:0 0 auto}
+  @media(max-width:560px){.steps{grid-template-columns:1fr}.top h1{font-size:24px}.doc-row{flex-wrap:wrap}.doc-row .ops{width:100%;justify-content:flex-end;margin-top:8px}}
 </style></head><body>
 <div class="top"><div class="brand">CHM 网页</div><h1>把 CHM 帮助文档变成手机也能看的网页</h1>
 <div class="sub">上传 .chm，自动解包为可浏览、可搜索的静态页面，PC / 手机随时翻阅，完全免费。</div></div>
 <div class="wrap">
+  <div class="authbar" id="authbar">
+    <span class="who" id="who"></span>
+    <button class="link" id="loginBtn" type="button">登录 / 注册</button>
+  </div>
 
   <div class="searchbar">
     <input type="text" id="siteq" placeholder="搜索全部文档（标题 / 关键字 / 正文）…" autocomplete="off">
@@ -79,6 +109,10 @@
       <div class="big">点击选择 .chm，或拖进来</div>
       <div class="small">支持 .chm 格式 · 转换后立即可浏览 · 上传即用</div>
       <input type="file" id="file" accept=".chm">
+    </div>
+    <div class="visrow" id="visrow">
+      <label><input type="radio" name="vis" value="public" checked> 公开（所有人可看）</label>
+      <label><input type="radio" name="vis" value="private"> 私密（仅我 + 分享链接）</label>
     </div>
     <div class="file-pick" id="filePick"></div>
     <div class="message" id="msg"></div>
@@ -98,12 +132,104 @@
 
   <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示</div>
 </div>
+<div class="modal" id="authModal">
+  <div class="box">
+    <h3 id="authTitle">登录</h3>
+    <label>用户名</label><input id="au" autocomplete="username">
+    <label>密码</label><input id="ap" type="password" autocomplete="current-password">
+    <div class="err" id="authErr"></div>
+    <div class="row">
+      <button class="btn ghost" id="authSwitch" type="button">去注册</button>
+      <button class="btn" id="authGo" type="button">登录</button>
+    </div>
+  </div>
+</div>
 <script>
 (function(){
   // 部署到公网时若开启了 EXPORT_TOKEN，构建期把 token 注入 ""，
   // 前端下载导出与整站 zip 时带上 X-Auth-Token。
   var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
   function authHeaders(){ return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {}; }
+
+  // ---- M2 账号：登录/注册/退出（token 存 localStorage，请求带 X-User-Token）----
+  var USER_TOKEN = (function(){ try { return localStorage.getItem('chm_user') || ''; } catch(e){ return ''; } })();
+  function userHeaders(){ var h=authHeaders(); if(USER_TOKEN) h['X-User-Token']=USER_TOKEN; return h; }
+  var currentUser=null;
+  var authMode='login';
+  var authModal=document.getElementById('authModal');
+  var loginBtn=document.getElementById('loginBtn');
+  var who=document.getElementById('who');
+  function renderAuth(){
+    if(!loginBtn) return;
+    if(currentUser){ who.textContent='你好，'+currentUser; loginBtn.textContent='退出'; }
+    else { who.textContent=''; loginBtn.textContent='登录 / 注册'; }
+  }
+  function loadMe(){
+    if(!window.fetch || !USER_TOKEN) return;
+    fetch('/api/me',{headers:userHeaders()}).then(function(r){ return r.json(); })
+      .then(function(j){ currentUser=(j&&j.user)||null; renderAuth(); refreshDocs(); })
+      .catch(function(){});
+  }
+  function openAuth(mode){
+    authMode=mode||'login';
+    document.getElementById('authTitle').textContent = authMode==='register' ? '注册新账号' : '登录';
+    document.getElementById('authGo').textContent = authMode==='register' ? '注册' : '登录';
+    document.getElementById('authSwitch').textContent = authMode==='register' ? '去登录' : '去注册';
+    document.getElementById('authErr').textContent='';
+    authModal.classList.add('on');
+    document.getElementById('au').focus();
+  }
+  function closeAuth(){ authModal.classList.remove('on'); }
+  function doAuth(){
+    var u=document.getElementById('au').value.trim();
+    var p=document.getElementById('ap').value;
+    var err=document.getElementById('authErr');
+    var goBtn=document.getElementById('authGo');
+    if(!u||!p){ err.textContent='请填写用户名和密码'; return; }
+    goBtn.disabled=true;
+    var mode=authMode;
+    function tryLogin(){
+      fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+        .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
+        .then(function(x){
+          if(x.st===200 && x.j.token){
+            USER_TOKEN=x.j.token;
+            try{ localStorage.setItem('chm_user',USER_TOKEN); }catch(e){}
+            currentUser=x.j.username||u;
+            closeAuth(); renderAuth(); refreshDocs();
+            msg.innerHTML='<span class=ok>'+(mode==='register'?'注册成功，已自动登录。':'登录成功。')+'</span>';
+          } else { err.textContent=(x.j&&x.j.error)||'登录失败'; }
+          goBtn.disabled=false;
+        })
+        .catch(function(e){ err.textContent='网络错误：'+(e&&e.message||e); goBtn.disabled=false; });
+    }
+    if(mode==='register'){
+      fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+        .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
+        .then(function(x){
+          if(x.st===200) tryLogin();
+          else { err.textContent=(x.j&&x.j.error)||'注册失败'; goBtn.disabled=false; }
+        })
+        .catch(function(e){ err.textContent='网络错误：'+(e&&e.message||e); goBtn.disabled=false; });
+    } else tryLogin();
+  }
+  if(loginBtn){
+    loginBtn.addEventListener('click',function(){
+      if(currentUser){
+        fetch('/api/logout',{method:'POST',headers:userHeaders()}).catch(function(){});
+        USER_TOKEN=''; currentUser=null;
+        try{ localStorage.removeItem('chm_user'); }catch(e){}
+        renderAuth(); refreshDocs();
+        msg.innerHTML='<span class=ok>已退出登录。</span>';
+      } else { openAuth('login'); }
+    });
+  }
+  if(authModal){
+    document.getElementById('authGo').addEventListener('click',doAuth);
+    document.getElementById('authSwitch').addEventListener('click',function(){ openAuth(authMode==='register'?'login':'register'); });
+    authModal.addEventListener('click',function(e){ if(e.target===authModal) closeAuth(); });
+    document.getElementById('ap').addEventListener('keydown',function(e){ if(e.key==='Enter') doAuth(); });
+  }
   function saveBlob(blob, filename){
     var url=URL.createObjectURL(blob);
     var dl=document.createElement('a'); dl.href=url; dl.download=filename;
@@ -215,13 +341,23 @@
   var selectedDocs = {};   // id -> true，用于“导出选中”
   function renderDocs(list){
     var box=document.getElementById('docsList');
-    var arr = (list && list.length) ? list : (typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}]!=='undefined'?__DOCS_JSON__:[]); /* __DOCS_JSON__ injected at build */
+    var arr = (list && list.length) ? list : (typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}]!=='undefined'?__DOCS_JSON__:[]); /* __DOCS_JSON__ injected at build */
     if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>';
       updateExportSelBtn(); return; }
     box.innerHTML=arr.map(function(d){
       var id=(d.id||d.href||'').replace(/[\\/]+$/,'').split('/').pop();
+      var priv=d.visibility==='private';
+      var mine=currentUser && d.owner===currentUser;
       var chk='<label class="left"><input type="checkbox" data-id="'+escH(id)+'" '+(selectedDocs[id]?'checked':'')+'><span class="name">'+esc(d.name||id)+'</span></label>';
-      return '<div class="doc-row">'+chk+'<span class="tag">公开</span><a href="'+escH(d.href||d.url)+'">打开 ›</a></div>';
+      var tag='<span class="tag '+(priv?'priv':'pub')+'">'+(priv?'私密':'公开')+'</span>';
+      var mid=(mine?'<span class="mine">我的</span>':'');
+      var ops='<span class="ops">';
+      if(mine){
+        ops+='<button type="button" class="op-btn warn" data-vis="'+escH(id)+'">'+(priv?'设为公开':'设为私密')+'</button>';
+        ops+='<button type="button" class="op-btn" data-share="'+escH(id)+'">复制分享链接</button>';
+      }
+      ops+='</span>';
+      return '<div class="doc-row">'+chk+'<span class="mid">'+tag+mid+'</span><a href="'+escH(d.href||d.url)+'">打开 ›</a>'+ops+'</div>';
     }).join('');
     Array.prototype.forEach.call(box.querySelectorAll('input[type=checkbox]'),function(c){
       c.addEventListener('change',function(){
@@ -230,7 +366,41 @@
         updateExportSelBtn();
       });
     });
+    // owner 操作：改可见性 / 复制分享链接（事件委托）
+    Array.prototype.forEach.call(box.querySelectorAll('[data-vis],[data-share]'),function(b){
+      b.addEventListener('click',function(){
+        var id=b.getAttribute('data-vis')||b.getAttribute('data-share');
+        if(b.getAttribute('data-vis')) toggleVisibility(id,b);
+        else copyShare(id,b);
+      });
+    });
     updateExportSelBtn();
+  }
+  function toggleVisibility(id, btn){
+    var target=(btn.textContent||'').indexOf('公开')!==-1 ? 'public' : 'private'; // “设为公开”→“public”
+    btn.disabled=true;
+    fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})})
+      .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
+      .then(function(x){
+        if(x.st===200){ refreshDocs(); msg.innerHTML='<span class=ok>已'+(target==='public'?'设为公开':'设为私密')+'。</span>'; }
+        else { btn.disabled=false; msg.innerHTML='<span class=err>'+esc((x.j&&x.j.error)||'操作失败')+'</span>'; }
+      })
+      .catch(function(e){ btn.disabled=false; msg.innerHTML='<span class=err>网络错误：'+esc(e&&e.message||e)+'</span>'; });
+  }
+  function copyShare(id, btn){
+    btn.disabled=true;
+    fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'})
+      .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
+      .then(function(x){
+        btn.disabled=false;
+        if(x.st!==200 || !x.j.sharePath){ msg.innerHTML='<span class=err>'+esc((x.j&&x.j.error)||'生成分享链接失败')+'</span>'; return; }
+        var url=location.origin+location.pathname.replace(/\/[^/]*$/,'/')+x.j.sharePath;
+        function done(){ msg.innerHTML='<span class=ok>分享链接已复制（仅持有链接者可打开）：</span>'; }
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(url).then(done).catch(function(){ prompt('复制分享链接：', url); done(); });
+        } else { prompt('复制分享链接：', url); done(); }
+      })
+      .catch(function(e){ btn.disabled=false; msg.innerHTML='<span class=err>网络错误：'+esc(e&&e.message||e)+'</span>'; });
   }
   function selectedIds(){ var a=[]; for(var k in selectedDocs){ if(selectedDocs[k]) a.push(k); } return a; }
   function updateExportSelBtn(){
@@ -272,11 +442,11 @@
   }
   function refreshDocs(){
     if(!window.fetch) return;
-    fetch('/api/docs').then(function(r){ return r.json(); }).then(function(j){
+    fetch('/api/docs',{headers:userHeaders()}).then(function(r){ return r.json(); }).then(function(j){
       if(j && j.docs) renderDocs(j.docs);
     }).catch(function(){ /* 无后端时保持静态注入 */ });
   }
-  (function initDocs(){ renderDocs(null); refreshDocs(); })();
+  (function initDocs(){ renderDocs(null); refreshDocs(); loadMe(); })();
 
   // 批量上传 UI：支持多选 / 拖拽多个 .chm
   function addFiles(list){
@@ -298,9 +468,15 @@
   file.addEventListener('change',function(){ if(file.files&&file.files.length){ addFiles(file.files); file.value=''; } });
 
   // ---- 批量转换：逐个上传，汇总成功/失败 ----
+  function currentVisibility(){
+    var sel=document.querySelector('input[name=vis]:checked');
+    return (sel && sel.value==='private') ? 'private' : 'public';
+  }
   function doUploadOne(file, cb){
-    var fd=new FormData(); fd.append('file', file);
-    fetch('/api/upload',{method:'POST',body:fd,headers:authHeaders()})
+    var fd=new FormData();
+    fd.append('file', file);
+    fd.append('visibility', currentVisibility());
+    fetch('/api/upload',{method:'POST',body:fd,headers:userHeaders()})
       .then(function(res){ return res.json().then(function(j){ return {st:res.status,j:j}; }); })
       .then(function(x){ cb(null, x); })
       .catch(function(e){ cb(e); });
