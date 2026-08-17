@@ -45,6 +45,24 @@ function Invoke-Git {
     return @{ Ok = ($LASTEXITCODE -eq 0); Out = ($out -replace "\s+$","") }
 }
 
+# ---- 推送成功桌面提醒（一次性，不阻塞）----
+function Send-Notice {
+    param([string]$Title, [string]$Text)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+        if (-not ('System.Windows.Forms.NotifyIcon' -as [type])) { return }
+        $ni = New-Object System.Windows.Forms.NotifyIcon
+        $ni.Icon = [System.Drawing.SystemIcons]::Information
+        $ni.BalloonTipTitle = $Title
+        $ni.BalloonTipText = $Text
+        $ni.Visible = $true
+        $ni.ShowBalloonTip(6000)
+        Start-Sleep -Milliseconds 300
+        $ni.Dispose()
+    } catch { Write-Log ("通知提示失败（忽略）: " + $_.Exception.Message) }
+}
+
 Write-Log ('==== 自动同步开始 ==== repo=' + $Repo)
 
 # ---------- 1) 提交本地改动 ----------
@@ -89,9 +107,15 @@ if ($pendingCount -le 0) {
     Write-Log '无待推送提交。'
 } else {
     Write-Log ("检测到 {0} 个待推送提交，开始推送..." -f $pendingCount)
+    $pushed = $false
     for ($i = 1; $i -le $AttemptsPerRun; $i++) {
         $p = Invoke-Git ('push origin ' + $branch)
-        if ($p.Ok) { Write-Log ('推送成功: ' + $p.Out); break }
+        if ($p.Ok) {
+            Write-Log ('推送成功: ' + $p.Out)
+            $pushed = $true
+            Send-Notice 'chm-web 推送成功' ("已自动推送 " + $pendingCount + " 个提交到 GitHub（" + $branch + " 分支）")
+            break
+        }
         if ($i -lt $AttemptsPerRun) {
             Write-Log ("  第 {0}/{1} 次推送失败，{2} 秒后重试: {3}" -f $i,$AttemptsPerRun,$RetryDelaySec,$p.Out)
             Start-Sleep -Seconds $RetryDelaySec
