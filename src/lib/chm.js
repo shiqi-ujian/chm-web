@@ -16,12 +16,15 @@ const CANDIDATES = [process.env.SEVENZ, '7z', '7za', '7zz', DEFAULT_SEVENSEZ].fi
 function resolveSeven() {
   for (const c of CANDIDATES) {
     // '7z'/'7za' 是 PATH 里的命令，可能不带扩展名，用 existsSync 无法判断，
-    // 统一交给 spawnSync 去探。绝对路径才做文件存在性预检。
+    // 用 spawnSync 探测可用性（ENOENT 时返回 status=null，不抛异常）。
     if (path.isAbsolute(c)) {
       if (fs.existsSync(c)) return c;
       continue;
     }
-    return c; // 交给 PATH 解析
+    try {
+      const probe = spawnSync(c, ['i'], { stdio: 'ignore' });
+      if (probe.status === 0) return c;
+    } catch { /* 探测失败，继续下一个候选 */ }
   }
   throw new Error(
     `找不到 7-Zip：请安装 7-Zip，或设置环境变量 SEVENZ 指向 7z 可执行文件` +

@@ -69,6 +69,19 @@
 ### 5. /docs 资源建模（过程中的认知更正）
 - 之前文档/README 把项目当"静态站"。实际是**动态后端 + 静态阅读产物**，已更新 README 的说法。
 
+### 6. resolveSeven 候选解析 bug —— PATH 里无 7z 时兜底失效（已解决）
+- 现象：winget 装好 7-Zip 26.02（默认**不进 PATH**）后，`node bin\cli.js convert` 报 `7z extract failed (null): undefined`。
+- 根因：`chm.js resolveSeven()` 候选列表 `[SEVENZ, '7z', '7za', '7zz', 默认路径]` 中，第一个非绝对路径候选（`'7z'`）被**无条件立即返回**（`return c`），后面的绝对路径兜底永远走不到；本机 PATH 无 7z → `spawnSync` ENOENT → `status=null`。
+- 修复：非绝对路径候选改用 `spawnSync(c, ['i'], { stdio: 'ignore' })` 探测可用性（`status===0` 才采用），失败继续下一个候选；绝对路径仍做 `existsSync` 预检。
+- 验证：`npm test` 6 项全过（SERVE / HHC / FULLTEXT / SITE / ZIP / EXPORT_DOCS），`e2e-test.js` 上传闭环 200 + 新文档可访问。
+
+### 7. 新工作区本机环境修复（2026-08-17）
+- 安装 7-Zip 26.02（`winget install 7zip.7zip`），验证 `7z.exe` + 自带 `7-zip.chm` 样本。
+- git 本地身份配置为 `qiujian.shi <qiujian.shi@ui-surgical.com>`（此前本地+全局均未配置，提交会失败）。
+- remote 从 `YinJinDao/shiqi-ujian-chm-web.git` 改到 **`shiqi-ujian/chm-web.git`**（线上 GitHub Pages 实际源仓库），rebase 对齐到 `61afc9a`（M3 搜索 / M4 导出 / Railway 部署全量并入）。
+- 顺带确认：`.tmp_7-zip` 标题泄漏、欢迎页清单缺 `id`、e2e/vbs 硬编码路径等问题在远程 `68fb5d5` 已修复，本地无需重复。
+- e2e 可用 `CHM_SITE`/`CHM_DATA` 环境变量指向临时目录运行，避免污染 `docs/` 与仓库工作区。
+
 ---
 
 ## 五、仍待办 / 下一步
