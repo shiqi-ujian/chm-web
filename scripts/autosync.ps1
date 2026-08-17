@@ -86,23 +86,42 @@ if ([string]::IsNullOrWhiteSpace(($status -join "`n"))) {
 
 if ($DiscoverOnly) { Write-Log '[Discover] 不执行 fetch/push。'; Write-Log '==== end (Discover) ===='; exit 0 }
 
-# ---------- 2) 拉取远端（fetch + rebase），失败就跳过 ----------
-# 网络极差的机器上，git fetch 常会中途断；这里用 first-parent 单测对象绝对路径，避免误判。
+# ---------- 2) 拉取远端（fetch + rebase = 自动 pull）----------
+# 多设备场景：既会把本地改动推上去，也会把别处推到远端的改动拉下来。
+# 网络差时 git fetch 常中断；所有 git 输出都在 Invoke-Git 里被吞掉，不会误读。
 $branch = (& git -C $Repo symbolic-ref --short HEAD 2>$null)
 if (-not $branch) { $branch = 'main' }
 $haveRemote = & git -C $Repo show-ref --verify -q "refs/remotes/origin/$branch" 2>$null; $haveRemote = ($LASTEXITCODE -eq 0)
 
+# 记录 rebase 前：远端比本地多几条提交（即将被拉入）
+$prevIssued = 0
+if ($haveRemote) {
+    $p0 = Invoke-Git ("rev-list --count HEAD..origin/$branch")
+    $prevIssued = if ($p0.Ok) { try { [int]$p0.Out } catch { 0 } } else { 0 }
+}
+
 $f = Invoke-Git ('fetch origin ' + $branch)
 if (-not $f.Ok) {
-    Write-Log ("拉取失败（网络不通？），本轮跳过。 " + $f.Out)
+    Write-Log ("拉取失败（网络不通？），本轮跳过 pull。 " + $f.Out)
 } else {
     # 检测 rebase 未完成则先放弃（一向冲突自动放弃）
     $inRebase = Test-Path (Join-Path $Repo '.git/rebase-merge')
-    if ($inRebase) { & git -C $Repo rebase --abort 2>&1 | Out-Host }
+    if ($inRebase) { & git -C $Repo rebase --abort 2>&1 | Out-Host; Write-Log '放弃上次残留的 rebase' }
     if ($haveRemote) {
         $r = Invoke-Git ('rebase origin/' + $branch)
-        if ($r.Ok) { Write-Log 'rebase 完成' }
-        else { Write-Log ("rebase 失败（留给处理）：" + $r.Out) }
+        if ($r.Ok) {
+            Write-Log 'rebase 完成'
+            $afterIssues = 0
+            $p1 = Invoke-Git ("rev-list --count HEAD..origin/$branch")
+            $afterIssues = if ($p1.Ok) { try { [int]$p1.Out } catch { 0 } } else { 0 }
+            $merged = ($prevIssued - $afterIssues)
+            if ($merged -gt 0) {
+                Write-Log ("已从远端拉取合并 {0} 条提交（其它设备/远程推送）" -f $merged)
+                Send-Notice 'chm-web 已拉取更新' ("从远端拉合并入 " + $merged + " 条提交")
+            }
+        } else {
+            Write-Log ("rebase 冲突/失败（未自动解决，稍后处理）：" + $r.Out)
+        }
     } else {
         Write-Log '尚未有本地 origin 引用，跳过 rebase'
     }
