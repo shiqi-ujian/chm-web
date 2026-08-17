@@ -166,6 +166,9 @@
   // 前端下载导出与整站 zip 时带上 X-Auth-Token。
   var AUTH_TOKEN = (typeof ""!=='undefined' && "") ? "" : '';
   function authHeaders(){ return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {}; }
+  // 上传用独立的 UPLOAD_TOKEN（注入 ""），与导出 token 分离。
+  var UPLOAD_TOKEN = (typeof ""!=='undefined' && "") ? "" : '';
+  function uploadHeaders(){ return UPLOAD_TOKEN ? { 'X-Auth-Token': UPLOAD_TOKEN } : {}; }
 
   // ---- M2 账号：登录/注册/退出（token 存 localStorage，请求带 X-User-Token）----
   var USER_TOKEN = (function(){ try { return localStorage.getItem('chm_user') || ''; } catch(e){ return ''; } })();
@@ -357,7 +360,7 @@
   var selectedDocs = {};   // id -> true，用于“导出选中”
   function renderDocs(list){
     var box=document.getElementById('docsList');
-    var arr = (list && list.length) ? list : (typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}]!=='undefined'?[{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}]:[]); /* [{"id":"7-zip","name":"7-zip","href":"d/7-zip/","visibility":"public","owner":null},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/","visibility":"public","owner":null}] injected at build */
+    var arr = (list && list.length) ? list : (typeof [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]!=='undefined'?[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]:[]); /* [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}] injected at build */
     if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>';
       updateExportSelBtn(); return; }
     box.innerHTML=arr.map(function(d){
@@ -492,7 +495,9 @@
     var fd=new FormData();
     fd.append('file', file);
     fd.append('visibility', currentVisibility());
-    fetch('/api/upload',{method:'POST',body:fd,headers:userHeaders()})
+    var h = uploadHeaders();
+    if (USER_TOKEN) h['X-User-Token'] = USER_TOKEN;
+    fetch('/api/upload',{method:'POST',body:fd,headers:h})
       .then(function(res){ return res.json().then(function(j){ return {st:res.status,j:j}; }); })
       .then(function(x){ cb(null, x); })
       .catch(function(e){ cb(e); });
