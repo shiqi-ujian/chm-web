@@ -5,6 +5,7 @@ const fs = require('fs');
 const { extractChm, scan } = require('./chm');
 const { build } = require('./preview');
 const landing = require('./landing');
+const { copyDocContent } = require('./sanitize');
 
 async function convert(input, outArg) {
   const abs = path.resolve(input);
@@ -37,8 +38,12 @@ async function buildSite(siteRoot, docs, { title } = {}) {
   const docLinks = [];
   for (const d of docs || []) {
     const id = (d.id || d.name || 'doc').replace(/[^\w\u4e00-\u9fa5-]/g, '_');
+    const tmpDir = path.join(docRoot, '.tmp_' + id);
     const outDir = path.join(docRoot, id);
-    const r = await convert(d.chmFile, outDir);
+    // 先解到临时目录，再拷贝干净内容到正式子目录（剔除 CHM 内部 #/$ 元数据）
+    await convert(d.chmFile, tmpDir);
+    copyDocContent(tmpDir, outDir);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
     docLinks.push({ id, name: d.name || id, href: '__docs/' + id + '/' });
   }
   // 欢迎页
