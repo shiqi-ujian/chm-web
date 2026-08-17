@@ -8,10 +8,12 @@ const crypto = require('crypto');
 const { processUpload, UploadError } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs } = require('./lib/site-export');
+const auth = require('./lib/auth');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
 const DATA_DIR = path.resolve(process.env.CHM_DATA || path.join(__dirname, '..', 'data'));
+auth.init(DATA_DIR); // 账号/会话/文档元数据/私有文档目录
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0'; // 默认绑全接口；本机调试可设 127.0.0.1
 const MAX_BYTES = 80 * 1024 * 1024;
@@ -42,33 +44,94 @@ const MIME = {
   '.txt': 'text/plain', '.woff': 'font/woff', '.woff2': 'font/woff2',
 };
 
-/************ 简易 multipart 解析（只取首个文件字段 file） ************/
+/************ 简易 multipart 解析（file 字段 + 其它表单字段） ************/
 function parseMultipart(buf, boundary) {
-  if (!boundary || buf.length === 0) return null;
-  const b = Buffer.from('--' + boundary);
-  // 定位第一个文件域的 header 与正文起点
-  const headEnd = buf.indexOf(Buffer.from('\r\n\r\n'));
-  if (headEnd === -1) return null;
-  const header = buf.slice(0, headEnd).toString('latin1');
-  const nameMatch = /name="([^"]+)"/.exec(header);
-  const filenameMatch = /filename="([^"]*)"/.exec(header);
-  // body 起点
-  const dataStart = headEnd + 4;
-  // 找下一个 \r\n--boundary 结束
-  const closing = Buffer.from('\r\n--' + boundary);
-  const bodyEnd = buf.indexOf(closing, dataStart);
-  const len = bodyEnd === -1 ? buf.length - dataStart : bodyEnd - dataStart;
-  return {
-    field: nameMatch ? nameMatch[1] : null,
-    filename: filenameMatch ? filenameMatch[1] : null,
-    data: buf.slice(dataStart, dataStart + len),
-  };
+  const result = { fields: {}, file: null };
+  if (!boundary || buf.length === 0) return result;
+  const sep = Buffer.from('--' + boundary);
+  let pos = buf.indexOf(sep);
+  while (pos !== -1) {
+    const next = buf.indexOf(sep, pos + sep.length);
+    if (next === -1) break;
+    let section = buf.slice(pos + sep.length, next);
+    // 去掉开头 \r\n（--boundary 与 header 之间）与结尾 \r\n（part 与下一分隔符之间）
+    if (section.length >= 2 && section[0] === 13 && section[1] === 10) section = section.slice(2);
+    if (section.length >= 2 && section[section.length - 2] === 13 && section[section.length - 1] === 10) section = section.slice(0, -2);
+    const headEnd = section.indexOf(Buffer.from('\r\n\r\n'));
+    if (headEnd === -1) { pos = next; continue; }
+    const header = section.slice(0, headEnd).toString('latin1');
+    const body = section.slice(headEnd + 4);
+    const nameMatch = /name="([^"]*)"/.exec(header);
+    const filenameMatch = /filename="([^"]*)"/.exec(header);
+    if (filenameMatch) {
+      result.file = { field: nameMatch ? nameMatch[1] : null, filename: filenameMatch[1], data: body };
+    } else if (nameMatch) {
+      result.fields[nameMatch[1]] = body.toString('utf8');
+    }
+    pos = next;
+  }
+  return result;
 }
 
 function sendJSON(res, status, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(body);
+}
+
+/** 读取 JSON 请求体（上限 1MB） */
+function readBody(req, max = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > max) { reject(new Error('body too large')); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+function parseCookies(req) {
+  const out = {};
+  const h = req.headers.cookie || '';
+  for (const part of h.split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+/** 当前登录用户：优先 X-User-Token 头，其次 chm_user cookie */
+function currentUser(req) {
+  const t = (req.headers['x-user-token'] || '').trim() || parseCookies(req).chm_user;
+  return auth.userByToken(t);
+}
+
+function setCookie(res, name, value, opts = {}) {
+  const parts = [name + '=' + encodeURIComponent(value), 'Path=' + (opts.path || '/')];
+  if (opts.maxAge) parts.push('Max-Age=' + opts.maxAge);
+  if (opts.httpOnly !== false) parts.push('HttpOnly');
+  if (opts.sameSite) parts.push('SameSite=' + opts.sameSite);
+  if (opts.secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+/** JSON API 统一包装：解析 body → 执行 → 回 JSON；AuthError/UploadError 映射状态码 */
+async function handleJson(req, res, fn) {
+  let buf;
+  try { buf = await readBody(req); } catch { sendJSON(res, 413, { ok: false, error: '请求体过大' }); return; }
+  let body = {};
+  try { body = buf.length ? JSON.parse(buf.toString('utf8')) : {}; } catch { sendJSON(res, 400, { ok: false, error: 'JSON 解析失败' }); return; }
+  try {
+    const r = await fn(body);
+    sendJSON(res, 200, { ok: true, ...(r || {}) });
+  } catch (e) {
+    if (e instanceof auth.AuthError || e instanceof UploadError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
+    else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
+  }
 }
 
 function serveStatic(req, res) {
@@ -106,31 +169,127 @@ async function handleUpload(req, res) {
     chunks.push(c);
   }
   const buf = Buffer.concat(chunks);
-  const file = parseMultipart(buf, boundary);
+  const form = parseMultipart(buf, boundary);
+  const file = form.file;
   if (!file || !file.filename || !file.data) { sendJSON(res, 400, { ok: false, error: '未收到文件' }); return; }
 
+  const username = currentUser(req);
+  const visibility = (form.fields.visibility || 'public').trim() === 'private' ? 'private' : 'public';
+
   try {
-    const r = await processUpload(file.data, file.filename, { siteRoot: SITE_ROOT, dataDir: DATA_DIR, maxBytes: MAX_BYTES });
-    // 更新"我的文档"索引（docs/_index.json）
-    fs.writeFileSync(path.join(SITE_ROOT, '_index.json'), JSON.stringify(listDocs(), null, 2));
-    // 重建欢迎页（含注入的文档清单）与全站聚合检索索引 site-index.json
-    try {
-      landing.build({ outDir: SITE_ROOT, docs: listDocs().map((d) => ({ name: d.name, href: d.href, id: d.id })), token: EXPORT_TOKEN });
-    } catch (e) { console.error('landing rebuild failed', e); }
+    const r = await processUpload(file.data, file.filename, {
+      siteRoot: SITE_ROOT, dataDir: DATA_DIR, maxBytes: MAX_BYTES, visibility, owner: username,
+    });
+    // 更新"我的文档"索引（docs/_index.json，只含公开文档）并重建欢迎页
+    rebuildSite();
     sendJSON(res, 200, { ok: true, ...r });
   } catch (e) {
-    if (e instanceof UploadError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
+    if (e instanceof UploadError || e instanceof auth.AuthError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
     else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
   }
 }
 
-/** 列出站点 d/ 下所有已发布文档 */
-function listDocs() {
+/**
+ * 列出可见文档：公开（docs/d/ 下全部，私有 meta 防御性剔除）+ 登录用户的私有文档（data/private/）。
+ * @param {string|null} username 当前登录用户（null=匿名）
+ */
+function listDocs(username) {
+  const out = [];
   const d = path.join(SITE_ROOT, 'd');
-  if (!fs.existsSync(d)) return [];
-  return fs.readdirSync(d)
-    .filter((n) => /^[^.].*/.test(n) && fs.statSync(path.join(d, n)).isDirectory())
-    .map((id) => ({ id, name: id, href: 'd/' + id + '/', url: '/d/' + id + '/' , updated: fs.statSync(path.join(d, id)).mtimeMs }));
+  if (fs.existsSync(d)) {
+    for (const n of fs.readdirSync(d)) {
+      if (!/^[^.].*/.test(n)) continue;
+      const p = path.join(d, n);
+      if (!fs.statSync(p).isDirectory()) continue;
+      const meta = auth.getMeta(n);
+      if (meta && meta.visibility === 'private') continue; // 防御：私有不进公开静态区
+      out.push({
+        id: n, name: (meta && meta.name) || n, visibility: 'public', owner: (meta && meta.owner) || null,
+        href: 'd/' + n + '/', url: '/d/' + n + '/', updated: fs.statSync(p).mtimeMs,
+      });
+    }
+  }
+  if (username) {
+    const priv = path.join(DATA_DIR, 'private');
+    if (fs.existsSync(priv)) {
+      for (const n of fs.readdirSync(priv)) {
+        if (!/^[^.].*/.test(n)) continue;
+        const p = path.join(priv, n);
+        if (!fs.statSync(p).isDirectory()) continue;
+        const meta = auth.getMeta(n);
+        if (!meta || meta.visibility !== 'private' || meta.owner !== username) continue;
+        out.push({
+          id: n, name: meta.name || n, visibility: 'private', owner: username,
+          href: 'p/' + n + '/', url: '/p/' + n + '/', updated: fs.statSync(p).mtimeMs,
+        });
+      }
+    }
+  }
+  return out.sort((a, b) => (b.updated || 0) - (a.updated || 0));
+}
+
+/** 私有文档静态服务：/p/<id>/... 仅 owner 或分享 token 可读 */function servePrivate(req, res, urlPath, username) {
+  const m = /^\/p\/([^/]+)(\/.*)?$/.exec(urlPath);
+  if (!m) { res.writeHead(404); res.end('Not Found'); return; }
+  const id = decodeURIComponent(m[1]);
+  const sub = (m[2] || '/').replace(/^\/+/, '');
+  const cookies = parseCookies(req);
+  const shareToken = (new URL(req.url, 'http://x')).searchParams.get('share')
+    || cookies['chm_share_' + id] || null;
+  if (!auth.canRead(id, { username, shareToken })) { res.writeHead(403); res.end('Forbidden'); return; }
+  const base = auth.privateDir(id);
+  if (!fs.existsSync(base)) { res.writeHead(404); res.end('Not Found'); return; }
+  let target = path.resolve(base, '.' + path.sep + sub.replace(/\\/g, '/'));
+  if (target !== base && !target.startsWith(base + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
+  let file = target;
+  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); res.end('Not Found'); return; }
+  const ext = path.extname(file).toLowerCase();
+  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  fs.createReadStream(file).pipe(res);
+}
+
+/** 分享链接：/s/<token> → 302 到私有文档并种下该文档的分享 cookie */
+function handleShare(req, res, urlPath) {
+  const tok = urlPath.slice(3);
+  const id = auth.docIdByShareToken(tok);
+  if (!id) { res.writeHead(404); res.end('Not Found'); return; }
+  setCookie(res, 'chm_share_' + id, tok, { path: '/p/' + id + '/', maxAge: 60 * 60 * 24 * 30, sameSite: 'Lax' });
+  res.writeHead(302, { Location: '/p/' + id + '/' });
+  res.end();
+}
+
+/** 实体迁移：可见性变化时在公开静态区 docs/d/<id> 与私有区 data/private/<id> 间搬移 */
+function migrateDoc(id, visibility) {
+  const priv = auth.privateDir(id);
+  const pub = path.join(SITE_ROOT, 'd', id);
+  if (visibility === 'public') {
+    if (fs.existsSync(priv)) {
+      fs.mkdirSync(path.dirname(pub), { recursive: true });
+      if (fs.existsSync(pub)) fs.rmSync(pub, { recursive: true, force: true });
+      fs.cpSync(priv, pub, { recursive: true });
+      fs.rmSync(priv, { recursive: true, force: true });
+    }
+  } else {
+    if (fs.existsSync(pub)) {
+      fs.mkdirSync(path.dirname(priv), { recursive: true });
+      if (fs.existsSync(priv)) fs.rmSync(priv, { recursive: true, force: true });
+      fs.cpSync(pub, priv, { recursive: true });
+      fs.rmSync(pub, { recursive: true, force: true });
+    }
+  }
+}
+
+/** 重建欢迎页（公开清单）+ _index.json + 全站聚合检索索引 */
+function rebuildSite() {
+  try {
+    fs.writeFileSync(path.join(SITE_ROOT, '_index.json'), JSON.stringify(listDocs(null), null, 2));
+    landing.build({
+      outDir: SITE_ROOT,
+      docs: listDocs(null).map((d) => ({ name: d.name, href: d.href, id: d.id })),
+      token: EXPORT_TOKEN,
+    });
+  } catch (e) { console.error('site rebuild failed', e); }
 }
 
 /** 打包整站为 zip 下载 */
@@ -166,10 +325,40 @@ function handleExportDocs(req, res) {
 
 const server = http.createServer((req, res) => {
   const urlPath = (new URL(req.url, 'http://x')).pathname;
-  if (req.method === 'POST' && urlPath === '/api/upload') {
-    handleUpload(req, res);
+  if (req.method === 'POST' && urlPath === '/api/register') {
+    handleJson(req, res, (b) => auth.register(b));
+  } else if (req.method === 'POST' && urlPath === '/api/login') {
+    handleJson(req, res, (b) => {
+      const r = auth.login(b);
+      setCookie(res, 'chm_user', r.token, { maxAge: 60 * 60 * 24 * 30, sameSite: 'Lax' });
+      return r;
+    });
+  } else if (req.method === 'POST' && urlPath === '/api/logout') {
+    const t = (req.headers['x-user-token'] || '').trim() || parseCookies(req).chm_user;
+    auth.logout(t);
+    setCookie(res, 'chm_user', '', { maxAge: 0 });
+    sendJSON(res, 200, { ok: true });
+  } else if (req.method === 'GET' && urlPath === '/api/me') {
+    sendJSON(res, 200, { user: currentUser(req) });
   } else if (req.method === 'GET' && urlPath === '/api/docs') {
-    sendJSON(res, 200, { docs: listDocs() });
+    sendJSON(res, 200, { docs: listDocs(currentUser(req)) });
+  } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/visibility$/.test(urlPath)) {
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    handleJson(req, res, (b) => {
+      const meta = auth.setVisibility(id, b.visibility, currentUser(req));
+      migrateDoc(id, meta.visibility);   // 公开⇄私有实体迁移
+      rebuildSite();                     // 重建欢迎页/索引
+      return { id, visibility: meta.visibility };
+    });
+  } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    handleJson(req, res, (b) => auth.share(id, currentUser(req), { reset: !!(b && b.reset) }));
+  } else if (req.method === 'GET' && urlPath.startsWith('/s/')) {
+    handleShare(req, res, urlPath);
+  } else if (req.method === 'GET' && urlPath.startsWith('/p/')) {
+    servePrivate(req, res, urlPath, currentUser(req));
+  } else if (req.method === 'POST' && urlPath === '/api/upload') {
+    handleUpload(req, res);
   } else if (req.method === 'GET' && urlPath === '/site-export.zip') {
     handleSiteExport(req, res);
   } else if (req.method === 'GET' && urlPath === '/api/export-docs') {
@@ -185,8 +374,12 @@ server.listen(Number(PORT), HOST, () => {
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
   console.log('  auth      : upload=' + lockU + '  export=' + lockE + '  (UPLOAD_TOKEN/EXPORT_TOKEN)');
-  console.log('  POST /api/upload  → 上传 .chm 并转换');
-  console.log('  GET  /api/docs    → 已发布文档列表');
+  console.log('  POST /api/register|login|logout  → 账号');
+  console.log('  GET  /api/me / /api/docs         → 当前用户 / 可见文档列表（登录后含私有）');
+  console.log('  POST /api/upload                 → 上传 .chm 并转换（表单可带 visibility=public|private）');
+  console.log('  POST /api/doc/<id>/visibility|share → 改可见性 / 生成分享链接（仅 owner）');
+  console.log('  GET  /p/<id>/...                 → 私有文档（仅 owner 或分享链接）');
+  console.log('  GET  /s/<token>                  → 分享链接跳转');
   console.log('  GET  /api/export-docs?ids=a,b → 批量导出选中文档为独立裸站 zip');
   console.log('  GET  /site-export.zip     → 下载整站 zip');
   console.log('  直接打开首页: http://localhost:' + port + '/');

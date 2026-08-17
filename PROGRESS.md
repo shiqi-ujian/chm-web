@@ -18,7 +18,7 @@
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M1 | CHM 解包 + 转静态 HTML | ✅ 已完成（7z 解包、.hhc 目录树、.hhk 关键字、阅读壳） |
-| M2 | 双端可浏览 + 可见性权限 | 🔶 部分完成（可浏览/手机抽屉目录 + **真实上传闭环已通**；**可见性、账号未做**） |
+| M2 | 双端可浏览 + 可见性权限 | ✅ 完成（浏览/手机抽屉 + **真实上传闭环 + 账号体系 + 可见性**：注册/登录/会话、公开免登录 / 私密仅 owner+分享链接、文档归属"我的"、可见性切换实体迁移、公开/私密标签） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
 | M4 | 批量 + 私有部署导出 | ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
 | Rails部署 | 接正式后端（B 形态） | 🟡 进行中：已加 `HOST` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌开关（不设则不锁）；`7zz` 候选；`deploy/` 脚手架（Dockerfile / systemd / Caddy 示例）+ 根 `Dockerfile`/`.dockerignore` 供 Railway 直接用 |
@@ -37,8 +37,9 @@
 - `src/lib/serve.js`：零依赖 http 静态服务器。
 - `src/lib/sanitize.js`：复制文档产物时剔除 CHM 内部 `#`/`$` 元数据文件。
 - `src/lib/translations.js`：目录节点名中英对照（示例做了 7-Zip 手册）。
-- `src/lib/upload.js`：上传→转换→存盘→更新"我的文档"索引 的完整管线（`processUpload`）。
-- `src/server.js`：真实后端（静态托管 + `POST /api/upload` + `GET /api/docs` + 批量导出/整站导出接口）。
+- `src/lib/upload.js`：上传→转换→存盘→更新"我的文档"索引 的完整管线（`processUpload`，支持公开/私密落盘）。
+- `src/lib/auth.js`：M2 账号体系 + 可见性（注册/登录/会话 scrypt 哈希；文档元数据 meta.json；私有/公开/分享链接 ACL；私有实体 `data/private/`）。
+- `src/server.js`：真实后端（静态托管 + 账号 API + `POST /api/upload` + `GET /api/docs`(按可见性过滤) + 私有文档 `/p/` 服务 + 分享 `/s/` 跳转 + 批量导出/整站导出接口）。
 - `scripts/autosync.ps1` + `autosync_run.vbs`：计划任务「拉取+推送」自动同步（**不做自动提交**），失败留到下一轮。
 - GitHub Pages 已启用，仓库 `chm-web`（公开），文档放 `docs/` 目录。
 
@@ -84,12 +85,20 @@
 - 顺带确认：`.tmp_7-zip` 标题泄漏、欢迎页清单缺 `id`、e2e/vbs 硬编码路径等问题在远程 `68fb5d5` 已修复，本地无需重复。
 - e2e 可用 `CHM_SITE`/`CHM_DATA` 环境变量指向临时目录运行，避免污染 `docs/` 与仓库工作区。
 
+### 8. M2 实现要点记录（账号 + 可见性，2026-08-17）
+- **私有文档绝不落入公开静态产物**：public → `docs/d/<id>/`（静态托管可发布）；private → `data/private/<id>/`（仅后端 `/p/<id>/` ACL serve）。这是"私有"在静态托管下唯一成立的技术方案。
+- **会话**：注册/登录用 `crypto.scrypt` 哈希存 `data/users.json`；登录发 token 存 `data/sessions.json`，前端放 localStorage 并以 `X-User-Token` 头携带；同时种 `chm_user` cookie（兼容 iframe/子资源自动携带）。
+- **可见性**：`data/meta.json` 记录每篇文档 `{owner, visibility, shareToken}`；公开免登录、私密仅 owner + 分享链接（`/s/<token>` 302 并种该文档 share cookie，子页面请求自动带）。
+- **实体迁移**：owner 切换可见性时实体在 `docs/d/` 与 `data/private/` 间搬移（`migrateDoc`），并重建欢迎页/索引。
+- **接口**：`POST /api/register|login|logout`、`GET /api/me`、`POST /api/doc/<id>/visibility|share`、`/api/docs` 按可见性过滤（匿名只见公开，owner 多看到自己的私有）。
+- 前端欢迎页：登录/注册 modal、上传可见性单选、文档行公开/私密标签 + "我的"标记 + owner 的设公开/设私密/复制分享链接操作。
+- 自测：`test-auth.js`（32 项）并入 `npm test`，全绿；`e2e-test.js` 回归通过。
+
 ---
 
 ## 五、仍待办 / 下一步
 
-- [ ] **公网真实部署上线**：本地上传闭环已验证可用，待接 Railway / 自有服务器（部署后设 `UPLOAD_TOKEN` / `EXPORT_TOKEN` + 持久盘）。
-- [ ] **账号 + 可见性**（M2 剩余）：私密/公开/分享链接，「我的上传」列表。属于需要后端的账号体系。
+- [ ] **公网真实部署上线**：本地上传/账号/可见性闭环已验证可用，待接 Railway / 自有服务器（部署后设 `UPLOAD_TOKEN` / `EXPORT_TOKEN` + 持久盘）。
 - [ ] **转换完成整批自动打包下载**（M4 可选增强）：目前是「逐个转换入库 → 勾选导出」；可再加「一次批量上传即直接打包整批下载」。
 - [ ] 正文中文翻译：目录树已中文化；正文目前是原文（7-Zip 手册全部英文）。
 - [ ] autosync 在多台设备上的部署说明。
@@ -107,10 +116,13 @@ src/lib/
   landing.js    欢迎页(index.html) + 全站聚合检索 site-index.json
   zip.js        零依赖 zip 打包器（STORE + DEFLATE）
   site-export.js  整站导出（含 manifest.json）：exportSite()/collectFiles()/exportDocs()/aggregateSiteIndex()
+  upload.js      上传→转换→存盘→索引（公开/私密落盘）
+  auth.js        账号体系 + 可见性 ACL（注册/登录/会话/分享链接/私有区）
   convert.js    convert() + buildSite()
   serve.js      零依赖静态服务器
   sanitize.js   剔除 CHM 内部 #/$ 元数据
   translations.js  目录名中英对照
+  server.js     真实后端（API + 静态 + 私有文档 /p/ + 分享 /s/）
 scripts/
   autosync.ps1      自动同步(拉取+推送，不自动提交)
   autosync_run.vbs  隐藏启动 autosync.ps1
