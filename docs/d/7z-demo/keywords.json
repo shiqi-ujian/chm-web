@@ -1,0 +1,349 @@
+{
+  "keywords": [
+    {
+      "name": "Start Page",
+      "title": "Start Page",
+      "href": "start.htm"
+    },
+    {
+      "name": "General Information",
+      "title": "General Information",
+      "href": "general/index.htm"
+    },
+    {
+      "name": "License",
+      "title": "License",
+      "href": "general/license.htm"
+    },
+    {
+      "name": "Formats",
+      "title": "Formats",
+      "href": "general/formats.htm"
+    },
+    {
+      "name": "7z format",
+      "title": "7z format",
+      "href": "general/7z.htm"
+    },
+    {
+      "name": "Performance",
+      "title": "Performance",
+      "href": "general/performance.htm"
+    },
+    {
+      "name": "FAQ",
+      "title": "FAQ",
+      "href": "general/faq.htm"
+    },
+    {
+      "name": "Thanks",
+      "title": "Thanks",
+      "href": "general/thanks.htm"
+    },
+    {
+      "name": "File Manager",
+      "title": "File Manager",
+      "href": "fm/index.htm"
+    },
+    {
+      "name": "Options Dialog Box",
+      "title": "Options Dialog Box",
+      "href": "fm/options.htm"
+    },
+    {
+      "name": "Benchmark",
+      "title": "Benchmark",
+      "href": "fm/benchmark.htm"
+    },
+    {
+      "name": "Delete Temporary Files",
+      "title": "Delete Temporary Files",
+      "href": "fm/temp.htm"
+    },
+    {
+      "name": "About Dialog Box",
+      "title": "About Dialog Box",
+      "href": "fm/about.htm"
+    },
+    {
+      "name": "Menu",
+      "title": "Menu",
+      "href": "fm/menu.htm"
+    },
+    {
+      "name": "7-Zip Plugin",
+      "title": "7-Zip Plugin",
+      "href": "fm/plugins/7-zip/index.htm"
+    },
+    {
+      "name": "Extract Dialog Box",
+      "title": "Extract Dialog Box",
+      "href": "fm/plugins/7-zip/extract.htm"
+    },
+    {
+      "name": "Add to Archive Dialog Box",
+      "title": "Add to Archive Dialog Box",
+      "href": "fm/plugins/7-zip/add.htm"
+    },
+    {
+      "name": "Command Line Version",
+      "title": "Command Line Version",
+      "href": "cmdline/index.htm"
+    },
+    {
+      "name": "Command Line Syntax",
+      "title": "Command Line Syntax",
+      "href": "cmdline/syntax.htm"
+    },
+    {
+      "name": "Exit Codes",
+      "title": "Exit Codes",
+      "href": "cmdline/exit_codes.htm"
+    },
+    {
+      "name": "Commands",
+      "title": "Commands",
+      "href": "cmdline/commands/index.htm"
+    },
+    {
+      "name": "a (Add) command",
+      "title": "a (Add) command",
+      "href": "cmdline/commands/add.htm"
+    },
+    {
+      "name": "b (Bencmark) command",
+      "title": "b (Bencmark) command",
+      "href": "cmdline/commands/bench.htm"
+    },
+    {
+      "name": "d (Delete) command",
+      "title": "d (Delete) command",
+      "href": "cmdline/commands/delete.htm"
+    },
+    {
+      "name": "e (Extract) command",
+      "title": "e (Extract) command",
+      "href": "cmdline/commands/extract.htm"
+    },
+    {
+      "name": "x (Extract with full paths) command",
+      "title": "x (Extract with full paths) command",
+      "href": "cmdline/commands/extract_full.htm"
+    },
+    {
+      "name": "h (Hash) command",
+      "title": "h (Hash) command",
+      "href": "cmdline/commands/hash.htm"
+    },
+    {
+      "name": "l (List contents of archive) command",
+      "title": "l (List contents of archive) command",
+      "href": "cmdline/commands/list.htm"
+    },
+    {
+      "name": "rn (Rename) command",
+      "title": "rn (Rename) command",
+      "href": "cmdline/commands/rename.htm"
+    },
+    {
+      "name": "t (Test integrity of archive) command",
+      "title": "t (Test integrity of archive) command",
+      "href": "cmdline/commands/test.htm"
+    },
+    {
+      "name": "u (Update) command",
+      "title": "u (Update) command",
+      "href": "cmdline/commands/update.htm"
+    },
+    {
+      "name": "Switches",
+      "title": "Switches",
+      "href": "cmdline/switches/index.htm"
+    },
+    {
+      "name": "-- (Stop switches parsing) switch",
+      "title": "-- (Stop switches parsing) switch",
+      "href": "cmdline/switches/stop_switch.htm"
+    },
+    {
+      "name": "-ai (Include archive filenames) switch",
+      "title": "-ai (Include archive filenames) switch",
+      "href": "cmdline/switches/ar_include.htm"
+    },
+    {
+      "name": "-an (Disable parsing of archive_name) switch",
+      "title": "-an (Disable parsing of archive_name) switch",
+      "href": "cmdline/switches/ar_no.htm"
+    },
+    {
+      "name": "-ao (Overwrite mode) switch",
+      "title": "-ao (Overwrite mode) switch",
+      "href": "cmdline/switches/overwrite.htm"
+    },
+    {
+      "name": "-ax (Exclude archive filenames) switch",
+      "title": "-ax (Exclude archive filenames) switch",
+      "href": "cmdline/switches/ar_exclude.htm"
+    },
+    {
+      "name": "-bb (Set output log level) switch",
+      "title": "-bb (Set output log level) switch",
+      "href": "cmdline/switches/bb.htm"
+    },
+    {
+      "name": "-bs (Set output stream for output/error/progress line) switch",
+      "title": "-bs (Set output stream for output/error/progress line) switch",
+      "href": "cmdline/switches/bs.htm"
+    },
+    {
+      "name": "-i (Inlude filenames) switch",
+      "title": "-i (Inlude filenames) switch",
+      "href": "cmdline/switches/include.htm"
+    },
+    {
+      "name": "-m (Set compression Method) switch",
+      "title": "-m (Set compression Method) switch",
+      "href": "cmdline/switches/method.htm"
+    },
+    {
+      "name": "-o (set Output directory) switch",
+      "title": "-o (set Output directory) switch",
+      "href": "cmdline/switches/output_dir.htm"
+    },
+    {
+      "name": "-p (set Password) switch",
+      "title": "-p (set Password) switch",
+      "href": "cmdline/switches/password.htm"
+    },
+    {
+      "name": "-r (Recurse subdirectories) switch",
+      "title": "-r (Recurse subdirectories) switch",
+      "href": "cmdline/switches/recurse.htm"
+    },
+    {
+      "name": "-sa (Set Archive name mode) switch",
+      "title": "-sa (Set Archive name mode) switch",
+      "href": "cmdline/switches/sa.htm"
+    },
+    {
+      "name": "-scc (Set charset for console input/output) switch",
+      "title": "-scc (Set charset for console input/output) switch",
+      "href": "cmdline/switches/scc.htm"
+    },
+    {
+      "name": "-scs (Set charset for list files) switch",
+      "title": "-scs (Set charset for list files) switch",
+      "href": "cmdline/switches/charset.htm"
+    },
+    {
+      "name": "-scrc (Set hash function) switch",
+      "title": "-scrc (Set hash function) switch",
+      "href": "cmdline/switches/scrc.htm"
+    },
+    {
+      "name": "-sdel (Delete files after including to archive) switch",
+      "title": "-sdel (Delete files after including to archive) switch",
+      "href": "cmdline/switches/sdel.htm"
+    },
+    {
+      "name": "-seml (Send archive by email) switch",
+      "title": "-seml (Send archive by email) switch",
+      "href": "cmdline/switches/email.htm"
+    },
+    {
+      "name": "-sfx (Create SFX archive) switch",
+      "title": "-sfx (Create SFX archive) switch",
+      "href": "cmdline/switches/sfx.htm"
+    },
+    {
+      "name": "-slp (Set Large Pages mode) switch",
+      "title": "-slp (Set Large Pages mode) switch",
+      "href": "cmdline/switches/large_pages.htm"
+    },
+    {
+      "name": "-slt (Show technical information) switch",
+      "title": "-slt (Show technical information) switch",
+      "href": "cmdline/switches/list_tech.htm"
+    },
+    {
+      "name": "-sni (Store NT security information) switch",
+      "title": "-sni (Store NT security information) switch",
+      "href": "cmdline/switches/sni.htm"
+    },
+    {
+      "name": "-sns (Store NTFS alternate Streams) switch",
+      "title": "-sns (Store NTFS alternate Streams) switch",
+      "href": "cmdline/switches/sns.htm"
+    },
+    {
+      "name": "-si (read data from StdIn) switch",
+      "title": "-si (read data from StdIn) switch",
+      "href": "cmdline/switches/stdin.htm"
+    },
+    {
+      "name": "-so (write data to stdout) switch",
+      "title": "-so (write data to stdout) switch",
+      "href": "cmdline/switches/stdout.htm"
+    },
+    {
+      "name": "-spf (Use fully qualified file paths) switch",
+      "title": "-spf (Use fully qualified file paths) switch",
+      "href": "cmdline/switches/spf.htm"
+    },
+    {
+      "name": "-spm (Require path separator mark for directory path)",
+      "title": "-spm (Require path separator mark for directory path)",
+      "href": "cmdline/switches/spm.htm"
+    },
+    {
+      "name": "-stl (Set archive timestamp from the most recently modified file) switch",
+      "title": "-stl (Set archive timestamp from the most recently modified file) switch",
+      "href": "cmdline/switches/stl.htm"
+    },
+    {
+      "name": "-ssc (Set Sensitive Case mode) switch",
+      "title": "-ssc (Set Sensitive Case mode) switch",
+      "href": "cmdline/switches/ssc.htm"
+    },
+    {
+      "name": "-ssw (Compress files open for writing) switch",
+      "title": "-ssw (Compress files open for writing) switch",
+      "href": "cmdline/switches/shared.htm"
+    },
+    {
+      "name": "-stx (Exclude archive type) switch",
+      "title": "-stx (Exclude archive type) switch",
+      "href": "cmdline/switches/stx.htm"
+    },
+    {
+      "name": "-t (set Type of archive) switch",
+      "title": "-t (set Type of archive) switch",
+      "href": "cmdline/switches/type.htm"
+    },
+    {
+      "name": "-u (Update options) switch",
+      "title": "-u (Update options) switch",
+      "href": "cmdline/switches/update.htm"
+    },
+    {
+      "name": "-v (Create Volumes) switch",
+      "title": "-v (Create Volumes) switch",
+      "href": "cmdline/switches/volume.htm"
+    },
+    {
+      "name": "-w (set Working directory) switch",
+      "title": "-w (set Working directory) switch",
+      "href": "cmdline/switches/working_dir.htm"
+    },
+    {
+      "name": "-x (Exclude filenames) switch",
+      "title": "-x (Exclude filenames) switch",
+      "href": "cmdline/switches/exclude.htm"
+    },
+    {
+      "name": "-y (assume Yes on all queries) switch",
+      "title": "-y (assume Yes on all queries) switch",
+      "href": "cmdline/switches/yes.htm"
+    }
+  ]
+}

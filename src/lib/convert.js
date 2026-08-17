@@ -27,14 +27,16 @@ async function convert(input, outArg) {
  * 站点根目录结构：
  *   <siteRoot>/
  *     index.html        欢迎页（标题 + 上传入口 + 我的文档）
- *     __docs/<name>/    文档转换产物（含各自的 index.html 阅读壳）
+ *     d/<name>/         文档转换产物（含各自的 index.html 阅读壳）
+ * 注意：子目录名不要以下划线开头——GitHub Pages(Jekyll) 会忽略下划线目录导致 404。
  * @param {string} siteRoot 站点输出根目录
  * @param {Array<{name, chmFile}>} docs 要转换的文档
  */
 async function buildSite(siteRoot, docs, { title } = {}) {
   const root = path.resolve(siteRoot);
+  const DOC_DIR_NAME = 'd'; // 非下划线开头，避免被 Jekyll 忽略
   fs.mkdirSync(root, { recursive: true });
-  const docRoot = path.join(root, '__docs');
+  const docRoot = path.join(root, DOC_DIR_NAME);
   const docLinks = [];
   for (const d of docs || []) {
     const id = (d.id || d.name || 'doc').replace(/[^\w\u4e00-\u9fa5-]/g, '_');
@@ -44,7 +46,7 @@ async function buildSite(siteRoot, docs, { title } = {}) {
     await convert(d.chmFile, tmpDir);
     copyDocContent(tmpDir, outDir);
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    docLinks.push({ id, name: d.name || id, href: '__docs/' + id + '/' });
+    docLinks.push({ id, name: d.name || id, href: DOC_DIR_NAME + '/' + id + '/' });
   }
   // 欢迎页
   landing.build({ outDir: root, docs: docLinks.map((d) => ({ name: d.name, href: d.href })) });
