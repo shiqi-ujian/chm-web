@@ -292,6 +292,21 @@ function rebuildSite() {
   } catch (e) { console.error('site rebuild failed', e); }
 }
 
+/**
+ * 首次部署/空卷时从镜像种子目录填充初始站点内容。
+ * 挂在 /app/docs 的 Volume 是空的会遮住镜像里的 docs/（预置文档消失），
+ * Dockerfile 另把 docs 复制到 /app/seed-docs 作备份；这里在站点根为空时复制回来。
+ */
+function ensureSeed() {
+  const seed = process.env.CHM_SEED || path.join(__dirname, '..', 'seed-docs');
+  try {
+    if (!fs.existsSync(seed)) return;
+    if (fs.existsSync(path.join(SITE_ROOT, 'index.html'))) return; // 已有内容（卷已填充）
+    fs.cpSync(seed, SITE_ROOT, { recursive: true });
+    console.log('seeded initial site content from ' + seed);
+  } catch (e) { console.error('seed failed', e); }
+}
+
 /** 打包整站为 zip 下载 */
 function handleSiteExport(req, res) {
   if (!authorized(req, EXPORT_TOKEN)) { deny(req, res); return; }
@@ -370,8 +385,8 @@ const server = http.createServer((req, res) => {
 
 server.listen(Number(PORT), HOST, () => {
   const port = server.address().port;
-  // 启动时重建欢迎页：用当前环境变量(EXPORT_TOKEN)注入 __AUTH_TOKEN__，
-  // 保证 token 首次部署/变更后前端自动携带正确的 X-Auth-Token。
+  // 空卷时从镜像种子填充初始站点内容，再用当前环境变量重建欢迎页
+  ensureSeed();
   rebuildSite();
   console.log('chm-web server listening: http://' + HOST + ':' + port);
   console.log('  site root :', SITE_ROOT);

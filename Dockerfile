@@ -19,6 +19,9 @@ COPY package.json /app/package.json
 # 初始站点内容（欢迎页 + d/ 下的阅读文档产物）。
 # 生产环境运行时通常用 Volume 覆盖 /app/docs 持久化；这里提供默认值以便开箱即用。
 COPY docs /app/docs
+# 种子备份：挂到 /app/docs 的空 Volume 会遮住镜像内容，server 启动时若站点根
+# 为空会从 /app/seed-docs 复制回来（见 src/server.js ensureSeed）。
+COPY docs /app/seed-docs
 
 # 站点/数据目录放卷（在 Railway 上挂 Volume 到这两个路径，重启不丢上传）。
 ENV CHM_SITE=/app/docs \
