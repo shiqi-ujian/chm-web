@@ -370,6 +370,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(Number(PORT), HOST, () => {
   const port = server.address().port;
+  // 启动时重建欢迎页：用当前环境变量(EXPORT_TOKEN)注入 __AUTH_TOKEN__，
+  // 保证 token 首次部署/变更后前端自动携带正确的 X-Auth-Token。
+  rebuildSite();
   console.log('chm-web server listening: http://' + HOST + ':' + port);
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
