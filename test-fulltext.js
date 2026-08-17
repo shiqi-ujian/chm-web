@@ -28,10 +28,14 @@ const ok = (name, cond) => { log((cond ? 'OK  ' : 'FAIL') + ' ' + name); if (!co
   const idxHits = idx.records.filter((x) => x.text.toLowerCase().includes('benchmark')).length;
   ok('search-index.json matches benchmark', idxHits >= 1);
 
-  // 3) index.html shell now references search + dropdown
+  // 3) index.html shell now references search + dropdown (5z 风格壳)
   const shell = fs.readFileSync(path.join(docDir, 'index.html'), 'utf8');
   ok('shell references search-index.json', shell.includes('search-index.json'));
-  ok('shell has result dropdown (#sres)', shell.includes('id="sres"'));
+  ok('shell has result dropdown (#results)', shell.includes('id="results"'));
+  ok('shell has __TOC__ JSON tree', shell.includes('window.__TOC__'));
+  ok('shell has page search (#page-search-btn)', shell.includes('id="page-search-btn"'));
+  ok('shell has dark theme toggle', shell.includes('data-theme') && shell.includes('theme-btn'));
+  ok('shell has breadcrumb (#crumb)', shell.includes('id="crumb"'));
 
   // 4) site-index.json aggregation (cross-document search on the landing page)
   const si = landing.buildSiteIndex({ siteRoot: path.join(__dirname, 'docs'),

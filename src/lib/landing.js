@@ -15,10 +15,11 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHM 网页 · 免费在线阅读工具</title>
 <style>
-  :root{--acc:#0969da;--accdark:#0750a3;--bg:#f5f7fa;--card:#fff;--ink:#1f2328;--mut:#57606a;--line:#e2e6ea;--ok:#1a7f37;--err:#cf222e}
+  :root{--acc:#7c3aed;--accdark:#6d28d9;--bg:#f6f7fb;--card:#fff;--ink:#1e293b;--mut:#64748b;--line:#e2e8f0;--accent-soft:#f3e8ff;--hover:#f1f5f9;--ok:#1a7f37;--err:#cf222e}
+  [data-theme="dark"]{--acc:#a78bfa;--accdark:#c4b5fd;--bg:#0f172a;--card:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--line:#334155;--accent-soft:#312e81;--hover:#334155;--ok:#4ade80;--err:#f87171}
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
-  .top{background:linear-gradient(135deg,#0969da 0%,#3b8cff 100%);color:#fff;padding:44px 16px 56px;text-align:center}
+  .top{background:linear-gradient(135deg,#7c3aed 0%,#a78bfa 100%);color:#fff;padding:44px 16px 56px;text-align:center}
   .top .brand{font-size:15px;opacity:.85;letter-spacing:1px}
   .top h1{font-size:30px;margin:10px 0 8px;font-weight:700}
   .top .sub{font-size:15px;opacity:.95;max-width:560px;margin:0 auto}
@@ -34,13 +35,13 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .sres .grp{padding:8px 14px 2px;font-size:12px;color:var(--mut);letter-spacing:.5px}
   .sres a{display:block;padding:9px 16px;border-bottom:1px solid var(--b);text-decoration:none}
   .sres a:last-of-type{border-bottom:0}
-  .sres a:hover{background:#f0f7ff}
+  .sres a:hover{background:var(--hover)}
   .sres a .t{font-weight:600;color:var(--ink);font-size:14px;display:block}
   .sres a .p{color:var(--mut);font-size:12px;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px}
-  .sres a .tt{font-size:11px;color:var(--acc);background:#eaf3ff;border-radius:20px;padding:1px 8px;margin-left:8px;flex:0 0 auto}
+  .sres a .tt{font-size:11px;color:var(--acc);background:var(--accent-soft);border-radius:20px;padding:1px 8px;margin-left:8px;flex:0 0 auto}
   .upload{margin:-34px auto 24px;max-width:680px;padding:22px}
   .drop{border:2px dashed #b6c2d0;border-radius:12px;padding:36px 20px;text-align:center;cursor:pointer;transition:.15s}
-  .drop:hover,.drop.over{border-color:var(--acc);background:#f0f7ff}
+  .drop:hover,.drop.over{border-color:var(--acc);background:var(--accent-soft)}
   .drop .big{font-size:20px;font-weight:600}
   .drop .small{color:var(--mut);font-size:13px;margin-top:6px}
   .drop input{display:none}
@@ -59,14 +60,14 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .message .ok{color:var(--ok)}
   .steps{max-width:680px;margin:0 auto 28px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
   .step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;text-align:center}
-  .step .n{width:28px;height:28px;line-height:28px;border-radius:50%;background:#eaf3ff;color:var(--acc);font-weight:700;margin:0 auto 8px}
+  .step .n{width:28px;height:28px;line-height:28px;border-radius:50%;background:var(--accent-soft);color:var(--acc);font-weight:700;margin:0 auto 8px}
   .step b{font-size:15px}
   .step p{font-size:13px;color:var(--mut);margin:6px 0 0}
   .docs{max-width:680px;margin:0 auto 48px}
   .docs h2{font-size:18px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between}
-  .docs h2 .export{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:#eaf3ff;border-radius:20px;padding:4px 12px}
+  .docs h2 .export{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:var(--accent-soft);border-radius:20px;padding:4px 12px}
   .docs h2 .export:hover{background:#d6e9ff}
-  .docs h2 .exp-other{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:#eaf3ff;border-radius:20px;padding:4px 12px;margin-right:6px}
+  .docs h2 .exp-other{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:var(--accent-soft);border-radius:20px;padding:4px 12px;margin-right:6px}
   .doc-row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
   .doc-row .left{display:flex;align-items:center;min-width:0}
   .doc-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);cursor:pointer;margin-right:12px;flex:0 0 auto}
@@ -77,8 +78,9 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .foot{text-align:center;color:var(--mut);font-size:13px;padding:20px 0 32px}
   .authbar{max-width:680px;margin:0 auto 20px;display:flex;justify-content:flex-end;align-items:center;gap:10px}
   .authbar .who{font-size:13px;color:var(--mut)}
-  .authbar .link{font-size:13px;color:var(--acc);cursor:pointer;background:#fff;border:1px solid var(--acc);border-radius:20px;padding:4px 14px}
-  .authbar .link:hover{background:#eaf3ff}
+  .authbar .link{font-size:13px;color:var(--acc);cursor:pointer;background:var(--card);border:1px solid var(--acc);border-radius:20px;padding:4px 14px}
+  .authbar .link:hover{background:var(--accent-soft)}
+  .theme-btn{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:200}
   .modal.on{display:flex}
   .modal .box{background:#fff;border-radius:14px;padding:24px;width:min(92vw,360px);box-shadow:0 10px 40px rgba(0,0,0,.2)}
@@ -100,13 +102,14 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .op-btn{font-size:12px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:20px;padding:3px 10px;cursor:pointer}
   .op-btn:hover{background:var(--b)}
   .op-btn.warn:hover{background:#fff1e6;color:#b35900;border-color:#ffd9b3}
-  .mine{font-size:11px;color:var(--acc);background:#eaf3ff;border-radius:20px;padding:1px 8px;flex:0 0 auto}
+  .mine{font-size:11px;color:var(--acc);background:var(--accent-soft);border-radius:20px;padding:1px 8px;flex:0 0 auto}
   @media(max-width:560px){.steps{grid-template-columns:1fr}.top h1{font-size:24px}.doc-row{flex-wrap:wrap}.doc-row .ops{width:100%;justify-content:flex-end;margin-top:8px}}
 </style></head><body>
 <div class="top"><div class="brand">CHM 网页</div><h1>把 CHM 帮助文档变成手机也能看的网页</h1>
 <div class="sub">上传 .chm，自动解包为可浏览、可搜索的静态页面，PC / 手机随时翻阅，完全免费。</div></div>
 <div class="wrap">
   <div class="authbar" id="authbar">
+    <button class="theme-btn" id="themeBtn" title="切换深色模式" type="button">🌙</button>
     <span class="who" id="who"></span>
     <button class="link" id="loginBtn" type="button">登录 / 注册</button>
   </div>
@@ -159,6 +162,19 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 </div>
 <script>
 (function(){
+  // 主题（深色/浅色，记忆 + 跟随系统）
+  var theme = (function(){ try { return localStorage.getItem('chm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch(e){ return 'light'; } })();
+  document.documentElement.dataset.theme = theme;
+  var themeBtn = document.getElementById('themeBtn');
+  if (themeBtn){
+    themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    themeBtn.addEventListener('click', function(){
+      var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem('chm-theme', next); } catch(e){}
+      themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
+    });
+  }
   // 部署到公网时若开启了 EXPORT_TOKEN，构建期把 token 注入 __AUTH_TOKEN__，
   // 前端下载导出与整站 zip 时带上 X-Auth-Token。
   var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';

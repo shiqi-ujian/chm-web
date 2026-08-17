@@ -1,6 +1,8 @@
 'use strict';
-// preview.js — convert the usable shell (index.html) for a converted CHM, in both
-// records. Writes __chm_nav.html + keywords.json + search-index.json too.
+// preview.js — 5z 风格阅读壳：紫色主题 / 深色模式 / __TOC__ JSON 目录树(JS 渲染+折叠记忆) /
+// 面包屑 / 上一页下一页 / 页内高亮搜索(同源 iframe contentDocument) / 全站搜索增强
+// (空格AND、A|B任一、"短语"精确、分类过滤、只匹配标题、结果内筛选、相关度排序)。
+// 同时写出 keywords.json / search-index.json / __chm_nav.html，保持纯静态自包含。
 const fs = require('fs');
 const path = require('path');
 const { parseHhcFile } = require('./hhc');
@@ -26,7 +28,7 @@ function relPath(baseDir, href) {
   } catch { return '#'; }
 }
 
-// tree → HTML 列表（含折叠箭头）
+// tree → HTML 列表（__chm_nav.html 用，保持兼容）
 function renderNodes(nodes, dir) {
   return nodes.map((n) => {
     const hasKids = n.children && n.children.length;
@@ -43,201 +45,545 @@ function renderTree(nodes, dir) {
   return '<ul>' + renderNodes(nodes, dir) + '</ul>';
 }
 
-const SHELL_CSS = String.raw`
-  :root{--b:#f7f8fa;--card:#fff;--ink:#1f2328;--mut:#57606a;--line:#d8dee4;--acc:#0969da;--accbg:#ddf4ff;--shadow:0 1px 3px rgba(0,0,0,.12)}
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0;height:100%}
-  body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--b)}
-  a{color:var(--acc);text-decoration:none}
-  a:hover{text-decoration:underline}
-  .topbar{position:fixed;top:0;left:0;right:0;z-index:50;height:52px;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px;box-shadow:var(--shadow)}
-  .topbar .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;color:var(--ink);line-height:1}
-  .topbar .btn:hover{background:var(--b)}
-  .topbar .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .topbar .search{flex:1;max-width:420px;min-width:150px;margin-left:auto;position:relative}
-  .topbar input[type=text]{width:100%;padding:6px 26px 6px 10px;border:1px solid var(--line);border-radius:20px;font-size:14px;outline:none}
-  .topbar input[type=text]:focus{border-color:var(--acc)}
-  .sres{position:absolute;top:40px;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);max-height:60vh;overflow:auto;display:none;z-index:80}
-  .sres.on{display:block}
-  .sres .empty{padding:12px 14px;color:var(--mut);font-size:13px}
-  .sres a{display:block;padding:9px 14px;border-bottom:1px solid var(--b);font-size:13.5px;color:var(--ink);text-decoration:none}
-  .sres a:last-child{border-bottom:0}
-  .sres a:hover{background:var(--b)}
-  .sres a .k{font-weight:600;color:var(--acc)}
-  .sres a .p{display:block;color:var(--mut);font-size:12px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-  .btn.close{flex:0 0 auto}
-  .main{position:fixed;top:52px;left:0;right:0;bottom:0;display:flex}
-  .toc{width:300px;min-width:300px;overflow:auto;background:var(--card);border-right:1px solid var(--line)}
-  .content{flex:1;min-width:0;position:relative;background:#fff}
-  #frame{width:100%;height:100%;border:0}
-  #toc ul{list-style:none;padding-left:14px;margin:0}
-  #toc > ul{padding-left:10px}
-  #toc li{line-height:1.7;position:relative;margin:0}
-  #toc li a{display:block;padding:4px 6px 4px 18px;color:var(--ink);border-radius:6px;font-size:13.5px}
-  #toc li a:hover{background:var(--b)}
-  #toc li.active > a{background:var(--accbg);color:var(--acc);font-weight:600}
-  #toc li.folder > ul{display:none}
-  #toc li.folder.open > ul{display:block}
-  #toc .tw{position:absolute;left:2px;top:8px;width:0;height:0;border:5px solid transparent;border-left-color:var(--mut);cursor:pointer}
-  #toc li.folder.open > .tw{border-left-color:transparent;border-top-color:var(--mut)}
-  #toc li:not(.folder) .tw{display:none}
-  .mask{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:55;display:none}
-  .mask.on{display:block}
-  .closeBtn{display:none}
-  @media(max-width:680px){
-    .topbar .title{max-width:34vw}
-    .main{display:block}
-    .content{position:absolute;top:52px;left:0;right:0;bottom:0}
-    #frame{height:100%}
-    .toc{position:fixed;left:0;top:52px;bottom:0;width:86vw;max-width:340px;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18)}
-    .toc.open{transform:translateX(0)}
-    .closeBtn{display:inline-block}
+// tree → __TOC__ JSON：[{i,n,u,c}]，u 为相对阅读壳的 URL（leaf 才有），c 为子树
+function toTocJson(nodes, dir, start) {
+  let i = start;
+  const out = [];
+  for (const n of nodes) {
+    const node = { i: i++, n: translate(n.name) || n.name || '' };
+    const href = relPath(dir, n.href);
+    if (href && href !== '#') node.u = href;
+    if (n.children && n.children.length) node.c = toTocJson(n.children, dir, i).nodes;
+    out.push(node);
   }
+  return { nodes: out, next: i };
+}
+
+const SHELL_CSS = String.raw`
+:root{--bg:#f6f7fb;--panel:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;--accent:#7c3aed;--accent-soft:#f3e8ff;--hover:#f1f5f9;--shadow:0 1px 3px rgba(15,23,42,.08);--hl:#fff3b0}
+[data-theme="dark"]{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#a78bfa;--accent-soft:#312e81;--hover:#334155;--shadow:0 1px 3px rgba(0,0,0,.4);--hl:#6b5b00}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
+a{color:var(--accent);text-decoration:none}
+#app{display:flex;height:100vh;height:100dvh;overflow:hidden}
+#mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:55;display:none}
+#mask.on{display:block}
+/* ---------- 侧栏 ---------- */
+#sidebar{width:320px;min-width:320px;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--border)}
+.side-head{padding:12px 14px;border-bottom:1px solid var(--border)}
+.brand{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:.5px}
+.version{font-size:11.5px;color:var(--muted);margin:2px 0 10px}
+.search-box{position:relative}
+.search-box input{width:100%;padding:9px 32px 9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;background:var(--bg);color:var(--text);outline:none}
+.search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.search-box .ico{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+#results{position:absolute;top:42px;left:0;right:0;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.14);max-height:60vh;overflow:auto;z-index:90}
+#results .empty{padding:12px 14px;color:var(--muted);font-size:13px}
+.res-item{display:block;padding:9px 14px;border-bottom:1px solid var(--hover);cursor:pointer}
+.res-item:last-child{border-bottom:0}
+.res-item:hover,.res-item.sel{background:var(--accent-soft)}
+.res-item .t{font-weight:600;font-size:13.5px;color:var(--text)}
+.res-item .t mark{background:transparent;color:var(--accent)}
+.res-item .p{display:block;color:var(--muted);font-size:12px;margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.res-item .r{float:right;font-size:11px;color:var(--muted)}
+.search-options{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.opt-label{display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
+.opt-select{border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;padding:2px 4px;outline:none}
+.opt-btn{border:1px solid var(--border);background:var(--bg);color:var(--muted);border-radius:6px;font-size:12px;padding:2px 8px;cursor:pointer;white-space:nowrap}
+.opt-btn:hover{border-color:var(--accent);color:var(--accent)}
+.opt-btn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+#toc{flex:1;overflow:auto;padding:8px 0}
+.toc-node{user-select:none}
+.toc-row{display:flex;align-items:center;padding:5px 14px 5px 6px;cursor:pointer;border-radius:6px;margin:1px 6px;gap:4px;font-size:13.5px}
+.toc-row:hover{background:var(--hover)}
+.toc-row.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.toc-row .tw{width:0;height:0;border:5px solid transparent;border-left-color:var(--muted);flex:0 0 auto;transition:transform .15s}
+.toc-row.branch.open>.tw{transform:rotate(90deg)}
+.toc-row .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+#theme-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px}
+#theme-btn:hover{border-color:var(--accent)}
+/* ---------- 主区 ---------- */
+#main{flex:1;min-width:0;display:flex;flex-direction:column}
+#topbar{height:48px;min-height:48px;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--border)}
+.tb-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:14px;color:var(--text);line-height:1}
+.tb-btn:hover{border-color:var(--accent);color:var(--accent)}
+#crumb{flex:1;min-width:0;font-size:13px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#crumb b{color:var(--accent);font-weight:600}
+#page-search-bar{display:none;align-items:center;gap:6px;padding:6px 10px;background:var(--accent-soft);border-bottom:1px solid var(--border)}
+#page-search-bar.on{display:flex}
+#page-search-bar input{flex:1;min-width:0;padding:5px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;outline:none;background:var(--panel);color:var(--text)}
+#page-search-bar input:focus{border-color:var(--accent)}
+#page-search-bar button{border:1px solid var(--border);background:var(--panel);border-radius:6px;padding:4px 9px;cursor:pointer;font-size:13px}
+#page-search-bar .cnt{font-size:12px;color:var(--muted);white-space:nowrap}
+#frame{flex:1;width:100%;border:0;background:#fff}
+mark.wz-hl{background:var(--hl);color:inherit;padding:0 1px;border-radius:2px}
+mark.wz-hl.cur{outline:2px solid var(--accent)}
+@media(max-width:680px){
+  #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18);width:86vw;max-width:340px;min-width:0}
+  #sidebar.open{transform:translateX(0)}
+}
 `;
 
-function shell({ navHtml, title, home }) {
-  return `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+// 壳内 JS（独立函数生成，避免与外壳模板字符串插值冲突）
+function shellJs(t) {
+  return `(function(){
+'use strict';
+var tocData = window.__TOC__ || [];
+var frame = document.getElementById('frame');
+var tocEl = document.getElementById('toc');
+var q = document.getElementById('q');
+var resultsEl = document.getElementById('results');
+var crumbEl = document.getElementById('crumb');
+var mask = document.getElementById('mask');
+var sidebar = document.getElementById('sidebar');
+var home = '${escAttr(t.home)}';
+var title = '${escAttr(t.title)}';
+
+/* ---------- 主题（深色/浅色，记忆 + 跟随系统） ---------- */
+var theme = (function(){ try { return localStorage.getItem('chm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch(e){ return 'light'; } })();
+document.documentElement.dataset.theme = theme;
+var themeBtn = document.getElementById('theme-btn');
+if(themeBtn){
+  themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+  themeBtn.addEventListener('click', function(){
+    var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('chm-theme', next); } catch(e){}
+    themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
+  });
+}
+
+/* ---------- 目录树 ---------- */
+var urlToNode = new Map();
+var leafList = [];
+var openSet = new Set();
+(function(){
+  try { openSet = new Set(JSON.parse(localStorage.getItem('chm-open') || 'null') || []); } catch(e){}
+  function walk(nodes){
+    for (var i=0;i<nodes.length;i++){
+      var n = nodes[i];
+      if (n.u) { urlToNode.set(n.u, n); leafList.push(n); }
+      if (n.c) {
+        if (openSet.size === 0) openSet.add(n.i); // 首次：全部展开
+        walk(n.c);
+      }
+    }
+  }
+  walk(tocData);
+})();
+function saveOpen(){ try { localStorage.setItem('chm-open', JSON.stringify(Array.from(openSet))); } catch(e){} }
+function renderNode(n, depth){
+  var div = document.createElement('div');
+  div.className = 'toc-node';
+  div.dataset.id = n.i;
+  var row = document.createElement('div');
+  row.className = 'toc-row' + (n.c ? ' branch' : ' leaf');
+  row.style.paddingLeft = (10 + depth * 14) + 'px';
+  if (openSet.has(n.i)) row.classList.add('open');
+  if (n.c) {
+    var tw = document.createElement('span');
+    tw.className = 'tw';
+    tw.title = openSet.has(n.i) ? '折叠' : '展开';
+    row.appendChild(tw);
+    row.addEventListener('click', function(e){
+      if (e.target === tw || e.target === row) {
+        if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
+        row.classList.toggle('open');
+        tw.title = openSet.has(n.i) ? '折叠' : '展开';
+        saveOpen();
+      }
+    });
+  }
+  var label = document.createElement('span');
+  label.className = 'tt';
+  label.textContent = n.n || '';
+  row.appendChild(label);
+  if (n.u) {
+    row.addEventListener('click', function(e){
+      if (e.target !== label) return;
+      openPage(n.u);
+    });
+  }
+  div.appendChild(row);
+  if (n.c) {
+    var kids = document.createElement('div');
+    kids.className = 'toc-kids';
+    n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth + 1)); });
+    div.appendChild(kids);
+  }
+  return div;
+}
+function renderTree(){
+  tocEl.innerHTML = '';
+  tocData.forEach(function(n){ tocEl.appendChild(renderNode(n, 0)); });
+}
+renderTree();
+
+/* ---------- 打开页面 / 面包屑 / 上下页 ---------- */
+function setActive(url){
+  var list = tocEl.querySelectorAll('.toc-row');
+  for (var i=0;i<list.length;i++) list[i].classList.remove('active');
+  var node = urlToNode.get(url);
+  if (!node) return;
+  var rows = tocEl.querySelectorAll('.toc-row');
+  for (var i=0;i<rows.length;i++){
+    if (rows[i].parentElement.dataset.id === String(node.i)) rows[i].classList.add('active');
+  }
+}
+function renderCrumb(url){
+  var node = urlToNode.get(url);
+  var parts = [];
+  if (!node) parts.push(title);
+  else {
+    var chain = [];
+    (function find(nodes){
+      for (var i=0;i<nodes.length;i++){
+        var n = nodes[i];
+        if (n === node) { chain.push(n); return true; }
+        if (n.c && find(n.c)) { chain.unshift(n); return true; }
+      }
+      return false;
+    })(tocData);
+    chain.forEach(function(n){ parts.push(n.n); });
+    parts.unshift(title);
+  }
+  crumbEl.innerHTML = parts.map(function(p,i){ return i===parts.length-1 ? '<b>'+p+'</b>' : p; }).join(' › ');
+}
+function openPage(url){
+  if (!url || url === '#') return;
+  frame.src = url;
+  setActive(url);
+  renderCrumb(url);
+  try { history.replaceState(null, '', '#' + url); } catch(e){}
+  if (window.innerWidth <= 680) closeDrawer();
+}
+function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
+document.getElementById('menu-btn').addEventListener('click', function(){ sidebar.classList.add('open'); mask.classList.add('on'); });
+if (mask) mask.addEventListener('click', closeDrawer);
+var prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
+if (prevBtn && nextBtn){
+  prevBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+  nextBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
+}
+function currentUrl(){
+  try {
+    var a = new URL(frame.contentWindow.location.href);
+    return decodeURIComponent(a.pathname).replace(/^\\//, '');
+  } catch(e){ return (frame.getAttribute('src')||'').replace(/^[^:]*:\\/\\//,''); }
+}
+
+/* ---------- 页内搜索（同源 iframe 高亮） ---------- */
+var psBar = document.getElementById('page-search-bar');
+var psQ = document.getElementById('ps-q');
+var psCount = document.getElementById('ps-count');
+var psCur = 0, psTotal = 0;
+function fdoc(){ try { return frame.contentDocument; } catch(e){ return null; } }
+function clearHl(doc){
+  if (!doc) return;
+  var marks = doc.querySelectorAll('mark.wz-hl');
+  for (var i=marks.length-1;i>=0;i--){
+    var m = marks[i], t = doc.createTextNode(m.textContent);
+    m.parentNode.replaceChild(t, m);
+  }
+}
+function highlightIn(doc, terms){
+  clearHl(doc);
+  if (!terms.length || !doc || !doc.body) return 0;
+  var walker = doc.createTreeWalker(doc.body, 4 /* SHOW_TEXT */, null);
+  var nodes = [], n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  var count = 0;
+  nodes.forEach(function(node){
+    var text = node.nodeValue || '', lower = text.toLowerCase();
+    var hits = [];
+    terms.forEach(function(t){
+      var from = 0, at;
+      while ((at = lower.indexOf(t, from)) !== -1){ hits.push([at, t.length]); from = at + t.length; }
+    });
+    if (!hits.length) return;
+    hits.sort(function(a,b){ return a[0]-b[0]; });
+    var frag = doc.createDocumentFragment(), pos = 0;
+    hits.forEach(function(h){
+      if (h[0] > pos) frag.appendChild(doc.createTextNode(text.slice(pos, h[0])));
+      var mk = doc.createElement('mark'); mk.className = 'wz-hl'; mk.textContent = text.slice(h[0], h[0]+h[1]);
+      frag.appendChild(mk); pos = h[0]+h[1]; count++;
+    });
+    if (pos < text.length) frag.appendChild(doc.createTextNode(text.slice(pos)));
+    node.parentNode.replaceChild(frag, node);
+  });
+  return count;
+}
+function extractTerms(input){
+  var out = [], re = /"([^"]+)"|(\\S+)/g, m;
+  while ((m = re.exec(input))){
+    var t = (m[1] || m[2] || '').trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
+function runPageSearch(){
+  var terms = extractTerms(psQ.value.trim());
+  var doc = fdoc();
+  if (!doc) { psCount.textContent = '无法访问'; return; }
+  psTotal = highlightIn(doc, terms);
+  psCur = 0;
+  psCount.textContent = terms.length ? (psTotal ? ('1/' + psTotal) : '0 结果') : '';
+  if (psTotal) scrollToMark(0);
+}
+function scrollToMark(i){
+  var doc = fdoc(); if (!doc) return;
+  var marks = doc.querySelectorAll('mark.wz-hl');
+  for (var k=0;k<marks.length;k++) marks[k].classList.remove('cur');
+  if (i < 0 || i >= marks.length) return;
+  marks[i].classList.add('cur');
+  psCur = i;
+  psCount.textContent = (i+1) + '/' + marks.length;
+  try { marks[i].scrollIntoView({ block: 'center' }); } catch(e){}
+  var w = frame.contentWindow; if (w && w.focus) w.focus();
+}
+document.getElementById('page-search-btn').addEventListener('click', function(){
+  psBar.classList.toggle('on');
+  if (psBar.classList.contains('on')){ psQ.focus(); runPageSearch(); }
+  else { clearHl(fdoc()); psCount.textContent=''; }
+});
+if (psQ){
+  psQ.addEventListener('input', runPageSearch);
+  psQ.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
+    else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
+    else if (e.key === 'ArrowUp' && e.altKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
+    else if (e.key === 'ArrowDown' && e.altKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
+    else if (e.key === 'Escape'){ psBar.classList.remove('on'); clearHl(fdoc()); }
+  });
+}
+document.getElementById('ps-prev').addEventListener('click', function(){ if (psTotal) { psCur = (psCur - 1 + psTotal) % psTotal; scrollToMark(psCur); } });
+document.getElementById('ps-next').addEventListener('click', function(){ if (psTotal) { psCur = (psCur + 1) % psTotal; scrollToMark(psCur); } });
+document.getElementById('ps-close').addEventListener('click', function(){ psBar.classList.remove('on'); clearHl(fdoc()); });
+
+/* ---------- 全站搜索（keywords + search-index，增强语法） ---------- */
+var kwData = [], ftData = [], kwReady = false, ftReady = false;
+var withinSet = null;  // 结果内筛选
+var lastQuery = '', lastTerms = [], lastHits = [];
+if (window.fetch){
+  fetch('keywords.json').then(function(r){ return r.json(); }).then(function(j){ kwData = (j && j.keywords) || []; kwReady = true; }).catch(function(){ kwReady = true; });
+  fetch('search-index.json').then(function(r){ return r.json(); }).then(function(j){ ftData = (j && j.records) || []; ftReady = true; }).catch(function(){ ftReady = true; });
+}
+function parseQuery(input){
+  var groups = [], re = /"([^"]+)"|(\\S+)/g, m;
+  while ((m = re.exec(input))){
+    if (m[1]) groups.push({ type: 'phrase', term: m[1].toLowerCase() });
+    else {
+      var parts = m[2].split('|').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean);
+      if (parts.length > 1) groups.push({ type: 'or', terms: parts });
+      else if (parts.length) groups.push({ type: 'and', term: parts[0] });
+    }
+  }
+  return groups;
+}
+function hitScore(text, groups){
+  var score = 0, t = text.toLowerCase();
+  for (var i=0;i<groups.length;i++){
+    var g = groups[i];
+    if (g.type === 'and'){ if (t.indexOf(g.term) === -1) return -1; score += 2; }
+    else if (g.type === 'phrase'){ if (t.indexOf(g.term) === -1) return -1; score += 4; }
+    else {
+      var any = false;
+      for (var j=0;j<g.terms.length;j++){ if (t.indexOf(g.terms[j]) !== -1){ any = true; score += 2; } }
+      if (!any) return -1;
+    }
+  }
+  return score;
+}
+function catOf(url){ return url.indexOf('/') === -1 ? '（根）' : url.split('/')[0]; }
+function runSearch(raw){
+  var query = raw.trim();
+  if (!query){ resultsEl.hidden = true; lastHits = []; return; }
+  var groups = parseQuery(query);
+  var titleOnly = document.getElementById('titleOnly').checked;
+  var cat = document.getElementById('catFilter').value;
+  var hits = [];
+  var titleHit = {};
+  if (!titleOnly){
+    for (var i=0;i<ftData.length;i++){
+      var rec = ftData[i].text || '';
+      var score = hitScore(rec, groups);
+      if (score === -1) continue;
+      // 拆出每个 [page:...] 段单独计分
+      var re = /\\[page:([^\\]]+)\\]([\\s\\S]*?)(?=\\[page:|$)/g, m;
+      while ((m = re.exec(rec))){
+        var url = m[1], seg = m[2];
+        var s2 = hitScore(seg, groups);
+        if (s2 === -1) continue;
+        if (cat !== 'all' && catOf(url) !== cat) continue;
+        if (withinSet && !withinSet[url]) continue;
+        var at = seg.toLowerCase().indexOf(groups.length ? (groups[0].term || (groups[0].terms||[])[0] || '') : '');
+        var ctx = seg.replace(/\\s+/g, ' ').trim();
+        var snippet = ctx.slice(Math.max(0, at - 30), at + 60);
+        hits.push({ url: url, title: url, score: s2 + 6, snip: snippet });
+        titleHit[url] = 1;
+      }
+    }
+  }
+  (kwData || []).forEach(function(k){
+    if (!k.name || !k.href) return;
+    var url = String(k.href).replace(/\\\\/g, '/');
+    if (cat !== 'all' && catOf(url) !== cat) return;
+    if (withinSet && !withinSet[url]) return;
+    var s = hitScore(k.name + ' ' + (k.title||''), groups);
+    if (s === -1) return;
+    hits.push({ url: url, title: k.name, score: s + 10, snip: k.title || '' });
+  });
+  // 排序：相关度
+  hits.sort(function(a,b){ return b.score - a.score; });
+  var seen = {}, uniq = [];
+  hits.forEach(function(h){ if (!seen[h.url]){ seen[h.url] = 1; uniq.push(h); } });
+  renderResults(uniq.slice(0, 30), extractTerms(query));
+}
+function renderResults(hits, terms){
+  lastHits = hits;
+  resultsEl.innerHTML = '';
+  if (!hits.length){ resultsEl.innerHTML = '<div class="empty">无匹配结果</div>'; resultsEl.hidden = false; return; }
+  function hl(s){
+    var out = String(s);
+    terms.slice().sort(function(a,b){ return b.length - a.length; }).forEach(function(t){
+      out = out.split(t).join('<mark>' + t + '</mark>');
+    });
+    return out;
+  }
+  hits.forEach(function(h, i){
+    var d = document.createElement('div');
+    d.className = 'res-item' + (i === 0 ? ' sel' : '');
+    d.innerHTML = '<span class="r">相关度 ' + h.score + '</span><span class="t">' + hl(h.title) + '</span><span class="p">' + hl(h.snip || '') + '</span>';
+    d.addEventListener('click', function(){ openPage(h.url); resultsEl.hidden = true; });
+    resultsEl.appendChild(d);
+  });
+  resultsEl.hidden = false;
+}
+function buildCats(){
+  var cats = {};
+  (kwData||[]).forEach(function(k){ if (k.href) cats[catOf(String(k.href).replace(/\\\\/g,'/'))] = 1; });
+  (ftData||[]).forEach(function(rec){
+    var re = /\\[page:([^\\]]+)\\]/g, m;
+    while ((m = re.exec(rec.text||''))) cats[catOf(m[1])] = 1;
+  });
+  var sel = document.getElementById('catFilter');
+  Object.keys(cats).sort().forEach(function(c){
+    var o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+  });
+}
+var searchTimer = null;
+if (q){
+  q.addEventListener('input', function(){
+    var v = q.value;
+    window.clearTimeout(searchTimer);
+    if (!v){ resultsEl.hidden = true; return; }
+    searchTimer = window.setTimeout(function(){ runSearch(v); }, 180);
+  });
+  q.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){ q.value=''; resultsEl.hidden = true; }
+    else if (e.key === 'Enter'){
+      e.preventDefault();
+      var sel = resultsEl.querySelector('.res-item.sel');
+      if (sel) sel.click();
+      else { var first = resultsEl.querySelector('.res-item'); if (first) first.click(); }
+    }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      var items = resultsEl.querySelectorAll('.res-item');
+      if (!items.length) return;
+      var idx = 0;
+      for (var i=0;i<items.length;i++) if (items[i].classList.contains('sel')) idx = i;
+      idx = e.key === 'ArrowDown' ? Math.min(items.length-1, idx+1) : Math.max(0, idx-1);
+      for (var j=0;j<items.length;j++) items[j].classList.remove('sel');
+      items[idx].classList.add('sel');
+      try { items[idx].scrollIntoView({ block: 'nearest' }); } catch(_){}
+    }
+  });
+}
+document.addEventListener('click', function(e){
+  if (resultsEl.contains(e.target) || e.target === q) return;
+  resultsEl.hidden = true;
+});
+document.getElementById('titleOnly').addEventListener('change', function(){ if (q.value.trim()) runSearch(q.value); });
+document.getElementById('catFilter').addEventListener('change', function(){ if (q.value.trim()) runSearch(q.value); });
+var withinBtn = document.getElementById('within-btn');
+if (withinBtn){
+  withinBtn.addEventListener('click', function(){
+    if (!lastHits.length && !q.value.trim()) return;
+    if (!withinSet){
+      withinSet = {};
+      lastHits.forEach(function(h){ withinSet[h.url] = 1; });
+      withinBtn.classList.add('on');
+      withinBtn.textContent = '结果内筛选 ✓';
+    } else {
+      withinSet = null;
+      withinBtn.classList.remove('on');
+      withinBtn.textContent = '结果内筛选';
+    }
+    if (q.value.trim()) runSearch(q.value);
+  });
+}
+buildCats();
+
+/* ---------- 初始化 ---------- */
+(function init(){
+  var start = (location.hash || '').replace('#', '');
+  if (!start || !urlToNode.has(start)) start = home;
+  openPage(start);
+})();
+})();
+`;
+}
+
+function shell({ title, home, tocJson }) {
+  return `<!doctype html><html lang="zh" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escAttr(title || '文档')}</title>
 <style>${SHELL_CSS}</style>
 </head><body>
-<div class="topbar">
-  <button class="btn" id="btnMenu" type="button" aria-label="目录">☰</button>
-  <span class="title" id="docTitle">${escAttr(title || '文档')}</span>
-  <div class="search"><input type="text" id="q" placeholder="搜索…" autocomplete="off">
-    <div class="sres" id="sres"></div></div>
-  <button class="btn close closeBtn" id="btnClose" aria-label="关闭" title="关闭目录">✕</button>
+<div id="app">
+  <div id="mask"></div>
+  <aside id="sidebar">
+    <div class="side-head">
+      <div class="brand">${escAttr(title || '文档')}</div>
+      <div class="version">目录 · 可折叠 · Ctrl+K 搜索</div>
+      <div class="search-box">
+        <input id="q" type="search" placeholder="搜索…（空格=交集 / A|B=任一 / 「短语」=精确）" autocomplete="off">
+        <span class="ico">⌕</span>
+        <div id="results" hidden></div>
+      </div>
+      <div class="search-options">
+        <label class="opt-label"><input type="checkbox" id="titleOnly"> 只匹配标题</label>
+        <select id="catFilter" class="opt-select"><option value="all">全部分类</option></select>
+        <button id="within-btn" class="opt-btn" type="button" title="在当前搜索结果中继续筛选">结果内筛选</button>
+      </div>
+    </div>
+    <nav id="toc" aria-label="目录"></nav>
+    <div class="side-foot">
+      <button id="theme-btn" title="切换深色模式" type="button">🌙</button>
+    </div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <button class="tb-btn" id="menu-btn" title="目录" aria-label="打开目录" type="button">☰</button>
+      <span id="crumb"></span>
+      <button class="tb-btn" id="prev-btn" title="上一页" type="button">↑</button>
+      <button class="tb-btn" id="next-btn" title="下一页" type="button">↓</button>
+      <button class="tb-btn" id="page-search-btn" title="页内搜索（Alt+↑↓ 跳转）" type="button">🔍</button>
+    </header>
+    <div id="page-search-bar">
+      <input id="ps-q" type="search" placeholder="在当前页面中查找…" autocomplete="off">
+      <button id="ps-prev" title="上一个" type="button">↑</button>
+      <span class="cnt" id="ps-count"></span>
+      <button id="ps-next" title="下一个" type="button">↓</button>
+      <button id="ps-close" title="关闭" type="button">✕</button>
+    </div>
+    <iframe id="frame" title="正文" src=""></iframe>
+  </main>
 </div>
-<div class="mask" id="mask"></div>
-<div class="main">
-  <aside class="toc" id="tocPane"><nav id="toc">${navHtml}</nav></aside>
-  <section class="content"><iframe id="frame" src=""></iframe></section>
-</div>
-<script>
-(function(){
-  var frame=document.getElementById('frame');
-  var toc=document.getElementById('toc');
-  var pane=document.getElementById('tocPane');
-  var mask=document.getElementById('mask');
-  var btnMenu=document.getElementById('btnMenu');
-  var btnClose=document.getElementById('btnClose');
-  var q=document.getElementById('q');
-  var links=document.querySelectorAll('#toc a');
-
-  // 目录默认全部展开（更直观）
-  document.querySelectorAll('#toc li.folder').forEach(function(li){ li.classList.add('open'); });
-
-  // 折叠箭头
-  document.querySelectorAll('#toc li.folder > .tw').forEach(function(tw){
-    tw.addEventListener('click',function(e){ e.stopPropagation(); tw.parentElement.classList.toggle('open'); });
-  });
-
-  // 手机：汉堡开抽屉
-  btnMenu.addEventListener('click',function(){ pane.classList.add('open'); mask.classList.add('on'); });
-  if(btnClose) btnClose.addEventListener('click',function(){ pane.classList.remove('open'); mask.classList.remove('on'); });
-  mask.addEventListener('click',function(){ pane.classList.remove('open'); mask.classList.remove('on'); });
-
-  // 默认首页 + 恢复 hash
-  var home=(location.hash||'').replace('#','');
-  if(!home){ home='${escAttr(home)}'; }
-  frame.src=home;
-  if(home){ links.forEach(function(a){ if(a.getAttribute('href')===home){ a.parentElement.classList.add('active'); } }); }
-
-  // 点目录 → 载页 + 高亮 + 更新 hash
-  links.forEach(function(a){
-    a.addEventListener('click',function(ev){
-      ev.preventDefault();
-      var href=a.getAttribute('href');
-      if(href && href!=='#'){ frame.src=href; }
-      links.forEach(function(x){ x.parentElement.classList.remove('active'); });
-      a.parentElement.classList.add('active');
-      if(href){ try{ history.replaceState(null,'','#'+href); }catch(e){} }
-      pane.classList.remove('open'); mask.classList.remove('on');
-    });
-  });
-
-  // 搜索：关键字(keywords.json) + 全文(search-index.json) 组合下拉
-  var sres=document.getElementById('sres');
-  var kwData=[], ftData=[], kwReady=false, ftReady=false, ftTimer=null;
-  var ftCache={};            // 查询关键词 -> 全文命中([])
-  if(window.fetch){
-    fetch('keywords.json').then(function(r){return r.json();}).then(function(j){ kwData=(j&&j.keywords)||[]; kwReady=true; })
-      .catch(function(){ kwReady=true; });
-    fetch('search-index.json').then(function(r){return r.json();}).then(function(j){ ftData=(j&&j.records)||[]; ftReady=true; })
-      .catch(function(){ ftReady=true; });
-  }
-  function openResult(href){
-    if(href && href!=='#'){ frame.src=href; }
-    links.forEach(function(a){ a.parentElement.classList.remove('active'); if(a.getAttribute('href')===href) a.parentElement.classList.add('active'); });
-    if(href){ try{ history.replaceState(null,'','#'+href); }catch(e){} }
-    sres.className='sres';
-    q.value='';
-  }
-  function renderRows(rows,s){
-    var uniq={}, out=[];
-    rows.forEach(function(h){ var key=h.href; if(key&&!uniq[key]){ uniq[key]=1; out.push(h); } });
-    var html='';
-    if(!out.length){ html='<div class="empty">无匹配结果</div>'; }
-    else { out.slice(0,14).forEach(function(h){
-      html+='<a href="javascript:void 0)" data-href="'+escAttr(h.url)+'"><span class="k">'+esc(h.title)+'</span><span class="p">'+esc(h.hint||'')+'</span></a>';
-    }); }
-    sres.innerHTML=html; sres.className='sres on';
-    Array.prototype.forEach.call(sres.querySelectorAll('a[data-href]'),function(a){
-      a.addEventListener('click',function(ev){ ev.preventDefault(); openResult(a.getAttribute('data-href')); });
-    });
-  }
-  function fullSearch(s){
-    if(!ftReady) return;
-    var sl=s.toLowerCase(), hits=[];
-    for(var i=0;i<ftData.length && hits.length<10;i++){
-      var rec=(ftData[i].text||'').toLowerCase();
-      var at=rec.indexOf(sl);
-      if(at===-1) continue;
-      var page=(ftData[i].text.match(/\[page:([^\]]+)\]/)||[])[1]||'';
-      var ctx=ftData[i].text.slice(Math.max(0,at-30),at+55).replace(/\s+/g,' ').trim();
-      hits.push({title:page,hint:ctx,url:page});
-    }
-    ftCache[s]=hits;
-    // 与关键字结果合并后重绘（若输入框还是当前查询）
-    if(q.value.trim().toLowerCase()===s) redraw(s);
-  }
-  function redraw(s){
-    var rows=(ftCache[s]||[]).slice();
-    (kwData||[]).forEach(function(k){
-      if((k.name||'').toLowerCase().indexOf(s)!==-1) rows.push({title:k.name,hint:k.title||k.href,url:k.href});
-    });
-    renderRows(rows);
-  }
-  q.addEventListener('input',function(){
-    var s=q.value.trim().toLowerCase();
-    if(!s){ sres.className='sres'; ftCache={}; }
-    else {
-      // 目录树过滤
-      document.querySelectorAll('#toc li').forEach(function(li){
-        var self=(li.textContent||'').toLowerCase().indexOf(s)!==-1;
-        if(!s){ li.style.display=''; }
-        else{
-          var childShow=false;
-          li.querySelectorAll(':scope > ul li').forEach(function(c){ if(c.style.display!=='none') childShow=true; });
-          li.style.display=(self||childShow)?'':'none';
-          if(li.classList.contains('folder')&&childShow) li.classList.add('open');
-        }
-      });
-      // 关键字即时；全文做 250ms 防抖
-      var kwRows=(kwData||[]).filter(function(k){ return (k.name||'').toLowerCase().indexOf(s)!==-1; })
-        .map(function(k){ return {title:k.name,hint:k.title||k.href,url:k.href}; });
-      if(!ftCache[s]) ftCache[s]=[];
-      renderRows(kwRows.concat(ftCache[s]));
-      window.clearTimeout(ftTimer);
-      ftTimer=window.setTimeout(function(){ fullSearch(s); },250);
-    }
-  });
-  document.addEventListener('click',function(e){
-    if(e.target===q) return;
-    if(!sres.contains(e.target)) sres.className='sres';
-  });
-})();
-</script>
+<script>window.__TOC__ = ${JSON.stringify(tocJson)};</script>
+<script>${shellJs({ title, home })}</script>
 </body></html>`;
 }
 
@@ -305,16 +651,17 @@ function build({ outDir, hhcFile, hhkFile, title }) {
   }
 
   const navHtml = renderTree(tree, dir);
+  const tocJson = toTocJson(tree, dir, 0).nodes;
   let kw = { keywords: [] };
   if (hhkFile && fs.existsSync(hhkFile)) kw = { keywords: parseHhk(hhkFile, dir) };
 
   fs.writeFileSync(path.join(dir, 'keywords.json'), JSON.stringify(kw, null, 2));
   fs.writeFileSync(path.join(dir, 'search-index.json'),
     JSON.stringify(buildFullText(dir)));
-  fs.writeFileSync(path.join(dir, 'index.html'), shell({ navHtml, title, home: homeHref }));
+  fs.writeFileSync(path.join(dir, 'index.html'), shell({ title: title || path.basename(dir), home: homeHref, tocJson }));
   fs.writeFileSync(path.join(dir, '__chm_nav.html'),
     '<!doctype html><html><head><meta charset="utf-8"><title>目录</title>' +
-    `<style>ul{padding-left:16px}li{margin:3px 0}a{color:#0969da;text-decoration:none}</style></head>` +
+    `<style>ul{padding-left:16px}li{margin:3px 0}a{color:#7c3aed;text-decoration:none}</style></head>` +
     `<body>${navHtml}</body></html>`);
-  return { navHtml, keywords: kw, title, homeHref };
+  return { navHtml, keywords: kw, title, homeHref, tocJson };
 }

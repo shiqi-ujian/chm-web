@@ -1,255 +1,518 @@
-<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<!doctype html><html lang="zh" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>7-Zip</title>
 <style>
-  :root{--b:#f7f8fa;--card:#fff;--ink:#1f2328;--mut:#57606a;--line:#d8dee4;--acc:#0969da;--accbg:#ddf4ff;--shadow:0 1px 3px rgba(0,0,0,.12)}
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0;height:100%}
-  body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--b)}
-  a{color:var(--acc);text-decoration:none}
-  a:hover{text-decoration:underline}
-  .topbar{position:fixed;top:0;left:0;right:0;z-index:50;height:52px;background:var(--card);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 10px;box-shadow:var(--shadow)}
-  .topbar .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;color:var(--ink);line-height:1}
-  .topbar .btn:hover{background:var(--b)}
-  .topbar .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .topbar .search{flex:1;max-width:420px;min-width:150px;margin-left:auto;position:relative}
-  .topbar input[type=text]{width:100%;padding:6px 26px 6px 10px;border:1px solid var(--line);border-radius:20px;font-size:14px;outline:none}
-  .topbar input[type=text]:focus{border-color:var(--acc)}
-  .sres{position:absolute;top:40px;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);max-height:60vh;overflow:auto;display:none;z-index:80}
-  .sres.on{display:block}
-  .sres .empty{padding:12px 14px;color:var(--mut);font-size:13px}
-  .sres a{display:block;padding:9px 14px;border-bottom:1px solid var(--b);font-size:13.5px;color:var(--ink);text-decoration:none}
-  .sres a:last-child{border-bottom:0}
-  .sres a:hover{background:var(--b)}
-  .sres a .k{font-weight:600;color:var(--acc)}
-  .sres a .p{display:block;color:var(--mut);font-size:12px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-  .btn.close{flex:0 0 auto}
-  .main{position:fixed;top:52px;left:0;right:0;bottom:0;display:flex}
-  .toc{width:300px;min-width:300px;overflow:auto;background:var(--card);border-right:1px solid var(--line)}
-  .content{flex:1;min-width:0;position:relative;background:#fff}
-  #frame{width:100%;height:100%;border:0}
-  #toc ul{list-style:none;padding-left:14px;margin:0}
-  #toc > ul{padding-left:10px}
-  #toc li{line-height:1.7;position:relative;margin:0}
-  #toc li a{display:block;padding:4px 6px 4px 18px;color:var(--ink);border-radius:6px;font-size:13.5px}
-  #toc li a:hover{background:var(--b)}
-  #toc li.active > a{background:var(--accbg);color:var(--acc);font-weight:600}
-  #toc li.folder > ul{display:none}
-  #toc li.folder.open > ul{display:block}
-  #toc .tw{position:absolute;left:2px;top:8px;width:0;height:0;border:5px solid transparent;border-left-color:var(--mut);cursor:pointer}
-  #toc li.folder.open > .tw{border-left-color:transparent;border-top-color:var(--mut)}
-  #toc li:not(.folder) .tw{display:none}
-  .mask{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:55;display:none}
-  .mask.on{display:block}
-  .closeBtn{display:none}
-  @media(max-width:680px){
-    .topbar .title{max-width:34vw}
-    .main{display:block}
-    .content{position:absolute;top:52px;left:0;right:0;bottom:0}
-    #frame{height:100%}
-    .toc{position:fixed;left:0;top:52px;bottom:0;width:86vw;max-width:340px;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18)}
-    .toc.open{transform:translateX(0)}
-    .closeBtn{display:inline-block}
-  }
+:root{--bg:#f6f7fb;--panel:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;--accent:#7c3aed;--accent-soft:#f3e8ff;--hover:#f1f5f9;--shadow:0 1px 3px rgba(15,23,42,.08);--hl:#fff3b0}
+[data-theme="dark"]{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#a78bfa;--accent-soft:#312e81;--hover:#334155;--shadow:0 1px 3px rgba(0,0,0,.4);--hl:#6b5b00}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
+a{color:var(--accent);text-decoration:none}
+#app{display:flex;height:100vh;height:100dvh;overflow:hidden}
+#mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:55;display:none}
+#mask.on{display:block}
+/* ---------- 侧栏 ---------- */
+#sidebar{width:320px;min-width:320px;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--border)}
+.side-head{padding:12px 14px;border-bottom:1px solid var(--border)}
+.brand{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:.5px}
+.version{font-size:11.5px;color:var(--muted);margin:2px 0 10px}
+.search-box{position:relative}
+.search-box input{width:100%;padding:9px 32px 9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13.5px;background:var(--bg);color:var(--text);outline:none}
+.search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.search-box .ico{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+#results{position:absolute;top:42px;left:0;right:0;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.14);max-height:60vh;overflow:auto;z-index:90}
+#results .empty{padding:12px 14px;color:var(--muted);font-size:13px}
+.res-item{display:block;padding:9px 14px;border-bottom:1px solid var(--hover);cursor:pointer}
+.res-item:last-child{border-bottom:0}
+.res-item:hover,.res-item.sel{background:var(--accent-soft)}
+.res-item .t{font-weight:600;font-size:13.5px;color:var(--text)}
+.res-item .t mark{background:transparent;color:var(--accent)}
+.res-item .p{display:block;color:var(--muted);font-size:12px;margin-top:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.res-item .r{float:right;font-size:11px;color:var(--muted)}
+.search-options{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.opt-label{display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
+.opt-select{border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;padding:2px 4px;outline:none}
+.opt-btn{border:1px solid var(--border);background:var(--bg);color:var(--muted);border-radius:6px;font-size:12px;padding:2px 8px;cursor:pointer;white-space:nowrap}
+.opt-btn:hover{border-color:var(--accent);color:var(--accent)}
+.opt-btn.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+#toc{flex:1;overflow:auto;padding:8px 0}
+.toc-node{user-select:none}
+.toc-row{display:flex;align-items:center;padding:5px 14px 5px 6px;cursor:pointer;border-radius:6px;margin:1px 6px;gap:4px;font-size:13.5px}
+.toc-row:hover{background:var(--hover)}
+.toc-row.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.toc-row .tw{width:0;height:0;border:5px solid transparent;border-left-color:var(--muted);flex:0 0 auto;transition:transform .15s}
+.toc-row.branch.open>.tw{transform:rotate(90deg)}
+.toc-row .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+#theme-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px}
+#theme-btn:hover{border-color:var(--accent)}
+/* ---------- 主区 ---------- */
+#main{flex:1;min-width:0;display:flex;flex-direction:column}
+#topbar{height:48px;min-height:48px;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--border)}
+.tb-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:14px;color:var(--text);line-height:1}
+.tb-btn:hover{border-color:var(--accent);color:var(--accent)}
+#crumb{flex:1;min-width:0;font-size:13px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#crumb b{color:var(--accent);font-weight:600}
+#page-search-bar{display:none;align-items:center;gap:6px;padding:6px 10px;background:var(--accent-soft);border-bottom:1px solid var(--border)}
+#page-search-bar.on{display:flex}
+#page-search-bar input{flex:1;min-width:0;padding:5px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;outline:none;background:var(--panel);color:var(--text)}
+#page-search-bar input:focus{border-color:var(--accent)}
+#page-search-bar button{border:1px solid var(--border);background:var(--panel);border-radius:6px;padding:4px 9px;cursor:pointer;font-size:13px}
+#page-search-bar .cnt{font-size:12px;color:var(--muted);white-space:nowrap}
+#frame{flex:1;width:100%;border:0;background:#fff}
+mark.wz-hl{background:var(--hl);color:inherit;padding:0 1px;border-radius:2px}
+mark.wz-hl.cur{outline:2px solid var(--accent)}
+@media(max-width:680px){
+  #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18);width:86vw;max-width:340px;min-width:0}
+  #sidebar.open{transform:translateX(0)}
+}
 </style>
 </head><body>
-<div class="topbar">
-  <button class="btn" id="btnMenu" type="button" aria-label="目录">☰</button>
-  <span class="title" id="docTitle">7-Zip</span>
-  <div class="search"><input type="text" id="q" placeholder="搜索…" autocomplete="off">
-    <div class="sres" id="sres"></div></div>
-  <button class="btn close closeBtn" id="btnClose" aria-label="关闭" title="关闭目录">✕</button>
+<div id="app">
+  <div id="mask"></div>
+  <aside id="sidebar">
+    <div class="side-head">
+      <div class="brand">7-Zip</div>
+      <div class="version">目录 · 可折叠 · Ctrl+K 搜索</div>
+      <div class="search-box">
+        <input id="q" type="search" placeholder="搜索…（空格=交集 / A|B=任一 / 「短语」=精确）" autocomplete="off">
+        <span class="ico">⌕</span>
+        <div id="results" hidden></div>
+      </div>
+      <div class="search-options">
+        <label class="opt-label"><input type="checkbox" id="titleOnly"> 只匹配标题</label>
+        <select id="catFilter" class="opt-select"><option value="all">全部分类</option></select>
+        <button id="within-btn" class="opt-btn" type="button" title="在当前搜索结果中继续筛选">结果内筛选</button>
+      </div>
+    </div>
+    <nav id="toc" aria-label="目录"></nav>
+    <div class="side-foot">
+      <button id="theme-btn" title="切换深色模式" type="button">🌙</button>
+    </div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <button class="tb-btn" id="menu-btn" title="目录" aria-label="打开目录" type="button">☰</button>
+      <span id="crumb"></span>
+      <button class="tb-btn" id="prev-btn" title="上一页" type="button">↑</button>
+      <button class="tb-btn" id="next-btn" title="下一页" type="button">↓</button>
+      <button class="tb-btn" id="page-search-btn" title="页内搜索（Alt+↑↓ 跳转）" type="button">🔍</button>
+    </header>
+    <div id="page-search-bar">
+      <input id="ps-q" type="search" placeholder="在当前页面中查找…" autocomplete="off">
+      <button id="ps-prev" title="上一个" type="button">↑</button>
+      <span class="cnt" id="ps-count"></span>
+      <button id="ps-next" title="下一个" type="button">↓</button>
+      <button id="ps-close" title="关闭" type="button">✕</button>
+    </div>
+    <iframe id="frame" title="正文" src=""></iframe>
+  </main>
 </div>
-<div class="mask" id="mask"></div>
-<div class="main">
-  <aside class="toc" id="tocPane"><nav id="toc"><ul><li class="" data-href="start.htm"><span class="tw"></span><a href="start.htm">7-Zip 起始页</a></li>
-<li class="folder" data-href="general/index.htm"><span class="tw toggle"></span><a href="general/index.htm">基本信息</a><ul><li class="" data-href="general/formats.htm"><span class="tw"></span><a href="general/formats.htm">支持的格式</a></li>
-<li class="" data-href="general/7z.htm"><span class="tw"></span><a href="general/7z.htm">7z 格式</a></li>
-<li class="" data-href="general/performance.htm"><span class="tw"></span><a href="general/performance.htm">性能</a></li>
-<li class="" data-href="general/faq.htm"><span class="tw"></span><a href="general/faq.htm">常见问题</a></li>
-<li class="" data-href="general/license.htm"><span class="tw"></span><a href="general/license.htm">许可协议</a></li>
-<li class="" data-href="general/thanks.htm"><span class="tw"></span><a href="general/thanks.htm">致谢</a></li></ul></li>
-<li class="folder" data-href="fm/index.htm"><span class="tw toggle"></span><a href="fm/index.htm">文件管理器</a><ul><li class="" data-href="fm/Menu.htm"><span class="tw"></span><a href="fm/Menu.htm">菜单项与快捷键</a></li>
-<li class="" data-href="fm/options.htm"><span class="tw"></span><a href="fm/options.htm">选项对话框</a></li>
-<li class="" data-href="fm/benchmark.htm"><span class="tw"></span><a href="fm/benchmark.htm">基准测试</a></li>
-<li class="" data-href="fm/temp.htm"><span class="tw"></span><a href="fm/temp.htm">删除临时文件</a></li>
-<li class="" data-href="fm/about.htm"><span class="tw"></span><a href="fm/about.htm">关于对话框</a></li>
-<li class="folder" data-href="fm/plugins/index.htm"><span class="tw toggle"></span><a href="fm/plugins/index.htm">插件</a><ul><li class="folder" data-href="fm/plugins/7-zip/index.htm"><span class="tw toggle"></span><a href="fm/plugins/7-zip/index.htm">7-Zip</a><ul><li class="" data-href="fm/plugins/7-zip/add.htm"><span class="tw"></span><a href="fm/plugins/7-zip/add.htm">添加到压缩包对话框</a></li>
-<li class="" data-href="fm/plugins/7-zip/extract.htm"><span class="tw"></span><a href="fm/plugins/7-zip/extract.htm">解压对话框</a></li></ul></li></ul></li></ul></li>
-<li class="folder" data-href="cmdline/index.htm"><span class="tw toggle"></span><a href="cmdline/index.htm">命令行版本</a><ul><li class="" data-href="cmdline/syntax.htm"><span class="tw"></span><a href="cmdline/syntax.htm">语法</a></li>
-<li class="" data-href="cmdline/exit_codes.htm"><span class="tw"></span><a href="cmdline/exit_codes.htm">退出代码</a></li>
-<li class="folder" data-href="cmdline/commands/index.htm"><span class="tw toggle"></span><a href="cmdline/commands/index.htm">命令</a><ul><li class="" data-href="cmdline/commands/add.htm"><span class="tw"></span><a href="cmdline/commands/add.htm">a（添加）</a></li>
-<li class="" data-href="cmdline/commands/bench.htm"><span class="tw"></span><a href="cmdline/commands/bench.htm">b（基准测试）</a></li>
-<li class="" data-href="cmdline/commands/delete.htm"><span class="tw"></span><a href="cmdline/commands/delete.htm">d（删除）</a></li>
-<li class="" data-href="cmdline/commands/extract.htm"><span class="tw"></span><a href="cmdline/commands/extract.htm">e（解压）</a></li>
-<li class="" data-href="cmdline/commands/hash.htm"><span class="tw"></span><a href="cmdline/commands/hash.htm">h（哈希）</a></li>
-<li class="" data-href="cmdline/commands/list.htm"><span class="tw"></span><a href="cmdline/commands/list.htm">l（列出）</a></li>
-<li class="" data-href="cmdline/commands/rename.htm"><span class="tw"></span><a href="cmdline/commands/rename.htm">rn（重命名）</a></li>
-<li class="" data-href="cmdline/commands/test.htm"><span class="tw"></span><a href="cmdline/commands/test.htm">t（测试）</a></li>
-<li class="" data-href="cmdline/commands/update.htm"><span class="tw"></span><a href="cmdline/commands/update.htm">u（更新）</a></li>
-<li class="" data-href="cmdline/commands/extract_full.htm"><span class="tw"></span><a href="cmdline/commands/extract_full.htm">x（完整路径解压）</a></li></ul></li>
-<li class="folder" data-href="cmdline/switches/index.htm"><span class="tw toggle"></span><a href="cmdline/switches/index.htm">开关选项</a><ul><li class="" data-href="cmdline/switches/stop_switch.htm"><span class="tw"></span><a href="cmdline/switches/stop_switch.htm">--（停止解析开关）</a></li>
-<li class="" data-href="cmdline/switches/ar_include.htm"><span class="tw"></span><a href="cmdline/switches/ar_include.htm">-ai（包含压缩包文件名）</a></li>
-<li class="" data-href="cmdline/switches/ar_no.htm"><span class="tw"></span><a href="cmdline/switches/ar_no.htm">-an（禁用压缩包名解析）</a></li>
-<li class="" data-href="cmdline/switches/overwrite.htm"><span class="tw"></span><a href="cmdline/switches/overwrite.htm">-ao（覆盖模式）</a></li>
-<li class="" data-href="cmdline/switches/ar_exclude.htm"><span class="tw"></span><a href="cmdline/switches/ar_exclude.htm">-ax（排除压缩包文件名）</a></li>
-<li class="" data-href="cmdline/switches/bb.htm"><span class="tw"></span><a href="cmdline/switches/bb.htm">-bb（设置输出日志级别）开关</a></li>
-<li class="" data-href="cmdline/switches/bs.htm"><span class="tw"></span><a href="cmdline/switches/bs.htm">-bs（设置输出/错误/进度流）开关</a></li>
-<li class="" data-href="cmdline/switches/include.htm"><span class="tw"></span><a href="cmdline/switches/include.htm">-i（包含文件名）</a></li>
-<li class="" data-href="cmdline/switches/method.htm"><span class="tw"></span><a href="cmdline/switches/method.htm">-m（设置压缩方式）</a></li>
-<li class="" data-href="cmdline/switches/output_dir.htm"><span class="tw"></span><a href="cmdline/switches/output_dir.htm">-o（设置输出目录）</a></li>
-<li class="" data-href="cmdline/switches/password.htm"><span class="tw"></span><a href="cmdline/switches/password.htm">-p（设置密码）</a></li>
-<li class="" data-href="cmdline/switches/recurse.htm"><span class="tw"></span><a href="cmdline/switches/recurse.htm">-r（递归子目录）</a></li>
-<li class="" data-href="cmdline/switches/sa.htm"><span class="tw"></span><a href="cmdline/switches/sa.htm">-sa（设置压缩包命名方式）</a></li>
-<li class="" data-href="cmdline/switches/scc.htm"><span class="tw"></span><a href="cmdline/switches/scc.htm">-scc（设置控制台输入输出字符集）</a></li>
-<li class="" data-href="cmdline/switches/charset.htm"><span class="tw"></span><a href="cmdline/switches/charset.htm">-scs（设置列表文件字符集）</a></li>
-<li class="" data-href="cmdline/switches/scrc.htm"><span class="tw"></span><a href="cmdline/switches/scrc.htm">-scrc（设置哈希算法）</a></li>
-<li class="" data-href="cmdline/switches/sdel.htm"><span class="tw"></span><a href="cmdline/switches/sdel.htm">-sdel（加入压缩包后删除文件）</a></li>
-<li class="" data-href="cmdline/switches/email.htm"><span class="tw"></span><a href="cmdline/switches/email.htm">-seml（通过电子邮件发送压缩包）</a></li>
-<li class="" data-href="cmdline/switches/sfx.htm"><span class="tw"></span><a href="cmdline/switches/sfx.htm">-sfx（创建自解压压缩包）</a></li>
-<li class="" data-href="cmdline/switches/stdin.htm"><span class="tw"></span><a href="cmdline/switches/stdin.htm">-si（从标准输入读取数据）</a></li>
-<li class="" data-href="cmdline/switches/stdout.htm"><span class="tw"></span><a href="cmdline/switches/stdout.htm">-so（将数据写入标准输出）</a></li>
-<li class="" data-href="cmdline/switches/large_pages.htm"><span class="tw"></span><a href="cmdline/switches/large_pages.htm">-slp（设置大页模式）</a></li>
-<li class="" data-href="cmdline/switches/list_tech.htm"><span class="tw"></span><a href="cmdline/switches/list_tech.htm">-slt（显示技术信息）</a></li>
-<li class="" data-href="cmdline/switches/sni.htm"><span class="tw"></span><a href="cmdline/switches/sni.htm">-sni（存储 NT 安全信息）</a></li>
-<li class="" data-href="cmdline/switches/sns.htm"><span class="tw"></span><a href="cmdline/switches/sns.htm">-sns（存储 NTFS 备用数据流）</a></li>
-<li class="" data-href="cmdline/switches/spf.htm"><span class="tw"></span><a href="cmdline/switches/spf.htm">-spf（使用完整文件路径）</a></li>
-<li class="" data-href="cmdline/switches/spm.htm"><span class="tw"></span><a href="cmdline/switches/spm.htm">-spm（要求目录路径带分隔符）</a></li>
-<li class="" data-href="cmdline/switches/ssc.htm"><span class="tw"></span><a href="cmdline/switches/ssc.htm">-ssc（设置大小写敏感模式）</a></li>
-<li class="" data-href="cmdline/switches/shared.htm"><span class="tw"></span><a href="cmdline/switches/shared.htm">-ssw（压缩正在写入的文件）</a></li>
-<li class="" data-href="cmdline/switches/stl.htm"><span class="tw"></span><a href="cmdline/switches/stl.htm">-stl（用最新修改文件的日期作为压缩包时间戳）</a></li>
-<li class="" data-href="cmdline/switches/stx.htm"><span class="tw"></span><a href="cmdline/switches/stx.htm">-stx（排除压缩包类型）</a></li>
-<li class="" data-href="cmdline/switches/type.htm"><span class="tw"></span><a href="cmdline/switches/type.htm">-t（设置压缩包类型）</a></li>
-<li class="" data-href="cmdline/switches/update.htm"><span class="tw"></span><a href="cmdline/switches/update.htm">-u（更新选项）</a></li>
-<li class="" data-href="cmdline/switches/volume.htm"><span class="tw"></span><a href="cmdline/switches/volume.htm">-v（创建分卷）</a></li>
-<li class="" data-href="cmdline/switches/working_dir.htm"><span class="tw"></span><a href="cmdline/switches/working_dir.htm">-w（设置工作目录）</a></li>
-<li class="" data-href="cmdline/switches/exclude.htm"><span class="tw"></span><a href="cmdline/switches/exclude.htm">-x（排除文件名）</a></li>
-<li class="" data-href="cmdline/switches/yes.htm"><span class="tw"></span><a href="cmdline/switches/yes.htm">-y（所有询问一律回答“是”）</a></li></ul></li></ul></li></ul></nav></aside>
-  <section class="content"><iframe id="frame" src=""></iframe></section>
-</div>
-<script>
+<script>window.__TOC__ = [{"i":0,"n":"7-Zip 起始页","u":"start.htm"},{"i":1,"n":"基本信息","u":"general/index.htm","c":[{"i":2,"n":"支持的格式","u":"general/formats.htm"},{"i":3,"n":"7z 格式","u":"general/7z.htm"},{"i":4,"n":"性能","u":"general/performance.htm"},{"i":5,"n":"常见问题","u":"general/faq.htm"},{"i":6,"n":"许可协议","u":"general/license.htm"},{"i":7,"n":"致谢","u":"general/thanks.htm"}]},{"i":2,"n":"文件管理器","u":"fm/index.htm","c":[{"i":3,"n":"菜单项与快捷键","u":"fm/Menu.htm"},{"i":4,"n":"选项对话框","u":"fm/options.htm"},{"i":5,"n":"基准测试","u":"fm/benchmark.htm"},{"i":6,"n":"删除临时文件","u":"fm/temp.htm"},{"i":7,"n":"关于对话框","u":"fm/about.htm"},{"i":8,"n":"插件","u":"fm/plugins/index.htm","c":[{"i":9,"n":"7-Zip","u":"fm/plugins/7-zip/index.htm","c":[{"i":10,"n":"添加到压缩包对话框","u":"fm/plugins/7-zip/add.htm"},{"i":11,"n":"解压对话框","u":"fm/plugins/7-zip/extract.htm"}]}]}]},{"i":3,"n":"命令行版本","u":"cmdline/index.htm","c":[{"i":4,"n":"语法","u":"cmdline/syntax.htm"},{"i":5,"n":"退出代码","u":"cmdline/exit_codes.htm"},{"i":6,"n":"命令","u":"cmdline/commands/index.htm","c":[{"i":7,"n":"a（添加）","u":"cmdline/commands/add.htm"},{"i":8,"n":"b（基准测试）","u":"cmdline/commands/bench.htm"},{"i":9,"n":"d（删除）","u":"cmdline/commands/delete.htm"},{"i":10,"n":"e（解压）","u":"cmdline/commands/extract.htm"},{"i":11,"n":"h（哈希）","u":"cmdline/commands/hash.htm"},{"i":12,"n":"l（列出）","u":"cmdline/commands/list.htm"},{"i":13,"n":"rn（重命名）","u":"cmdline/commands/rename.htm"},{"i":14,"n":"t（测试）","u":"cmdline/commands/test.htm"},{"i":15,"n":"u（更新）","u":"cmdline/commands/update.htm"},{"i":16,"n":"x（完整路径解压）","u":"cmdline/commands/extract_full.htm"}]},{"i":7,"n":"开关选项","u":"cmdline/switches/index.htm","c":[{"i":8,"n":"--（停止解析开关）","u":"cmdline/switches/stop_switch.htm"},{"i":9,"n":"-ai（包含压缩包文件名）","u":"cmdline/switches/ar_include.htm"},{"i":10,"n":"-an（禁用压缩包名解析）","u":"cmdline/switches/ar_no.htm"},{"i":11,"n":"-ao（覆盖模式）","u":"cmdline/switches/overwrite.htm"},{"i":12,"n":"-ax（排除压缩包文件名）","u":"cmdline/switches/ar_exclude.htm"},{"i":13,"n":"-bb（设置输出日志级别）开关","u":"cmdline/switches/bb.htm"},{"i":14,"n":"-bs（设置输出/错误/进度流）开关","u":"cmdline/switches/bs.htm"},{"i":15,"n":"-i（包含文件名）","u":"cmdline/switches/include.htm"},{"i":16,"n":"-m（设置压缩方式）","u":"cmdline/switches/method.htm"},{"i":17,"n":"-o（设置输出目录）","u":"cmdline/switches/output_dir.htm"},{"i":18,"n":"-p（设置密码）","u":"cmdline/switches/password.htm"},{"i":19,"n":"-r（递归子目录）","u":"cmdline/switches/recurse.htm"},{"i":20,"n":"-sa（设置压缩包命名方式）","u":"cmdline/switches/sa.htm"},{"i":21,"n":"-scc（设置控制台输入输出字符集）","u":"cmdline/switches/scc.htm"},{"i":22,"n":"-scs（设置列表文件字符集）","u":"cmdline/switches/charset.htm"},{"i":23,"n":"-scrc（设置哈希算法）","u":"cmdline/switches/scrc.htm"},{"i":24,"n":"-sdel（加入压缩包后删除文件）","u":"cmdline/switches/sdel.htm"},{"i":25,"n":"-seml（通过电子邮件发送压缩包）","u":"cmdline/switches/email.htm"},{"i":26,"n":"-sfx（创建自解压压缩包）","u":"cmdline/switches/sfx.htm"},{"i":27,"n":"-si（从标准输入读取数据）","u":"cmdline/switches/stdin.htm"},{"i":28,"n":"-so（将数据写入标准输出）","u":"cmdline/switches/stdout.htm"},{"i":29,"n":"-slp（设置大页模式）","u":"cmdline/switches/large_pages.htm"},{"i":30,"n":"-slt（显示技术信息）","u":"cmdline/switches/list_tech.htm"},{"i":31,"n":"-sni（存储 NT 安全信息）","u":"cmdline/switches/sni.htm"},{"i":32,"n":"-sns（存储 NTFS 备用数据流）","u":"cmdline/switches/sns.htm"},{"i":33,"n":"-spf（使用完整文件路径）","u":"cmdline/switches/spf.htm"},{"i":34,"n":"-spm（要求目录路径带分隔符）","u":"cmdline/switches/spm.htm"},{"i":35,"n":"-ssc（设置大小写敏感模式）","u":"cmdline/switches/ssc.htm"},{"i":36,"n":"-ssw（压缩正在写入的文件）","u":"cmdline/switches/shared.htm"},{"i":37,"n":"-stl（用最新修改文件的日期作为压缩包时间戳）","u":"cmdline/switches/stl.htm"},{"i":38,"n":"-stx（排除压缩包类型）","u":"cmdline/switches/stx.htm"},{"i":39,"n":"-t（设置压缩包类型）","u":"cmdline/switches/type.htm"},{"i":40,"n":"-u（更新选项）","u":"cmdline/switches/update.htm"},{"i":41,"n":"-v（创建分卷）","u":"cmdline/switches/volume.htm"},{"i":42,"n":"-w（设置工作目录）","u":"cmdline/switches/working_dir.htm"},{"i":43,"n":"-x（排除文件名）","u":"cmdline/switches/exclude.htm"},{"i":44,"n":"-y（所有询问一律回答“是”）","u":"cmdline/switches/yes.htm"}]}]}];</script>
+<script>(function(){
+'use strict';
+var tocData = window.__TOC__ || [];
+var frame = document.getElementById('frame');
+var tocEl = document.getElementById('toc');
+var q = document.getElementById('q');
+var resultsEl = document.getElementById('results');
+var crumbEl = document.getElementById('crumb');
+var mask = document.getElementById('mask');
+var sidebar = document.getElementById('sidebar');
+var home = 'start.htm';
+var title = '7-Zip';
+
+/* ---------- 主题（深色/浅色，记忆 + 跟随系统） ---------- */
+var theme = (function(){ try { return localStorage.getItem('chm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch(e){ return 'light'; } })();
+document.documentElement.dataset.theme = theme;
+var themeBtn = document.getElementById('theme-btn');
+if(themeBtn){
+  themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+  themeBtn.addEventListener('click', function(){
+    var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('chm-theme', next); } catch(e){}
+    themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
+  });
+}
+
+/* ---------- 目录树 ---------- */
+var urlToNode = new Map();
+var leafList = [];
+var openSet = new Set();
 (function(){
-  var frame=document.getElementById('frame');
-  var toc=document.getElementById('toc');
-  var pane=document.getElementById('tocPane');
-  var mask=document.getElementById('mask');
-  var btnMenu=document.getElementById('btnMenu');
-  var btnClose=document.getElementById('btnClose');
-  var q=document.getElementById('q');
-  var links=document.querySelectorAll('#toc a');
-
-  // 目录默认全部展开（更直观）
-  document.querySelectorAll('#toc li.folder').forEach(function(li){ li.classList.add('open'); });
-
-  // 折叠箭头
-  document.querySelectorAll('#toc li.folder > .tw').forEach(function(tw){
-    tw.addEventListener('click',function(e){ e.stopPropagation(); tw.parentElement.classList.toggle('open'); });
-  });
-
-  // 手机：汉堡开抽屉
-  btnMenu.addEventListener('click',function(){ pane.classList.add('open'); mask.classList.add('on'); });
-  if(btnClose) btnClose.addEventListener('click',function(){ pane.classList.remove('open'); mask.classList.remove('on'); });
-  mask.addEventListener('click',function(){ pane.classList.remove('open'); mask.classList.remove('on'); });
-
-  // 默认首页 + 恢复 hash
-  var home=(location.hash||'').replace('#','');
-  if(!home){ home='start.htm'; }
-  frame.src=home;
-  if(home){ links.forEach(function(a){ if(a.getAttribute('href')===home){ a.parentElement.classList.add('active'); } }); }
-
-  // 点目录 → 载页 + 高亮 + 更新 hash
-  links.forEach(function(a){
-    a.addEventListener('click',function(ev){
-      ev.preventDefault();
-      var href=a.getAttribute('href');
-      if(href && href!=='#'){ frame.src=href; }
-      links.forEach(function(x){ x.parentElement.classList.remove('active'); });
-      a.parentElement.classList.add('active');
-      if(href){ try{ history.replaceState(null,'','#'+href); }catch(e){} }
-      pane.classList.remove('open'); mask.classList.remove('on');
-    });
-  });
-
-  // 搜索：关键字(keywords.json) + 全文(search-index.json) 组合下拉
-  var sres=document.getElementById('sres');
-  var kwData=[], ftData=[], kwReady=false, ftReady=false, ftTimer=null;
-  var ftCache={};            // 查询关键词 -> 全文命中([])
-  if(window.fetch){
-    fetch('keywords.json').then(function(r){return r.json();}).then(function(j){ kwData=(j&&j.keywords)||[]; kwReady=true; })
-      .catch(function(){ kwReady=true; });
-    fetch('search-index.json').then(function(r){return r.json();}).then(function(j){ ftData=(j&&j.records)||[]; ftReady=true; })
-      .catch(function(){ ftReady=true; });
-  }
-  function openResult(href){
-    if(href && href!=='#'){ frame.src=href; }
-    links.forEach(function(a){ a.parentElement.classList.remove('active'); if(a.getAttribute('href')===href) a.parentElement.classList.add('active'); });
-    if(href){ try{ history.replaceState(null,'','#'+href); }catch(e){} }
-    sres.className='sres';
-    q.value='';
-  }
-  function renderRows(rows,s){
-    var uniq={}, out=[];
-    rows.forEach(function(h){ var key=h.href; if(key&&!uniq[key]){ uniq[key]=1; out.push(h); } });
-    var html='';
-    if(!out.length){ html='<div class="empty">无匹配结果</div>'; }
-    else { out.slice(0,14).forEach(function(h){
-      html+='<a href="javascript:void 0)" data-href="'+escAttr(h.url)+'"><span class="k">'+esc(h.title)+'</span><span class="p">'+esc(h.hint||'')+'</span></a>';
-    }); }
-    sres.innerHTML=html; sres.className='sres on';
-    Array.prototype.forEach.call(sres.querySelectorAll('a[data-href]'),function(a){
-      a.addEventListener('click',function(ev){ ev.preventDefault(); openResult(a.getAttribute('data-href')); });
-    });
-  }
-  function fullSearch(s){
-    if(!ftReady) return;
-    var sl=s.toLowerCase(), hits=[];
-    for(var i=0;i<ftData.length && hits.length<10;i++){
-      var rec=(ftData[i].text||'').toLowerCase();
-      var at=rec.indexOf(sl);
-      if(at===-1) continue;
-      var page=(ftData[i].text.match(/[page:([^]]+)]/)||[])[1]||'';
-      var ctx=ftData[i].text.slice(Math.max(0,at-30),at+55).replace(/s+/g,' ').trim();
-      hits.push({title:page,hint:ctx,url:page});
+  try { openSet = new Set(JSON.parse(localStorage.getItem('chm-open') || 'null') || []); } catch(e){}
+  function walk(nodes){
+    for (var i=0;i<nodes.length;i++){
+      var n = nodes[i];
+      if (n.u) { urlToNode.set(n.u, n); leafList.push(n); }
+      if (n.c) {
+        if (openSet.size === 0) openSet.add(n.i); // 首次：全部展开
+        walk(n.c);
+      }
     }
-    ftCache[s]=hits;
-    // 与关键字结果合并后重绘（若输入框还是当前查询）
-    if(q.value.trim().toLowerCase()===s) redraw(s);
   }
-  function redraw(s){
-    var rows=(ftCache[s]||[]).slice();
-    (kwData||[]).forEach(function(k){
-      if((k.name||'').toLowerCase().indexOf(s)!==-1) rows.push({title:k.name,hint:k.title||k.href,url:k.href});
+  walk(tocData);
+})();
+function saveOpen(){ try { localStorage.setItem('chm-open', JSON.stringify(Array.from(openSet))); } catch(e){} }
+function renderNode(n, depth){
+  var div = document.createElement('div');
+  div.className = 'toc-node';
+  div.dataset.id = n.i;
+  var row = document.createElement('div');
+  row.className = 'toc-row' + (n.c ? ' branch' : ' leaf');
+  row.style.paddingLeft = (10 + depth * 14) + 'px';
+  if (openSet.has(n.i)) row.classList.add('open');
+  if (n.c) {
+    var tw = document.createElement('span');
+    tw.className = 'tw';
+    tw.title = openSet.has(n.i) ? '折叠' : '展开';
+    row.appendChild(tw);
+    row.addEventListener('click', function(e){
+      if (e.target === tw || e.target === row) {
+        if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
+        row.classList.toggle('open');
+        tw.title = openSet.has(n.i) ? '折叠' : '展开';
+        saveOpen();
+      }
     });
-    renderRows(rows);
   }
-  q.addEventListener('input',function(){
-    var s=q.value.trim().toLowerCase();
-    if(!s){ sres.className='sres'; ftCache={}; }
+  var label = document.createElement('span');
+  label.className = 'tt';
+  label.textContent = n.n || '';
+  row.appendChild(label);
+  if (n.u) {
+    row.addEventListener('click', function(e){
+      if (e.target !== label) return;
+      openPage(n.u);
+    });
+  }
+  div.appendChild(row);
+  if (n.c) {
+    var kids = document.createElement('div');
+    kids.className = 'toc-kids';
+    n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth + 1)); });
+    div.appendChild(kids);
+  }
+  return div;
+}
+function renderTree(){
+  tocEl.innerHTML = '';
+  tocData.forEach(function(n){ tocEl.appendChild(renderNode(n, 0)); });
+}
+renderTree();
+
+/* ---------- 打开页面 / 面包屑 / 上下页 ---------- */
+function setActive(url){
+  var list = tocEl.querySelectorAll('.toc-row');
+  for (var i=0;i<list.length;i++) list[i].classList.remove('active');
+  var node = urlToNode.get(url);
+  if (!node) return;
+  var rows = tocEl.querySelectorAll('.toc-row');
+  for (var i=0;i<rows.length;i++){
+    if (rows[i].parentElement.dataset.id === String(node.i)) rows[i].classList.add('active');
+  }
+}
+function renderCrumb(url){
+  var node = urlToNode.get(url);
+  var parts = [];
+  if (!node) parts.push(title);
+  else {
+    var chain = [];
+    (function find(nodes){
+      for (var i=0;i<nodes.length;i++){
+        var n = nodes[i];
+        if (n === node) { chain.push(n); return true; }
+        if (n.c && find(n.c)) { chain.unshift(n); return true; }
+      }
+      return false;
+    })(tocData);
+    chain.forEach(function(n){ parts.push(n.n); });
+    parts.unshift(title);
+  }
+  crumbEl.innerHTML = parts.map(function(p,i){ return i===parts.length-1 ? '<b>'+p+'</b>' : p; }).join(' › ');
+}
+function openPage(url){
+  if (!url || url === '#') return;
+  frame.src = url;
+  setActive(url);
+  renderCrumb(url);
+  try { history.replaceState(null, '', '#' + url); } catch(e){}
+  if (window.innerWidth <= 680) closeDrawer();
+}
+function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
+document.getElementById('menu-btn').addEventListener('click', function(){ sidebar.classList.add('open'); mask.classList.add('on'); });
+if (mask) mask.addEventListener('click', closeDrawer);
+var prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
+if (prevBtn && nextBtn){
+  prevBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+  nextBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
+}
+function currentUrl(){
+  try {
+    var a = new URL(frame.contentWindow.location.href);
+    return decodeURIComponent(a.pathname).replace(/^\//, '');
+  } catch(e){ return (frame.getAttribute('src')||'').replace(/^[^:]*:\/\//,''); }
+}
+
+/* ---------- 页内搜索（同源 iframe 高亮） ---------- */
+var psBar = document.getElementById('page-search-bar');
+var psQ = document.getElementById('ps-q');
+var psCount = document.getElementById('ps-count');
+var psCur = 0, psTotal = 0;
+function fdoc(){ try { return frame.contentDocument; } catch(e){ return null; } }
+function clearHl(doc){
+  if (!doc) return;
+  var marks = doc.querySelectorAll('mark.wz-hl');
+  for (var i=marks.length-1;i>=0;i--){
+    var m = marks[i], t = doc.createTextNode(m.textContent);
+    m.parentNode.replaceChild(t, m);
+  }
+}
+function highlightIn(doc, terms){
+  clearHl(doc);
+  if (!terms.length || !doc || !doc.body) return 0;
+  var walker = doc.createTreeWalker(doc.body, 4 /* SHOW_TEXT */, null);
+  var nodes = [], n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  var count = 0;
+  nodes.forEach(function(node){
+    var text = node.nodeValue || '', lower = text.toLowerCase();
+    var hits = [];
+    terms.forEach(function(t){
+      var from = 0, at;
+      while ((at = lower.indexOf(t, from)) !== -1){ hits.push([at, t.length]); from = at + t.length; }
+    });
+    if (!hits.length) return;
+    hits.sort(function(a,b){ return a[0]-b[0]; });
+    var frag = doc.createDocumentFragment(), pos = 0;
+    hits.forEach(function(h){
+      if (h[0] > pos) frag.appendChild(doc.createTextNode(text.slice(pos, h[0])));
+      var mk = doc.createElement('mark'); mk.className = 'wz-hl'; mk.textContent = text.slice(h[0], h[0]+h[1]);
+      frag.appendChild(mk); pos = h[0]+h[1]; count++;
+    });
+    if (pos < text.length) frag.appendChild(doc.createTextNode(text.slice(pos)));
+    node.parentNode.replaceChild(frag, node);
+  });
+  return count;
+}
+function extractTerms(input){
+  var out = [], re = /"([^"]+)"|(\S+)/g, m;
+  while ((m = re.exec(input))){
+    var t = (m[1] || m[2] || '').trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
+function runPageSearch(){
+  var terms = extractTerms(psQ.value.trim());
+  var doc = fdoc();
+  if (!doc) { psCount.textContent = '无法访问'; return; }
+  psTotal = highlightIn(doc, terms);
+  psCur = 0;
+  psCount.textContent = terms.length ? (psTotal ? ('1/' + psTotal) : '0 结果') : '';
+  if (psTotal) scrollToMark(0);
+}
+function scrollToMark(i){
+  var doc = fdoc(); if (!doc) return;
+  var marks = doc.querySelectorAll('mark.wz-hl');
+  for (var k=0;k<marks.length;k++) marks[k].classList.remove('cur');
+  if (i < 0 || i >= marks.length) return;
+  marks[i].classList.add('cur');
+  psCur = i;
+  psCount.textContent = (i+1) + '/' + marks.length;
+  try { marks[i].scrollIntoView({ block: 'center' }); } catch(e){}
+  var w = frame.contentWindow; if (w && w.focus) w.focus();
+}
+document.getElementById('page-search-btn').addEventListener('click', function(){
+  psBar.classList.toggle('on');
+  if (psBar.classList.contains('on')){ psQ.focus(); runPageSearch(); }
+  else { clearHl(fdoc()); psCount.textContent=''; }
+});
+if (psQ){
+  psQ.addEventListener('input', runPageSearch);
+  psQ.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
+    else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
+    else if (e.key === 'ArrowUp' && e.altKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
+    else if (e.key === 'ArrowDown' && e.altKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
+    else if (e.key === 'Escape'){ psBar.classList.remove('on'); clearHl(fdoc()); }
+  });
+}
+document.getElementById('ps-prev').addEventListener('click', function(){ if (psTotal) { psCur = (psCur - 1 + psTotal) % psTotal; scrollToMark(psCur); } });
+document.getElementById('ps-next').addEventListener('click', function(){ if (psTotal) { psCur = (psCur + 1) % psTotal; scrollToMark(psCur); } });
+document.getElementById('ps-close').addEventListener('click', function(){ psBar.classList.remove('on'); clearHl(fdoc()); });
+
+/* ---------- 全站搜索（keywords + search-index，增强语法） ---------- */
+var kwData = [], ftData = [], kwReady = false, ftReady = false;
+var withinSet = null;  // 结果内筛选
+var lastQuery = '', lastTerms = [], lastHits = [];
+if (window.fetch){
+  fetch('keywords.json').then(function(r){ return r.json(); }).then(function(j){ kwData = (j && j.keywords) || []; kwReady = true; }).catch(function(){ kwReady = true; });
+  fetch('search-index.json').then(function(r){ return r.json(); }).then(function(j){ ftData = (j && j.records) || []; ftReady = true; }).catch(function(){ ftReady = true; });
+}
+function parseQuery(input){
+  var groups = [], re = /"([^"]+)"|(\S+)/g, m;
+  while ((m = re.exec(input))){
+    if (m[1]) groups.push({ type: 'phrase', term: m[1].toLowerCase() });
     else {
-      // 目录树过滤
-      document.querySelectorAll('#toc li').forEach(function(li){
-        var self=(li.textContent||'').toLowerCase().indexOf(s)!==-1;
-        if(!s){ li.style.display=''; }
-        else{
-          var childShow=false;
-          li.querySelectorAll(':scope > ul li').forEach(function(c){ if(c.style.display!=='none') childShow=true; });
-          li.style.display=(self||childShow)?'':'none';
-          if(li.classList.contains('folder')&&childShow) li.classList.add('open');
-        }
-      });
-      // 关键字即时；全文做 250ms 防抖
-      var kwRows=(kwData||[]).filter(function(k){ return (k.name||'').toLowerCase().indexOf(s)!==-1; })
-        .map(function(k){ return {title:k.name,hint:k.title||k.href,url:k.href}; });
-      if(!ftCache[s]) ftCache[s]=[];
-      renderRows(kwRows.concat(ftCache[s]));
-      window.clearTimeout(ftTimer);
-      ftTimer=window.setTimeout(function(){ fullSearch(s); },250);
+      var parts = m[2].split('|').map(function(s){ return s.trim().toLowerCase(); }).filter(Boolean);
+      if (parts.length > 1) groups.push({ type: 'or', terms: parts });
+      else if (parts.length) groups.push({ type: 'and', term: parts[0] });
+    }
+  }
+  return groups;
+}
+function hitScore(text, groups){
+  var score = 0, t = text.toLowerCase();
+  for (var i=0;i<groups.length;i++){
+    var g = groups[i];
+    if (g.type === 'and'){ if (t.indexOf(g.term) === -1) return -1; score += 2; }
+    else if (g.type === 'phrase'){ if (t.indexOf(g.term) === -1) return -1; score += 4; }
+    else {
+      var any = false;
+      for (var j=0;j<g.terms.length;j++){ if (t.indexOf(g.terms[j]) !== -1){ any = true; score += 2; } }
+      if (!any) return -1;
+    }
+  }
+  return score;
+}
+function catOf(url){ return url.indexOf('/') === -1 ? '（根）' : url.split('/')[0]; }
+function runSearch(raw){
+  var query = raw.trim();
+  if (!query){ resultsEl.hidden = true; lastHits = []; return; }
+  var groups = parseQuery(query);
+  var titleOnly = document.getElementById('titleOnly').checked;
+  var cat = document.getElementById('catFilter').value;
+  var hits = [];
+  var titleHit = {};
+  if (!titleOnly){
+    for (var i=0;i<ftData.length;i++){
+      var rec = ftData[i].text || '';
+      var score = hitScore(rec, groups);
+      if (score === -1) continue;
+      // 拆出每个 [page:...] 段单独计分
+      var re = /\[page:([^\]]+)\]([\s\S]*?)(?=\[page:|$)/g, m;
+      while ((m = re.exec(rec))){
+        var url = m[1], seg = m[2];
+        var s2 = hitScore(seg, groups);
+        if (s2 === -1) continue;
+        if (cat !== 'all' && catOf(url) !== cat) continue;
+        if (withinSet && !withinSet[url]) continue;
+        var at = seg.toLowerCase().indexOf(groups.length ? (groups[0].term || (groups[0].terms||[])[0] || '') : '');
+        var ctx = seg.replace(/\s+/g, ' ').trim();
+        var snippet = ctx.slice(Math.max(0, at - 30), at + 60);
+        hits.push({ url: url, title: url, score: s2 + 6, snip: snippet });
+        titleHit[url] = 1;
+      }
+    }
+  }
+  (kwData || []).forEach(function(k){
+    if (!k.name || !k.href) return;
+    var url = String(k.href).replace(/\\/g, '/');
+    if (cat !== 'all' && catOf(url) !== cat) return;
+    if (withinSet && !withinSet[url]) return;
+    var s = hitScore(k.name + ' ' + (k.title||''), groups);
+    if (s === -1) return;
+    hits.push({ url: url, title: k.name, score: s + 10, snip: k.title || '' });
+  });
+  // 排序：相关度
+  hits.sort(function(a,b){ return b.score - a.score; });
+  var seen = {}, uniq = [];
+  hits.forEach(function(h){ if (!seen[h.url]){ seen[h.url] = 1; uniq.push(h); } });
+  renderResults(uniq.slice(0, 30), extractTerms(query));
+}
+function renderResults(hits, terms){
+  lastHits = hits;
+  resultsEl.innerHTML = '';
+  if (!hits.length){ resultsEl.innerHTML = '<div class="empty">无匹配结果</div>'; resultsEl.hidden = false; return; }
+  function hl(s){
+    var out = String(s);
+    terms.slice().sort(function(a,b){ return b.length - a.length; }).forEach(function(t){
+      out = out.split(t).join('<mark>' + t + '</mark>');
+    });
+    return out;
+  }
+  hits.forEach(function(h, i){
+    var d = document.createElement('div');
+    d.className = 'res-item' + (i === 0 ? ' sel' : '');
+    d.innerHTML = '<span class="r">相关度 ' + h.score + '</span><span class="t">' + hl(h.title) + '</span><span class="p">' + hl(h.snip || '') + '</span>';
+    d.addEventListener('click', function(){ openPage(h.url); resultsEl.hidden = true; });
+    resultsEl.appendChild(d);
+  });
+  resultsEl.hidden = false;
+}
+function buildCats(){
+  var cats = {};
+  (kwData||[]).forEach(function(k){ if (k.href) cats[catOf(String(k.href).replace(/\\/g,'/'))] = 1; });
+  (ftData||[]).forEach(function(rec){
+    var re = /\[page:([^\]]+)\]/g, m;
+    while ((m = re.exec(rec.text||''))) cats[catOf(m[1])] = 1;
+  });
+  var sel = document.getElementById('catFilter');
+  Object.keys(cats).sort().forEach(function(c){
+    var o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+  });
+}
+var searchTimer = null;
+if (q){
+  q.addEventListener('input', function(){
+    var v = q.value;
+    window.clearTimeout(searchTimer);
+    if (!v){ resultsEl.hidden = true; return; }
+    searchTimer = window.setTimeout(function(){ runSearch(v); }, 180);
+  });
+  q.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){ q.value=''; resultsEl.hidden = true; }
+    else if (e.key === 'Enter'){
+      e.preventDefault();
+      var sel = resultsEl.querySelector('.res-item.sel');
+      if (sel) sel.click();
+      else { var first = resultsEl.querySelector('.res-item'); if (first) first.click(); }
+    }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      var items = resultsEl.querySelectorAll('.res-item');
+      if (!items.length) return;
+      var idx = 0;
+      for (var i=0;i<items.length;i++) if (items[i].classList.contains('sel')) idx = i;
+      idx = e.key === 'ArrowDown' ? Math.min(items.length-1, idx+1) : Math.max(0, idx-1);
+      for (var j=0;j<items.length;j++) items[j].classList.remove('sel');
+      items[idx].classList.add('sel');
+      try { items[idx].scrollIntoView({ block: 'nearest' }); } catch(_){}
     }
   });
-  document.addEventListener('click',function(e){
-    if(e.target===q) return;
-    if(!sres.contains(e.target)) sres.className='sres';
+}
+document.addEventListener('click', function(e){
+  if (resultsEl.contains(e.target) || e.target === q) return;
+  resultsEl.hidden = true;
+});
+document.getElementById('titleOnly').addEventListener('change', function(){ if (q.value.trim()) runSearch(q.value); });
+document.getElementById('catFilter').addEventListener('change', function(){ if (q.value.trim()) runSearch(q.value); });
+var withinBtn = document.getElementById('within-btn');
+if (withinBtn){
+  withinBtn.addEventListener('click', function(){
+    if (!lastHits.length && !q.value.trim()) return;
+    if (!withinSet){
+      withinSet = {};
+      lastHits.forEach(function(h){ withinSet[h.url] = 1; });
+      withinBtn.classList.add('on');
+      withinBtn.textContent = '结果内筛选 ✓';
+    } else {
+      withinSet = null;
+      withinBtn.classList.remove('on');
+      withinBtn.textContent = '结果内筛选';
+    }
+    if (q.value.trim()) runSearch(q.value);
   });
+}
+buildCats();
+
+/* ---------- 初始化 ---------- */
+(function init(){
+  var start = (location.hash || '').replace('#', '');
+  if (!start || !urlToNode.has(start)) start = home;
+  openPage(start);
+})();
 })();
 </script>
 </body></html>
