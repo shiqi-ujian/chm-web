@@ -3,7 +3,7 @@
 const { convert } = require('./lib/convert');
 const { extractChm, scan } = require('./lib/chm');
 const { serve } = require('./lib/serve');
-const { exportSite } = require('./lib/site-export');
+const { exportSite, exportDocs } = require('./lib/site-export');
 const path = require('path');
 const fs = require('fs');
 
@@ -18,6 +18,7 @@ Usage:
   node bin/cli.js scan <dir>                     # inspect a dir
   node bin/cli.js serve <dir> [port]             # static server
   node bin/cli.js export-site <siteRoot> [out.zip]  # pack whole site into a deployable zip
+  node bin/cli.js export-docs <siteRoot> <out.zip> [ids…]  # pack selected docs as a standalone static sub-site zip
   node bin/cli.js help
 `);
 }
@@ -42,6 +43,18 @@ async function main() {
     const r = exportSite({ siteRoot: path.resolve(input) });
     fs.writeFileSync(path.resolve(outZip), r.zip);
     console.log(`exported site (${r.manifest.fileCount} files, ${Math.round(r.manifest.totalBytes / 1024)} KB) → ${path.resolve(outZip)}`);
+  } else if (cmd === 'export-docs') {
+    const rest = process.argv.slice(2);
+    const idx = rest.indexOf('export-docs');
+    const outZip = rest[idx + 2] || 'docs-export-' + Date.now() + '.zip';
+    const ids = rest.slice(idx + 3)
+      .flatMap((s) => s.split(','))
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const r = exportDocs({ siteRoot: path.resolve(rest[idx + 1]), ids });
+    fs.writeFileSync(path.resolve(outZip), r.zip);
+    console.log(`exported ${r.manifest.docs.length} docs (${r.manifest.fileCount} files, ${Math.round(r.manifest.totalBytes / 1024)} KB) → ${path.resolve(outZip)}`);
+    console.log('  docs: ' + r.manifest.docs.join(', '));
   } else {
     printHelp();
   }

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { processUpload, UploadError } = require('./lib/upload');
 const landing = require('./lib/landing');
-const { exportSite } = require('./lib/site-export');
+const { exportSite, exportDocs } = require('./lib/site-export');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
@@ -123,6 +123,23 @@ function handleSiteExport(req, res) {
   res.end(r.zip);
 }
 
+/** 打包"选中若干文档"为独立静态子站 zip 下载（批量导出/私密部署的核心） */
+function handleExportDocs(req, res) {
+  const u = new URL(req.url, 'http://x');
+  const ids = (u.searchParams.get('ids') || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const r = exportDocs({ siteRoot: SITE_ROOT, ids });
+  const name = 'chm-web-docs-' + Date.now() + '.zip';
+  res.writeHead(200, {
+    'Content-Type': 'application/zip',
+    'Content-Length': r.zip.length,
+    'Content-Disposition': 'attachment; filename="' + name + '"',
+  });
+  res.end(r.zip);
+}
+
 const server = http.createServer((req, res) => {
   const urlPath = (new URL(req.url, 'http://x')).pathname;
   if (req.method === 'POST' && urlPath === '/api/upload') {
@@ -131,6 +148,8 @@ const server = http.createServer((req, res) => {
     sendJSON(res, 200, { docs: listDocs() });
   } else if (req.method === 'GET' && urlPath === '/site-export.zip') {
     handleSiteExport(req, res);
+  } else if (req.method === 'GET' && urlPath === '/api/export-docs') {
+    handleExportDocs(req, res);
   } else {
     serveStatic(req, res);
   }
@@ -142,6 +161,7 @@ server.listen(Number(PORT), () => {
   console.log('  site root :', SITE_ROOT);
   console.log('  POST /api/upload  → 上传 .chm 并转换');
   console.log('  GET  /api/docs    → 已发布文档列表');
-  console.log('  GET  /site-export.zip → 下载整站 zip');
+  console.log('  GET  /api/export-docs?ids=a,b → 批量导出选中文档为独立裸站 zip');
+  console.log('  GET  /site-export.zip     → 下载整站 zip');
   console.log('  直接打开首页: http://localhost:' + port + '/');
 });

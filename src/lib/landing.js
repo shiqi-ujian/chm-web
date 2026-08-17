@@ -66,8 +66,11 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .docs h2{font-size:18px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between}
   .docs h2 .export{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:#eaf3ff;border-radius:20px;padding:4px 12px}
   .docs h2 .export:hover{background:#d6e9ff}
+  .docs h2 .exp-other{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:#eaf3ff;border-radius:20px;padding:4px 12px;margin-right:6px}
   .doc-row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-  .doc-row .name{font-weight:600;font-size:15px}
+  .doc-row .left{display:flex;align-items:center;min-width:0}
+  .doc-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);cursor:pointer;margin-right:12px;flex:0 0 auto}
+  .doc-row .name{display:inline-block;font-weight:600;font-size:15px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:36vw}
   .doc-row .tag{font-size:12px;color:var(--mut);background:#f0f2f5;border-radius:20px;padding:2px 10px}
   .doc-row a{color:var(--acc);text-decoration:none;font-size:14px}
   .doc-row a:hover{text-decoration:underline}
@@ -102,7 +105,7 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   </div>
 
   <div class="docs">
-    <h2>我的文档 <a class="export" id="exportBtn" href="javascript:void(0)" title="把整站打包成可部署的 zip 下载">导出整站 zip ⬇</a></h2>
+    <h2>我的文档 <span style="display:inline-flex"><a class="exp-other" id="exportSelBtn" href="javascript:void(0)" title="把勾选的文档打包成独立可部署的裸站 zip 下载">导出选中 zip ⬇</a><a class="export" id="exportBtn" href="javascript:void(0)" title="把整站打包成可部署的 zip 下载">导出整站 zip ⬇</a></span></h2>
     <div id="docsList"></div>
   </div>
 
@@ -212,14 +215,49 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   });
 
   // 渲染“我的文档”：优先请求后端列表，失败则用生成时注入的占位清单
+  var selectedDocs = {};   // id -> true，用于“导出选中”
   function renderDocs(list){
     var box=document.getElementById('docsList');
     var arr = (list && list.length) ? list : (typeof __DOCS_JSON__!=='undefined'?__DOCS_JSON__:[]); /* __DOCS_JSON__ injected at build */
-    if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>'; return; }
+    if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>';
+      updateExportSelBtn(); return; }
     box.innerHTML=arr.map(function(d){
-      return '<div class="doc-row"><div><div class="name">'+esc(d.name||d.id)+'</div><span class="tag">公开</span></div>'+
-             '<a href="'+escH(d.href||d.url)+'">打开 ›</a></div>';
+      var id=(d.id||d.href||'').replace(/[\\/]+$/,'').split('/').pop();
+      var chk='<label class="left"><input type="checkbox" data-id="'+escH(id)+'" '+(selectedDocs[id]?'checked':'')+'><span class="name">'+esc(d.name||id)+'</span></label>';
+      return '<div class="doc-row">'+chk+'<span class="tag">公开</span><a href="'+escH(d.href||d.url)+'">打开 ›</a></div>';
     }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('input[type=checkbox]'),function(c){
+      c.addEventListener('change',function(){
+        var id=c.getAttribute('data-id');
+        if(c.checked) selectedDocs[id]=true; else delete selectedDocs[id];
+        updateExportSelBtn();
+      });
+    });
+    updateExportSelBtn();
+  }
+  function selectedIds(){ var a=[]; for(var k in selectedDocs){ if(selectedDocs[k]) a.push(k); } return a; }
+  function updateExportSelBtn(){
+    var b=document.getElementById('exportSelBtn');
+    if(!b) return;
+    var n=selectedIds().length;
+    b.textContent = n ? ('导出选中('+n+') zip ⬇') : '导出选中 zip ⬇';
+    b.style.opacity = n ? '1' : '.5';
+  }
+  // 导出选中：请求后端 /api/export-docs?ids=…，下载独立裸站 zip
+  var exportSelBtn=document.getElementById('exportSelBtn');
+  if(exportSelBtn){
+    exportSelBtn.addEventListener('click',function(e){
+      e.preventDefault();
+      var ids=selectedIds();
+      if(!ids.length){ alert('请先勾选要导出的文档。'); return; }
+      if(window.location.protocol==='file:'){ alert('纯静态打开时无法打包，请用本地服务或线上站点访问后导出。'); return; }
+      exportSelBtn.textContent='打包中…';
+      var dl=document.createElement('a');
+      dl.href='/api/export-docs?ids='+encodeURIComponent(ids.join(','));
+      dl.download='chm-docs-export.zip';
+      document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
+      setTimeout(function(){ updateExportSelBtn(); }, 900);
+    });
   }
   function refreshDocs(){
     if(!window.fetch) return;

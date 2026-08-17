@@ -20,8 +20,7 @@
 | M1 | CHM 解包 + 转静态 HTML | ✅ 已完成（7z 解包、.hhc 目录树、.hhk 关键字、阅读壳） |
 | M2 | 双端可浏览 + 可见性权限 | 🔶 部分完成（可浏览/手机抽屉目录；**可见性、账号、上传真实闭环未做**） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
-| M4 | 批量 + 私有部署导出 | 🟡 起步（**整站导出 zip 已做**：欢迎页按钮 + CLI `export-site` + 后端 `GET /site-export.zip` + manifest.json；批量上传/批量导出待做） |
-| M4 | 批量 + 私有部署导出 | ◻️ 未开始 |
+| M4 | 批量 + 私有部署导出 | ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
 
 ---
 
@@ -75,7 +74,7 @@
 
 - [ ] **真实上传闭环**：把欢迎页「上传」按钮接到真实后端。需要一台能跑 Node + 7z 的服务器（约 ¥50/月档）——当前按钮只提示"服务器即将开放"。（本地后端已验证可用；部署待有服务器）
 - [ ] **账号 + 可见性**（M2 剩余）：私密/公开/分享链接，「我的上传」列表。属于需要后端的账号体系。
-- [ ] **M4 批量**：支持一次多个 CHM 批量上传；批量 / 选中导出为 zip / 静态站点。（站点级单包导出已做）
+- [ ] **转换完成整批自动打包下载**（M4 可选增强）：目前是「逐个转换入库 → 勾选导出」；可再加「一次批量上传即直接打包整批下载」。
 - [ ] 正文中文翻译：目录树已中文化；正文目前是原文（7-Zip 手册全部英文）。
 - [ ] autosync 在多台设备上的部署说明。
 
@@ -91,7 +90,7 @@ src/lib/
   preview.js    阅读壳(index.html) + 目录/关键字/全文检索 + search-index.json
   landing.js    欢迎页(index.html) + 全站聚合检索 site-index.json
   zip.js        零依赖 zip 打包器（STORE + DEFLATE）
-  site-export.js  整站导出（含 manifest.json）：exportSite()/collectFiles()
+  site-export.js  整站导出（含 manifest.json）：exportSite()/collectFiles()/exportDocs()/aggregateSiteIndex()
   convert.js    convert() + buildSite()
   serve.js      零依赖静态服务器
   sanitize.js   剔除 CHM 内部 #/$ 元数据
@@ -101,5 +100,6 @@ scripts/
   autosync_hidden.vbs  隐藏启动
  docs/          站点/发布产物（GitHub Pages 根）
 ```
+（另 `test-export-docs.js`：选中多篇导出独立裸站 zip 的自测，随 `npm test` 跑。）
 
 **运行**：`node bin/cli.js convert 文件.chm 输出目录`；`node bin/cli.js serve 输出目录 8080`；`npm test` 自测。
