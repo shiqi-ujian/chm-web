@@ -4,3 +4,5 @@ data/
 samples/*.chm
 *.tmp
 logs/
+# 运行时生成的站点索引（非手工维护）
+docs/_index.json

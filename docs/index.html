@@ -76,21 +76,26 @@
   var msg=document.getElementById('msg');
   var go=document.getElementById('go');
   var chosen=null;
-
-  // 文档列表数据（由生成时注入）
-  var DOCS = [{"name":"7-Zip 帮助手册（演示）","href":"d/7z-demo/"}];
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function escH(s){ return esc(s).replace(/'/g,'&#39;'); }
 
-  // 渲染“我的文档”
-  (function renderDocs(){
+  // 渲染“我的文档”：优先请求后端列表，失败则用生成时注入的占位清单
+  function renderDocs(list){
     var box=document.getElementById('docsList');
-    if(!DOCS.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>'; return; }
-    box.innerHTML=DOCS.map(function(d){
-      return '<div class="doc-row"><div><div class="name">'+esc(d.name)+'</div><span class="tag">公开</span></div>'+
-             '<a href="'+escH(d.href)+'">打开 ›</a></div>';
+    var arr = (list && list.length) ? list : (typeof [{"name":"7-Zip 帮助手册（演示）","href":"d/7-zip/"}]!=='undefined'?__DOCS_JSON__:[]);
+    if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>'; return; }
+    box.innerHTML=arr.map(function(d){
+      return '<div class="doc-row"><div><div class="name">'+esc(d.name||d.id)+'</div><span class="tag">公开</span></div>'+
+             '<a href="'+escH(d.href||d.url)+'">打开 ›</a></div>';
     }).join('');
-  })();
+  }
+  function refreshDocs(){
+    if(!window.fetch) return;
+    fetch('/api/docs').then(function(r){ return r.json(); }).then(function(j){
+      if(j && j.docs) renderDocs(j.docs);
+    }).catch(function(){ /* 无后端时保持静态注入 */ });
+  }
+  (function initDocs(){ renderDocs(null); refreshDocs(); })();
 
   drop.addEventListener('click',function(){ file.click(); });
   drop.addEventListener('dragover',function(e){ e.preventDefault(); drop.classList.add('over'); });
@@ -104,9 +109,28 @@
     msg.innerHTML='';
   }
 
+  // 真实上传（有后端时）
   go.addEventListener('click',function(){
     if(!chosen){ msg.innerHTML='<span class=err>请先选择一个 .chm 文件</span>'; return; }
-    msg.innerHTML='<span class=ok>服务器正在准备，上传功能即将开放。你可以先把示例文档分享给朋友看效果。</span>';
+    if(!window.fetch || !window.FormData){ msg.innerHTML='<span class=err>当前环境不支持上传。</span>'; return; }
+    var fd=new FormData(); fd.append('file', chosen);
+    go.disabled=true; go.textContent='转换中…';
+    msg.innerHTML='<span class=ok>正在上传并转换，大约几秒…</span>';
+    fetch('/api/upload',{method:'POST',body:fd}).then(function(res){
+      return res.json().then(function(j){ return {st:res.status, j:j}; });
+    }).then(function(x){
+      go.disabled=false; go.textContent='转换文档';
+      if(x.st===200 && x.j && x.j.url){
+        msg.innerHTML='<span class=ok>转换成功！即将打开新文档…</span>';
+        renderDocs(); refreshDocs();
+        setTimeout(function(){ location.href=x.j.url; }, 900);
+      } else {
+        msg.innerHTML='<span class=err>'+esc((x.j&&x.j.error)||'转换失败')+'</span>';
+      }
+    }).catch(function(e){
+      go.disabled=false; go.textContent='转换文档';
+      msg.innerHTML='<span class=err>上传失败：'+esc(e&&e.message||e)+'</span>';
+    });
   });
 })();
 </script>
