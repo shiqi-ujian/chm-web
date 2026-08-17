@@ -7,7 +7,7 @@
   "scripts": {
     "convert": "node bin/cli.js convert",
     "serve": "node bin/cli.js serve",
-    "test": "node test-serve.js && node test-hhc.js"
+    "test": "node test-serve.js && node test-hhc.js && node test-fulltext.js"
   },
   "license": "UNLICENSED"
 }

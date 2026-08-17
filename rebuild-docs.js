@@ -1,0 +1,27 @@
+'use strict';
+// rebuild-docs.js — regenerate shell + indexes for every doc under docs/d (idempotent).
+const fs = require('fs');
+const path = require('path');
+const preview = require('./src/lib/preview');
+
+const root = path.join(__dirname, 'docs', 'd');
+const ids = fs.readdirSync(root).filter((n) => {
+  try { return fs.statSync(path.join(root, n)).isDirectory(); } catch { return false; }
+});
+for (const id of ids) {
+  const dir = path.join(root, id);
+  const files = fs.readdirSync(dir);
+  const hhc = files.find((f) => /\.hhc$/i.test(f));
+  const hhk = files.find((f) => /\.hhk$/i.test(f));
+  try {
+    preview.build({
+      outDir: dir,
+      hhcFile: hhc ? path.join(dir, hhc) : null,
+      hhkFile: hhk ? path.join(dir, hhk) : null,
+      title: id,
+    });
+    console.log('rebuilt ' + id + ' -> search-index=' + fs.existsSync(path.join(dir, 'search-index.json')));
+  } catch (e) {
+    console.log('ERR ' + id + ' -> ' + (e && e.message));
+  }
+}

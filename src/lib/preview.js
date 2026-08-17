@@ -1,12 +1,14 @@
 'use strict';
-// preview.js — build a usable shell (index.html) for a converted CHM, in both
-// desktop (left TOC + right content) and mobile (top-to-bottom single page with
-// a hamburger drawer) layouts. Writes __chm_nav.html + keywords.json too.
+// preview.js — convert the usable shell (index.html) for a converted CHM, in both
+// records. Writes __chm_nav.html + keywords.json + search-index.json too.
 const fs = require('fs');
 const path = require('path');
 const { parseHhcFile } = require('./hhc');
 const parseHhk = require('./hhk').parseHhk;
 const { translate } = require('./translations');
+
+// Number of HTML pages per index-record / chunk for full-text search.
+const CHUNK_SIZE = 64;
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -52,9 +54,17 @@ const SHELL_CSS = String.raw`
   .topbar .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;color:var(--ink);line-height:1}
   .topbar .btn:hover{background:var(--b)}
   .topbar .title{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .topbar .search{flex:1;max-width:360px;min-width:120px;margin-left:auto}
+  .topbar .search{flex:1;max-width:420px;min-width:150px;margin-left:auto;position:relative}
   .topbar input[type=text]{width:100%;padding:6px 26px 6px 10px;border:1px solid var(--line);border-radius:20px;font-size:14px;outline:none}
   .topbar input[type=text]:focus{border-color:var(--acc)}
+  .sres{position:absolute;top:40px;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);max-height:60vh;overflow:auto;display:none;z-index:80}
+  .sres.on{display:block}
+  .sres .empty{padding:12px 14px;color:var(--mut);font-size:13px}
+  .sres a{display:block;padding:9px 14px;border-bottom:1px solid var(--b);font-size:13.5px;color:var(--ink);text-decoration:none}
+  .sres a:last-child{border-bottom:0}
+  .sres a:hover{background:var(--b)}
+  .sres a .k{font-weight:600;color:var(--acc)}
+  .sres a .p{display:block;color:var(--mut);font-size:12px;margin-top:1px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
   .btn.close{flex:0 0 auto}
   .main{position:fixed;top:52px;left:0;right:0;bottom:0;display:flex}
   .toc{width:300px;min-width:300px;overflow:auto;background:var(--card);border-right:1px solid var(--line)}
@@ -94,7 +104,8 @@ function shell({ navHtml, title, home }) {
 <div class="topbar">
   <button class="btn" id="btnMenu" type="button" aria-label="目录">☰</button>
   <span class="title" id="docTitle">${escAttr(title || '文档')}</span>
-  <div class="search"><input type="text" id="q" placeholder="搜索目录…" autocomplete="off"></div>
+  <div class="search"><input type="text" id="q" placeholder="搜索…" autocomplete="off">
+    <div class="sres" id="sres"></div></div>
   <button class="btn close closeBtn" id="btnClose" aria-label="关闭" title="关闭目录">✕</button>
 </div>
 <div class="mask" id="mask"></div>
@@ -145,24 +156,137 @@ function shell({ navHtml, title, home }) {
     });
   });
 
-  // 目录搜索过滤
+  // 搜索：关键字(keywords.json) + 全文(search-index.json) 组合下拉
+  var sres=document.getElementById('sres');
+  var kwData=[], ftData=[], kwReady=false, ftReady=false, ftTimer=null;
+  var ftCache={};            // 查询关键词 -> 全文命中([])
+  if(window.fetch){
+    fetch('keywords.json').then(function(r){return r.json();}).then(function(j){ kwData=(j&&j.keywords)||[]; kwReady=true; })
+      .catch(function(){ kwReady=true; });
+    fetch('search-index.json').then(function(r){return r.json();}).then(function(j){ ftData=(j&&j.records)||[]; ftReady=true; })
+      .catch(function(){ ftReady=true; });
+  }
+  function openResult(href){
+    if(href && href!=='#'){ frame.src=href; }
+    links.forEach(function(a){ a.parentElement.classList.remove('active'); if(a.getAttribute('href')===href) a.parentElement.classList.add('active'); });
+    if(href){ try{ history.replaceState(null,'','#'+href); }catch(e){} }
+    sres.className='sres';
+    q.value='';
+  }
+  function renderRows(rows,s){
+    var uniq={}, out=[];
+    rows.forEach(function(h){ var key=h.href; if(key&&!uniq[key]){ uniq[key]=1; out.push(h); } });
+    var html='';
+    if(!out.length){ html='<div class="empty">无匹配结果</div>'; }
+    else { out.slice(0,14).forEach(function(h){
+      html+='<a href="javascript:void 0)" data-href="'+escAttr(h.url)+'"><span class="k">'+esc(h.title)+'</span><span class="p">'+esc(h.hint||'')+'</span></a>';
+    }); }
+    sres.innerHTML=html; sres.className='sres on';
+    Array.prototype.forEach.call(sres.querySelectorAll('a[data-href]'),function(a){
+      a.addEventListener('click',function(ev){ ev.preventDefault(); openResult(a.getAttribute('data-href')); });
+    });
+  }
+  function fullSearch(s){
+    if(!ftReady) return;
+    var sl=s.toLowerCase(), hits=[];
+    for(var i=0;i<ftData.length && hits.length<10;i++){
+      var rec=(ftData[i].text||'').toLowerCase();
+      var at=rec.indexOf(sl);
+      if(at===-1) continue;
+      var page=(ftData[i].text.match(/\[page:([^\]]+)\]/)||[])[1]||'';
+      var ctx=ftData[i].text.slice(Math.max(0,at-30),at+55).replace(/\s+/g,' ').trim();
+      hits.push({title:page,hint:ctx,url:page});
+    }
+    ftCache[s]=hits;
+    // 与关键字结果合并后重绘（若输入框还是当前查询）
+    if(q.value.trim().toLowerCase()===s) redraw(s);
+  }
+  function redraw(s){
+    var rows=(ftCache[s]||[]).slice();
+    (kwData||[]).forEach(function(k){
+      if((k.name||'').toLowerCase().indexOf(s)!==-1) rows.push({title:k.name,hint:k.title||k.href,url:k.href});
+    });
+    renderRows(rows);
+  }
   q.addEventListener('input',function(){
     var s=q.value.trim().toLowerCase();
-    document.querySelectorAll('#toc li').forEach(function(li){
-      var self=(li.textContent||'').toLowerCase().indexOf(s)!==-1;
-      if(!s){ li.style.display=''; return; }
-      var childShow=false;
-      li.querySelectorAll(':scope > ul li').forEach(function(c){ if(c.style.display!=='none') childShow=true; });
-      li.style.display=(self||childShow)?'':'none';
-      if(li.classList.contains('folder')&&childShow){ li.classList.add('open'); }
-    });
+    if(!s){ sres.className='sres'; ftCache={}; }
+    else {
+      // 目录树过滤
+      document.querySelectorAll('#toc li').forEach(function(li){
+        var self=(li.textContent||'').toLowerCase().indexOf(s)!==-1;
+        if(!s){ li.style.display=''; }
+        else{
+          var childShow=false;
+          li.querySelectorAll(':scope > ul li').forEach(function(c){ if(c.style.display!=='none') childShow=true; });
+          li.style.display=(self||childShow)?'':'none';
+          if(li.classList.contains('folder')&&childShow) li.classList.add('open');
+        }
+      });
+      // 关键字即时；全文做 250ms 防抖
+      var kwRows=(kwData||[]).filter(function(k){ return (k.name||'').toLowerCase().indexOf(s)!==-1; })
+        .map(function(k){ return {title:k.name,hint:k.title||k.href,url:k.href}; });
+      if(!ftCache[s]) ftCache[s]=[];
+      renderRows(kwRows.concat(ftCache[s]));
+      window.clearTimeout(ftTimer);
+      ftTimer=window.setTimeout(function(){ fullSearch(s); },250);
+    }
+  });
+  document.addEventListener('click',function(e){
+    if(e.target===q) return;
+    if(!sres.contains(e.target)) sres.className='sres';
   });
 })();
 </script>
 </body></html>`;
 }
 
-module.exports = { build, renderTree, esc };
+// ---- full-text search index generation ----
+
+/** Crude HTML→plain-text: strip tags/scripts/styles, collapse whitespace. */
+function htmlToText(html) {
+  const s = String(html == null ? '' : html)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  return s.replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ').trim();
+}
+
+/** Build a full-text search index from the HTML pages under docRoot. */
+function buildFullText(docDir) {
+  // The synthetic shells we generate ourselves must not be indexed.
+  const skip = new Set(['index.html', '__chm_nav.html']);
+  const allFiles = [];
+  (function walk(dir) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (skip.has(e.name)) continue;
+      if (e.isDirectory()) { walk(full); continue; }
+      if (/\.(html?)$/i.test(e.name)) allFiles.push(full);
+    }
+  })(docDir);
+
+  const records = [];
+  const chunks = [];
+  const flush = () => { if (chunks.length) { records.push({ text: chunks.splice(0).join('\n') }); } };
+
+  for (const file of allFiles) {
+    let text = htmlToText(fs.readFileSync(file, 'utf8'));
+    if (!text) continue;
+    const rel = path.relative(docDir, file).replace(/\\/g, '/');
+    chunks.push('[page:' + rel + ']\n' + text.slice(0, 6000));
+    if (chunks.length >= CHUNK_SIZE) flush();
+  }
+  flush();
+  return { records };
+}
+
+module.exports = { build, renderTree, esc, buildFullText };
 
 function build({ outDir, hhcFile, hhkFile, title }) {
   const dir = path.resolve(outDir);
@@ -181,7 +305,10 @@ function build({ outDir, hhcFile, hhkFile, title }) {
   const navHtml = renderTree(tree, dir);
   let kw = { keywords: [] };
   if (hhkFile && fs.existsSync(hhkFile)) kw = { keywords: parseHhk(hhkFile, dir) };
+
   fs.writeFileSync(path.join(dir, 'keywords.json'), JSON.stringify(kw, null, 2));
+  fs.writeFileSync(path.join(dir, 'search-index.json'),
+    JSON.stringify(buildFullText(dir)));
   fs.writeFileSync(path.join(dir, 'index.html'), shell({ navHtml, title, home: homeHref }));
   fs.writeFileSync(path.join(dir, '__chm_nav.html'),
     '<!doctype html><html><head><meta charset="utf-8"><title>目录</title>' +

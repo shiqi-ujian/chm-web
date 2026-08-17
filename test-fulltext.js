@@ -1,0 +1,37 @@
+'use strict';
+// test-fulltext.js — verify the full-text search index builder + shell generation.
+const path = require('path');
+const fs = require('fs');
+const preview = require('./src/lib/preview');
+
+function log(s) { console.log('  ' + s); }
+let pass = true;
+const ok = (name, cond) => { log((cond ? 'OK  ' : 'FAIL') + ' ' + name); if (!cond) pass = false; };
+
+(async () => {
+  // 1) index builder on the existing 7-zip doc
+  const r = preview.buildFullText(path.join(__dirname, 'docs', 'd', '7-zip'));
+  ok('full-text has >=1 record', r.records.length >= 1);
+  const benchHits = r.records.filter((x) => x.text.toLowerCase().includes('benchmark')).length;
+  ok('matches "benchmark" in >=1 record', benchHits >= 1);
+  const pageMarker = r.records.some((x) => /\[page:[A-Za-z0-9_\/.-]+\.(htm|html)\]/.test(x.text));
+  ok('records carry [page:...] markers', pageMarker);
+
+  // 2) build() writes search-index.json alongside existing docs
+  const docDir = path.join(__dirname, 'docs', 'd', '7-zip');
+  preview.build({ outDir: docDir, hhcFile: path.join(docDir, '7zip.hhc'), hhkFile: path.join(docDir, '7zip.hhk'), title: '7-Zip' });
+  const idxPath = path.join(docDir, 'search-index.json');
+  ok('search-index.json written', fs.existsSync(idxPath));
+  const idx = JSON.parse(fs.readFileSync(idxPath, 'utf8'));
+  ok('search-index.json parses with records', Array.isArray(idx.records) && idx.records.length > 0);
+  const idxHits = idx.records.filter((x) => x.text.toLowerCase().includes('benchmark')).length;
+  ok('search-index.json matches benchmark', idxHits >= 1);
+
+  // 3) index.html shell now references search + dropdown
+  const shell = fs.readFileSync(path.join(docDir, 'index.html'), 'utf8');
+  ok('shell references search-index.json', shell.includes('search-index.json'));
+  ok('shell has result dropdown (#sres)', shell.includes('id="sres"'));
+
+  console.log(pass ? 'FULLTEXT_TEST_PASS' : 'FULLTEXT_TEST_FAIL');
+  process.exit(pass ? 0 : 1);
+})().catch((e) => { console.error(e); process.exit(1); });
