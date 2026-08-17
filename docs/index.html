@@ -36,6 +36,11 @@
   .btn:disabled{background:#9db6d9;cursor:not-allowed}
   .file-pick{display:none}
   .file-pick.show{display:block;margin-top:14px;font-size:14px;color:var(--mut)}
+  .pickrow{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;background:#fff}
+  .pickrow .fn{font-weight:600;font-size:13.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .pickrow .fb{color:var(--mut);font-size:12px;margin-left:8px;flex:0 0 auto}
+  .pickrow .rm{border:0;background:#f0f2f5;color:var(--mut);border-radius:50%;width:20px;height:20px;line-height:1;cursor:pointer;margin-left:8px;flex:0 0 auto}
+  .pickrow .rm:hover{background:#ffebe9;color:var(--err)}
   .message{margin-top:14px;font-size:14px;min-height:20px}
   .message .err{color:var(--err)}
   .message .ok{color:var(--ok)}
@@ -110,9 +115,31 @@
   var pick=document.getElementById('filePick');
   var msg=document.getElementById('msg');
   var go=document.getElementById('go');
-  var chosen=null;
+  var chosenList=[];   // 批量：Array<File>
+  var allFiles=[];     // 所有合法 .chm
+  var seq=0;           // 标识本次选区，避免过期回调写坏列表
+  var ok=[], fail=[];  // 批量进度
+  function noop(){}
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function escH(s){ return esc(s).replace(/'/g,'&#39;'); }
+  function fmtSize(b){ if(!b&&b!==0)return ''; if(b<1024)return b+' B'; if(b<1048576)return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+  function isValidChm(name){ return /\.chm$/i.test(name||''); }
+  function setStep3(){ updateSelUI(); }
+  function updateSelUI(){
+    pick.classList.toggle('show', allFiles.length>0);
+    pick.innerHTML=(allFiles||[]).map(function(f,i){
+      return '<div class="pickrow"><span class="fn">'+esc(f.name)+'</span><span class="fb">'+fmtSize(f.size)+'</span>'+
+             '<button type="button" class="rm" data-i="'+i+'">✕</button></div>';
+    }).join('');
+    Array.prototype.forEach.call(pick.querySelectorAll('button.rm'),function(b){
+      b.addEventListener('click',function(){ removeFile(Number(b.getAttribute('data-i'))); });
+    });
+    go.disabled=!(allFiles.length>0);
+    go.textContent = allFiles.length>1 ? ('转换 '+allFiles.length+' 个文档') : '转换文档';
+  }
+  function removeFile(i){
+    if(i>=0 && i<allFiles.length){ allFiles.splice(i,1); updateSelUI(); }
+  }
 
   // ---- 全站搜索：加载 site-index.json，跨所有文档过滤 ----
   var sres=document.getElementById('sres');
@@ -189,41 +216,62 @@
   }
   (function initDocs(){ renderDocs(null); refreshDocs(); })();
 
+  // 批量上传 UI：支持多选 / 拖拽多个 .chm
+  function addFiles(list){
+    var added=0, skipped=[];
+    Array.prototype.forEach.call(list||[],function(f){
+      if(!isValidChm(f.name)){ skipped.push(f.name); return; }
+      // 去重（按 name+size）
+      if(allFiles.some(function(x){return x.name===f.name && x.size===f.size;})) return;
+      allFiles.push(f); added++;
+    });
+    if(skipped.length) msg.innerHTML='<span class=err>已跳过非 .chm 文件：'+esc(skipped.slice(0,3).join('、'))+ (skipped.length>3?' 等': '') +'</span>';
+    updateSelUI();
+  }
+
   drop.addEventListener('click',function(){ file.click(); });
   drop.addEventListener('dragover',function(e){ e.preventDefault(); drop.classList.add('over'); });
   drop.addEventListener('dragleave',function(){ drop.classList.remove('over'); });
-  drop.addEventListener('drop',function(e){ e.preventDefault(); drop.classList.remove('over'); if(e.dataTransfer.files&&e.dataTransfer.files[0]) select(e.dataTransfer.files[0]); });
-  file.addEventListener('change',function(){ if(file.files[0]) select(file.files[0]); });
+  drop.addEventListener('drop',function(e){ e.preventDefault(); drop.classList.remove('over'); if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+  file.addEventListener('change',function(){ if(file.files&&file.files.length){ addFiles(file.files); file.value=''; } });
 
-  function select(f){
-    if(!/\.chm$/i.test(f.name)){ msg.innerHTML='<span class="err">请选择 .chm 文件</span>'; return; }
-    chosen=f; pick.textContent='已选择：'+f.name+' · '+(f.size/1024).toFixed(1)+' KB'; pick.classList.add('show');
-    msg.innerHTML='';
+  // ---- 批量转换：逐个上传，汇总成功/失败 ----
+  function doUploadOne(file, cb){
+    var fd=new FormData(); fd.append('file', file);
+    fetch('/api/upload',{method:'POST',body:fd})
+      .then(function(res){ return res.json().then(function(j){ return {st:res.status,j:j}; }); })
+      .then(function(x){ cb(null, x); })
+      .catch(function(e){ cb(e); });
   }
-
-  // 真实上传（有后端时）
-  go.addEventListener('click',function(){
-    if(!chosen){ msg.innerHTML='<span class=err>请先选择一个 .chm 文件</span>'; return; }
+  function runBatch(){
+    var files=allFiles.slice();
+    if(!files.length){ msg.innerHTML='<span class=err>请先选择 .chm 文件</span>'; return; }
     if(!window.fetch || !window.FormData){ msg.innerHTML='<span class=err>当前环境不支持上传。</span>'; return; }
-    var fd=new FormData(); fd.append('file', chosen);
-    go.disabled=true; go.textContent='转换中…';
-    msg.innerHTML='<span class=ok>正在上传并转换，大约几秒…</span>';
-    fetch('/api/upload',{method:'POST',body:fd}).then(function(res){
-      return res.json().then(function(j){ return {st:res.status, j:j}; });
-    }).then(function(x){
+    var mySeq=++seq;
+    go.disabled=true;
+    ok=[]; fail=[];
+    function update(){ go.textContent='转换中 '+ (ok.length+fail.length) +'/'+files.length; }
+    function done(){
       go.disabled=false; go.textContent='转换文档';
-      if(x.st===200 && x.j && x.j.url){
-        msg.innerHTML='<span class=ok>转换成功！即将打开新文档…</span>';
-        renderDocs(); refreshDocs();
-        setTimeout(function(){ location.href=x.j.url; }, 900);
-      } else {
-        msg.innerHTML='<span class=err>'+esc((x.j&&x.j.error)||'转换失败')+'</span>';
+      allFiles=[]; updateSelUI();
+      renderDocs(null); refreshDocs();
+      if(fail.length){
+        msg.innerHTML='<span class=err>完成 '+ok.length+'，失败 '+fail.length+' 个（'+esc(fail.join('、'))+'）</span>';
+      } else if(ok.length){
+        msg.innerHTML='<span class=ok>全部转换成功！'+ok.length+' 篇已可在“我的文档”中打开。</span>';
       }
-    }).catch(function(e){
-      go.disabled=false; go.textContent='转换文档';
-      msg.innerHTML='<span class=err>上传失败：'+esc(e&&e.message||e)+'</span>';
+    }
+    files.forEach(function(f){
+      doUploadOne(f, function(res){
+        if(seq!==mySeq) return; // 已作废
+        if(res && res[1] && res[1].ok){ ok.push(res[1].name||f.name); }
+        else { fail.push(f.name); }
+        update();
+        if(ok.length+fail.length===files.length) done();
+      });
     });
-  });
+  }
+  go.addEventListener('click',runBatch);
 })();
 </script>
 </body></html>
