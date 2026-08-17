@@ -21,6 +21,7 @@
 | M2 | 双端可浏览 + 可见性权限 | 🔶 部分完成（可浏览/手机抽屉目录；**可见性、账号、上传真实闭环未做**） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
 | M4 | 批量 + 私有部署导出 | ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
+| Rails部署 | 接正式后端（B 形态） | 🟡 进行中：已加 `HOST` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌开关（不设则不锁）；`7zz` 候选；`deploy/` 脚手架（Dockerfile / systemd / Caddy 示例）+ 根 `Dockerfile`/`.dockerignore` 供 Railway 直接用 |
 
 ---
 

@@ -1,0 +1,8 @@
+# 本地 docker build 时减小构建上下文（Railway 从 git 拉，本来就不含这些）
+node_modules
+out
+data
+logs
+samples
+.git
+*.tmp

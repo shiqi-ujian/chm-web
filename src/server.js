@@ -1,9 +1,10 @@
 'use strict';
 // server.js — 真正的后端：静态站点托管 + POST /api/upload 上传转换。
-// 本机即可起服务验证闭环；将来部署到公网改绑 0.0.0.0 并配 HTTPS/域名即可。
+// 本机即可起服务验证闭环；部署到公网：设置 HOST/UPLOAD_TOKEN/PORT 后前置反代 + HTTPS。
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { processUpload, UploadError } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs } = require('./lib/site-export');
@@ -12,7 +13,27 @@ const { exportSite, exportDocs } = require('./lib/site-export');
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
 const DATA_DIR = path.resolve(process.env.CHM_DATA || path.join(__dirname, '..', 'data'));
 const PORT = Number(process.env.PORT) || 8080;
+const HOST = process.env.HOST || '0.0.0.0'; // 默认绑全接口；本机调试可设 127.0.0.1
 const MAX_BYTES = 80 * 1024 * 1024;
+
+// —— 简单鉴权(A 形态)：用环境变量设 token 即开启对应防护；不设则保持现状（不锁）。
+// UPLOAD_TOKEN  保护写操作（POST /api/upload）
+// EXPORT_TOKEN  保护文档导出（/api/export-docs、/site-export.zip）
+// 客户端须在请求头带 X-Auth-Token: <token>。
+const UPLOAD_TOKEN = process.env.UPLOAD_TOKEN || '';
+const EXPORT_TOKEN = process.env.EXPORT_TOKEN || '';
+
+/** 请求头是否带有效 token（token 未设置时放行） */
+function authorized(req, token) {
+  if (!token) return true;                 // 未配置 → 不校验（默认开）
+  const got = (req.headers['x-auth-token'] || '').trim();
+  if (!got || got.length !== token.length) return false;
+  // 常量时间比较，避免时序侧信道
+  return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(token));
+}
+function deny(req, res) {
+  sendJSON(res, 401, { ok: false, error: '需要有效的访问令牌' });
+}
 
 const MIME = {
   '.html': 'text/html', '.htm': 'text/html', '.css': 'text/css', '.js': 'text/javascript',
@@ -70,6 +91,7 @@ function serveStatic(req, res) {
 }
 
 async function handleUpload(req, res) {
+  if (!authorized(req, UPLOAD_TOKEN)) { deny(req, res); return; }
   const contentType = req.headers['content-type'] || '';
   const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
   const boundary = m && (m[1] || m[2]);
@@ -93,7 +115,7 @@ async function handleUpload(req, res) {
     fs.writeFileSync(path.join(SITE_ROOT, '_index.json'), JSON.stringify(listDocs(), null, 2));
     // 重建欢迎页（含注入的文档清单）与全站聚合检索索引 site-index.json
     try {
-      landing.build({ outDir: SITE_ROOT, docs: listDocs().map((d) => ({ name: d.name, href: d.href, id: d.id })) });
+      landing.build({ outDir: SITE_ROOT, docs: listDocs().map((d) => ({ name: d.name, href: d.href, id: d.id })), token: EXPORT_TOKEN });
     } catch (e) { console.error('landing rebuild failed', e); }
     sendJSON(res, 200, { ok: true, ...r });
   } catch (e) {
@@ -113,6 +135,7 @@ function listDocs() {
 
 /** 打包整站为 zip 下载 */
 function handleSiteExport(req, res) {
+  if (!authorized(req, EXPORT_TOKEN)) { deny(req, res); return; }
   const r = exportSite({ siteRoot: SITE_ROOT });
   const name = 'chm-web-site-' + Date.now() + '.zip';
   res.writeHead(200, {
@@ -125,6 +148,7 @@ function handleSiteExport(req, res) {
 
 /** 打包"选中若干文档"为独立静态子站 zip 下载（批量导出/私密部署的核心） */
 function handleExportDocs(req, res) {
+  if (!authorized(req, EXPORT_TOKEN)) { deny(req, res); return; }
   const u = new URL(req.url, 'http://x');
   const ids = (u.searchParams.get('ids') || '')
     .split(',')
@@ -155,10 +179,12 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(Number(PORT), () => {
+server.listen(Number(PORT), HOST, () => {
   const port = server.address().port;
-  console.log('chm-web server listening: http://localhost:' + port);
+  console.log('chm-web server listening: http://' + HOST + ':' + port);
   console.log('  site root :', SITE_ROOT);
+  const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
+  console.log('  auth      : upload=' + lockU + '  export=' + lockE + '  (UPLOAD_TOKEN/EXPORT_TOKEN)');
   console.log('  POST /api/upload  → 上传 .chm 并转换');
   console.log('  GET  /api/docs    → 已发布文档列表');
   console.log('  GET  /api/export-docs?ids=a,b → 批量导出选中文档为独立裸站 zip');

@@ -62,9 +62,52 @@
 
 ### M4 — 批量 + 私有部署
 - [x] 站点级导出：整站打 zip（含 `manifest.json` 清单），欢迎页「导出整站 zip ⬇」按钮直达，CLI `export-site` / 后端 `GET /site-export.zip` 均可
-- [ ] 支持一个 / 多个 CHM 批量上传
-- [ ] 批量 / 选中导出为 zip / 静态站点（自托管）
-- **验收**：选中多个 CHM，一次转换后整包导出为 zip / 静态站点
+- [x] 支持一个 / 多个 CHM 批量上传（多选 / 拖拽 + 逐个上传汇总进度）
+- [x] 批量 / 选中导出为 zip / 静态站点（勾选若干文档 → 「导出选中 zip」→ `GET /api/export-docs` → CLI `export-docs`）
+- **验收**：选中多个 CHM，一次转换后整包导出为 zip / 静态站点 ✅（`deploy/` 提供 Docker / systemd / Caddy 部署物，`docs/` 里 import `docs/index.html`）
+
+---
+
+## 用 Railway 上线（面向 0 基础）🚀
+
+> 这一步是让「**真后端闭环**」（用户上传 .chm → 服务器解包转换 → 在线浏览 / 导出）跑起来，
+> 不再局限于看仓库里已生成好的那几个文档。Railway 会帮你把 Nginx、证书、公网网址全搞定，
+> **你不用碰命令行服务器**。
+
+### 1. Railway 是什么（大白话）
+你过去上传一个 `.chm`，需要一台"有人值班、挂了还能自动拉起"的程序服务器帮它解包。传统上你得自己买服务器并折腾装环境；**Railway 替你干了这些**——你把本项目的 GitHub 仓库接上去（或直接传代码），它自动装好 Node + 7-Zip、起服务、给你一个 `https://你的项目.up.railway.app` 链接，访问这个链接就是你的网站。
+
+> **注意**：Railway 是**按用量计费**（有少量免费额度，跑起来量大会超），不是永久免费。个人起步验证闭环足够，量大后考虑迁到自有服务器。
+
+### 2. 前置：代码已经在本地跑通 + 已提交到 GitHub
+先把当前工作区提交并推送到你的 GitHub 仓库（`chm-web`）。Railway 直接从这个仓库拉代码。
+
+### 3. 注册并连接仓库
+1. 注册 Railway（用 GitHub 账号一键登录最省事）。
+2. 新建项目 `New Project` → `Deploy from GitHub repo`，选 `shiqi-ujian/chm-web`（或你自己的那个）。
+3. Railway 会读到仓库根目录的 [Dockerfile](Dockerfile)，**自动开始构建**，不用点别的。
+
+### 4. 第一次构建可能会替 REPLACE 的变量（不填也能先跑起来）
+> **不要一上来就填，先不填任何变量直接 Deploy**，能起来再回来加锁 —— 见第 6 步。
+
+在项目的 `Variables` 面板里，全填你线下随机生成的长字符串：
+- `UPLOAD_TOKEN`：上传钥匙（防别人乱传）
+- `EXPORT_TOKEN`：导出钥匙（防别人拉走文档）
+生成方式：终端 `openssl rand -hex 16`（Windows 用 Git Bash 一样有）。
+
+### 5. 让 Railway 用持久盘保存文档
+上传后文档会写进 `/app/docs`。若要重启不丢，给项目加一个 **Volume**（挂到 `/app/docs`），并把 `CHM_SITE=/app/docs`、`CHM_DATA=/app/data` 设好。
+
+### 6. 打开
+构建完成会有 `Deployments → View Deploy` 或 `Settings → Networking` 里的域名，点开即你的欢迎页。上传一个 `.chm` 试试真闭环。
+
+### 7. 上线后务必做的一步：开「访问令牌」
+前端知道了怎么办：欢迎页重建时会把 `EXPORT_TOKEN` 注入页面，浏览器上传 / 导出会自动带 `X-Auth-Token`，用户无感。**不开 token 的话，公网任何一个人都能偷偷传文件、能拉走你所有文档。**
+
+### 8. 本地复现用的一样的东西
+- `Dockerfile`（根目录）：Railway 默认检测它；本地也能 `docker build -t chm-web . && docker run -p 8080:8080 chm-web` 预览。
+- `deploy/Dockerfile`、`deploy/README.md`、`deploy/chm-web.service`：Caddy / systemd 非 Docker 部署示例（备用 / 自托管时用）。
+- 更简单：没设 `EXPORT_TOKEN` / `UPLOAD_TOKEN` 时服务器保持「不锁」，本地起服务照常，兼容你现在看的静态 A 形态。
 
 ---
 
@@ -78,6 +121,12 @@
 > 单人业余总计约 3~6 周；若 90% 走基础（解包 + 静态托管），2~3 周可上线 MVP。
 
 成本大致：域名可用自己 / 免费 `*.pages.dev`（¥0 先期），托管 GitHub / Cloudflare Pages（¥0~¥20/月），解包用 7-Zip（¥0），存储基本可忽略。**如果是个人 + 静态 + 基础托管，成本约 ¥0/月**。
+
+---
+
+## License
+
+免费 / 非营利公益项目，授权将在代码落地后明确。
 
 ---
 

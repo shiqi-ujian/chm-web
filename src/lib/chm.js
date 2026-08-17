@@ -6,10 +6,11 @@ const path = require('path');
 
 // 7z 可执行文件的解析顺序：
 // 1) 环境变量 SEVENZ（显式指定，最高优先，可指向任意路径）
-// 2) PATH 里的 7z / 7za（跨平台，部署到 Linux 服务器时最常用）
+// 2) PATH 里的 7z / 7za / 7zz（跨平台，部署到 Linux 服务器时最常用；
+//    7zz 是较新 Debian/Ubuntu 上 7-Zip 官方包 7zip 提供的可执行名）
 // 3) Windows 常见默认安装路径（仅本机兜底，可移植性最差所以放最后）
 const DEFAULT_SEVENSEZ = 'C:\\Program Files\\7-Zip\\7z.exe';
-const CANDIDATES = [process.env.SEVENZ, '7z', '7za', DEFAULT_SEVENSEZ].filter(Boolean);
+const CANDIDATES = [process.env.SEVENZ, '7z', '7za', '7zz', DEFAULT_SEVENSEZ].filter(Boolean);
 
 /** 从候选里挑一个真实存在/可用的 7z 可执行文件；找不到则抛错 */
 function resolveSeven() {

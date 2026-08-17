@@ -113,17 +113,27 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 </div>
 <script>
 (function(){
+  // 部署到公网时若开启了 EXPORT_TOKEN，构建期把 token 注入 __AUTH_TOKEN__，
+  // 前端下载导出与整站 zip 时带上 X-Auth-Token。
+  var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
+  function authHeaders(){ return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {}; }
+  function saveBlob(blob, filename){
+    var url=URL.createObjectURL(blob);
+    var dl=document.createElement('a'); dl.href=url; dl.download=filename;
+    document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  }
   var exportBtn=document.getElementById('exportBtn');
   if(exportBtn){
     exportBtn.addEventListener('click',function(e){
       e.preventDefault();
       if(window.location.protocol==='file:'){ alert('纯静态打开时无法打包，请用本地服务或线上站点访问后导出。'); return; }
       exportBtn.textContent='打包中…';
-      var dl=document.createElement('a');
-      dl.href='site-export.zip';
-      dl.download='site-export.zip';
-      document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
-      setTimeout(function(){ exportBtn.textContent='⬇ 导出整站 zip ⬇'; }, 800);
+      fetch('site-export.zip',{headers:authHeaders()})
+        .then(function(r){ if(!r.ok) throw new Error('导出被拒绝('+r.status+')：请配置正确访问令牌'); return r.blob(); })
+        .then(function(b){ saveBlob(b,'site-export.zip'); })
+        .catch(function(err){ alert('导出失败：'+err.message); })
+        .then(function(){ exportBtn.textContent='⬇ 导出整站 zip ⬇'; });
     });
   }
   var drop=document.getElementById('drop');
@@ -243,6 +253,11 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
     b.textContent = n ? ('导出选中('+n+') zip ⬇') : '导出选中 zip ⬇';
     b.style.opacity = n ? '1' : '.5';
   }
+  // 可选请求头：服务于部署到公网时带 key —— 由构建期注入 __AUTH_TOKEN__
+  var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
+  function authHeaders(){
+    return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {};
+  }
   // 导出选中：请求后端 /api/export-docs?ids=…，下载独立裸站 zip
   var exportSelBtn=document.getElementById('exportSelBtn');
   if(exportSelBtn){
@@ -252,11 +267,20 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
       if(!ids.length){ alert('请先勾选要导出的文档。'); return; }
       if(window.location.protocol==='file:'){ alert('纯静态打开时无法打包，请用本地服务或线上站点访问后导出。'); return; }
       exportSelBtn.textContent='打包中…';
-      var dl=document.createElement('a');
-      dl.href='/api/export-docs?ids='+encodeURIComponent(ids.join(','));
-      dl.download='chm-docs-export.zip';
-      document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
-      setTimeout(function(){ updateExportSelBtn(); }, 900);
+      fetch('/api/export-docs?ids='+encodeURIComponent(ids.join(',')),{headers:authHeaders()})
+        .then(function(r){
+          if(!r.ok) throw new Error('导出被拒绝('+r.status+')：请配置正确访问令牌');
+          return r.blob();
+        })
+        .then(function(blob){
+          var url=URL.createObjectURL(blob);
+          var dl=document.createElement('a');
+          dl.href=url; dl.download='chm-docs-export.zip';
+          document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
+          setTimeout(function(){ URL.revokeObjectURL(url); },4000);
+        })
+        .catch(function(err){ alert('导出失败：'+err.message); })
+        .then(function(){ setTimeout(function(){ updateExportSelBtn(); }, 300); });
     });
   }
   function refreshDocs(){
@@ -289,7 +313,7 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   // ---- 批量转换：逐个上传，汇总成功/失败 ----
   function doUploadOne(file, cb){
     var fd=new FormData(); fd.append('file', file);
-    fetch('/api/upload',{method:'POST',body:fd})
+    fetch('/api/upload',{method:'POST',body:fd,headers:authHeaders()})
       .then(function(res){ return res.json().then(function(j){ return {st:res.status,j:j}; }); })
       .then(function(x){ cb(null, x); })
       .catch(function(e){ cb(e); });
@@ -329,13 +353,15 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 
 /**
  * 生成欢迎页到 outDir/index.html，并引用文档根入口。
- * @param {object} o { outDir, docs } docs 形如 [{ name, href }]，注入“我的文档”
+ * @param {object} o { outDir, docs, token? } docs 形如 [{ name, href }]，注入“我的文档”；
+ *   token 可选：非空则注入 __AUTH_TOKEN__，供前端上传/导出时自动带上 X-Auth-Token。
  */
-function build({ outDir, docs }) {
+function build({ outDir, docs, token }) {
   const dir = path.resolve(outDir);
   fs.mkdirSync(dir, { recursive: true });
   const docsJson = JSON.stringify(docs || []);
-  let html = LANDING_HTML.replace('__DOCS_JSON__', docsJson);
+  const tok = token ? JSON.stringify(String(token)) : '""';
+  let html = LANDING_HTML.replace('__DOCS_JSON__', docsJson).replace('__AUTH_TOKEN__', tok);
   fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
   // 全站聚合检索索引
   fs.writeFileSync(path.join(dir, 'site-index.json'),

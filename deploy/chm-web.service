@@ -1,0 +1,27 @@
+# chm-web 后端 systemd 服务（B 形态，不用 Docker 时）。
+# 放到 /etc/systemd/system/chm-web.service，然后：
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now chm-web
+[Unit]
+Description=chm-web CHM to web backend
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+# 站点产物与数据目录按需改，并保证 www-data 可读写
+Environment=CHM_SITE=/var/lib/chm-web/docs
+Environment=CHM_DATA=/var/lib/chm-web/data
+# ↓ 上线前务必换成真实随机 token（openssl rand -hex 16）
+Environment=UPLOAD_TOKEN=CHANGE_ME_UPLOAD
+Environment=EXPORT_TOKEN=CHANGE_ME_EXPORT
+Environment=HOST=127.0.0.1
+Environment=PORT=8080
+# 7z 所在 —— 明确指定路径最稳（否则靠 PATH 里的 7z/7zz）
+Environment=SEVENZ=/usr/bin/7z
+ExecStart=/usr/bin/node /opt/chm-web/src/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
