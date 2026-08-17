@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { processUpload, UploadError } = require('./lib/upload');
+const landing = require('./lib/landing');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
@@ -89,6 +90,10 @@ async function handleUpload(req, res) {
     const r = await processUpload(file.data, file.filename, { siteRoot: SITE_ROOT, dataDir: DATA_DIR, maxBytes: MAX_BYTES });
     // 更新"我的文档"索引（docs/_index.json）
     fs.writeFileSync(path.join(SITE_ROOT, '_index.json'), JSON.stringify(listDocs(), null, 2));
+    // 重建欢迎页（含注入的文档清单）与全站聚合检索索引 site-index.json
+    try {
+      landing.build({ outDir: SITE_ROOT, docs: listDocs().map((d) => ({ name: d.name, href: d.href, id: d.id })) });
+    } catch (e) { console.error('landing rebuild failed', e); }
     sendJSON(res, 200, { ok: true, ...r });
   } catch (e) {
     if (e instanceof UploadError) sendJSON(res, e.status || 400, { ok: false, error: e.message });

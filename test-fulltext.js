@@ -1,8 +1,9 @@
 'use strict';
-// test-fulltext.js — verify the full-text search index builder + shell generation.
+// test-fulltext.js — verify the full-text search index builder + shell + site index.
 const path = require('path');
 const fs = require('fs');
 const preview = require('./src/lib/preview');
+const landing = require('./src/lib/landing');
 
 function log(s) { console.log('  ' + s); }
 let pass = true;
@@ -31,6 +32,18 @@ const ok = (name, cond) => { log((cond ? 'OK  ' : 'FAIL') + ' ' + name); if (!co
   const shell = fs.readFileSync(path.join(docDir, 'index.html'), 'utf8');
   ok('shell references search-index.json', shell.includes('search-index.json'));
   ok('shell has result dropdown (#sres)', shell.includes('id="sres"'));
+
+  // 4) site-index.json aggregation (cross-document search on the landing page)
+  const si = landing.buildSiteIndex({ siteRoot: path.join(__dirname, 'docs'),
+    docs: [{ id: '7-zip', name: '7-zip', href: 'd/7-zip/' }, { id: '7-zip-e624e0', name: '7-zip-e624e0', href: 'd/7-zip-e624e0/' }] });
+  ok('site-index has keywords', si.keywords.length > 3);
+  ok('site-index has text records', si.records.length > 3);
+  const lzma = si.records.filter((x) => /lzma/i.test((x.text || '').toLowerCase())).length;
+  ok('site-index records have LZMA hits', lzma >= 1);
+  const kwSwitch = si.keywords.some((k) => /switch/i.test(k.name || ''));
+  ok('site-index keywords include switch', kwSwitch);
+  const recsHavePage = si.records.some((x) => /\[page:[^\]]+\]/.test(x.text || ''));
+  ok('site-index records carry [page:] markers', recsHavePage);
 
   console.log(pass ? 'FULLTEXT_TEST_PASS' : 'FULLTEXT_TEST_FAIL');
   process.exit(pass ? 0 : 1);

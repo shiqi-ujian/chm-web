@@ -49,7 +49,7 @@ async function buildSite(siteRoot, docs, { title } = {}) {
     docLinks.push({ id, name: d.name || id, href: DOC_DIR_NAME + '/' + id + '/' });
   }
   // 欢迎页
-  landing.build({ outDir: root, docs: docLinks.map((d) => ({ name: d.name, href: d.href })) });
+  landing.build({ outDir: root, docs: docLinks.map((d) => ({ name: d.name, href: d.href, id: d.id })) });
   return { root, docLinks };
 }
 

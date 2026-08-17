@@ -24,6 +24,20 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   .top .sub{font-size:15px;opacity:.95;max-width:560px;margin:0 auto}
   .wrap{max-width:960px;margin:0 auto;padding:0 16px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.06)}
+  .searchbar{max-width:680px;margin:0 auto 24px;position:relative}
+  .searchbar input{width:100%;padding:14px 44px 14px 18px;border:1px solid var(--line);border-radius:999px;font-size:16px;outline:none;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+  .searchbar input:focus{border-color:var(--acc)}
+  .searchbar .ico{position:absolute;right:18px;top:50%;transform:translateY(-50%);color:var(--mut);font-size:16px}
+  .sres{position:absolute;top:52px;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.14);max-height:62vh;overflow:auto;display:none;z-index:90}
+  .sres.on{display:block}
+  .sres .empty{padding:14px 16px;color:var(--mut);font-size:14px}
+  .sres .grp{padding:8px 14px 2px;font-size:12px;color:var(--mut);letter-spacing:.5px}
+  .sres a{display:block;padding:9px 16px;border-bottom:1px solid var(--b);text-decoration:none}
+  .sres a:last-of-type{border-bottom:0}
+  .sres a:hover{background:#f0f7ff}
+  .sres a .t{font-weight:600;color:var(--ink);font-size:14px;display:block}
+  .sres a .p{color:var(--mut);font-size:12px;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px}
+  .sres a .tt{font-size:11px;color:var(--acc);background:#eaf3ff;border-radius:20px;padding:1px 8px;margin-left:8px;flex:0 0 auto}
   .upload{margin:-34px auto 24px;max-width:680px;padding:22px}
   .drop{border:2px dashed #b6c2d0;border-radius:12px;padding:36px 20px;text-align:center;cursor:pointer;transition:.15s}
   .drop:hover,.drop.over{border-color:var(--acc);background:#f0f7ff}
@@ -56,6 +70,12 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 <div class="top"><div class="brand">CHM 网页</div><h1>把 CHM 帮助文档变成手机也能看的网页</h1>
 <div class="sub">上传 .chm，自动解包为可浏览、可搜索的静态页面，PC / 手机随时翻阅，完全免费。</div></div>
 <div class="wrap">
+
+  <div class="searchbar">
+    <input type="text" id="siteq" placeholder="搜索全部文档（标题 / 关键字 / 正文）…" autocomplete="off">
+    <span class="ico">⌕</span>
+    <div class="sres" id="sres"></div>
+  </div>
 
   <div class="card upload">
     <div class="drop" id="drop" tabindex="0">
@@ -92,10 +112,67 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function escH(s){ return esc(s).replace(/'/g,'&#39;'); }
 
+  // ---- 全站搜索：加载 site-index.json，跨所有文档过滤 ----
+  var sres=document.getElementById('sres');
+  var siteq=document.getElementById('siteq');
+  var siKeywords=[], siRecords=[], siLoaded=false, siTimer=null;
+  function loadSiteIndex(){
+    if(!window.fetch || siLoaded) return;
+    fetch('site-index.json').then(function(r){ return r.json(); }).then(function(j){
+      siKeywords=j.keywords||[]; siRecords=j.records||[]; siLoaded=true;
+    }).catch(function(){ siLoaded=true; });
+  }
+  function siteSearch(){
+    var s=(siteq&&siteq.value||'').trim().toLowerCase();
+    if(!s){ if(sres) sres.className='sres'; return; }
+    var rows=[], docTitle={};
+    // 已知文档名用于把 [page:...] 的可读标题带进结果
+    (siKeywords||[]).forEach(function(k){ if(!docTitle[k.doc]) docTitle[k.doc]=k.name; });
+    // 1) 关键字
+    (siKeywords||[]).slice(0,120).forEach(function(k){
+      if((k.name||'').toLowerCase().indexOf(s)!==-1) rows.push({grp:'关键字 · '+(k.doc||''),href:k.href,t:k.name||'',p:k.doc||''});
+    });
+    // 2) 全文正文
+    (siRecords||[]).forEach(function(rec,i){
+      var lt=(rec.text||'').toLowerCase();
+      var at=lt.indexOf(s);
+      if(at===-1) return;
+      var page=(rec.text.match(/\[page:([^\]]+)\]/)||[])[1]||'';
+      var href='d/'+(rec.doc||'')+'/'+page;
+      var ctx=rec.text.slice(Math.max(0,at-36),at+64).replace(/\s+/g,' ').replace(/\[page:[^\]]*\]/g,'').trim();
+      rows.push({grp:(rec.doc||''),href:href,t:page||'',p:ctx||''});
+      if(rows.filter(function(x){return x.rec===i;}).length>60) return; // guard
+    });
+    // 去重
+    var seen={},uniq=[];
+    rows.forEach(function(r){ var key=r.href+'|'+r.t; if(!seen[key]){ seen[key]=1; uniq.push(r); } });
+    renderSite(uniq);
+  }
+  function renderSite(rows){
+    if(!sres) return;
+    var html='';
+    if(!rows.length){ html='<div class="empty">无匹配结果</div>'; }
+    else {
+      var cur=null;
+      rows.slice(0,20).forEach(function(r){
+        if(r.grp && r.grp!==cur){ html+='<div class="grp">'+esc(r.grp)+'</div>'; cur=r.grp; }
+        html+='<a href="'+escH(r.href)+'"><span class="t">'+esc(r.t)+'</span><span class="p">'+esc(r.p||'')+'</span></a>';
+      });
+    }
+    sres.innerHTML=html; sres.className='sres on';
+  }
+  if(siteq){
+    loadSiteIndex();
+    siteq.addEventListener('input',function(){ window.clearTimeout(siTimer); siTimer=window.setTimeout(siteSearch,200); });
+  }
+  document.addEventListener('click',function(e){
+    if(siteq && e.target!==siteq && !sres.contains(e.target)) sres.className='sres';
+  });
+
   // 渲染“我的文档”：优先请求后端列表，失败则用生成时注入的占位清单
   function renderDocs(list){
     var box=document.getElementById('docsList');
-    var arr = (list && list.length) ? list : (typeof __DOCS_JSON__!=='undefined'?__DOCS_JSON__:[]);
+    var arr = (list && list.length) ? list : (typeof __DOCS_JSON__!=='undefined'?__DOCS_JSON__:[]); /* __DOCS_JSON__ injected at build */
     if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>'; return; }
     box.innerHTML=arr.map(function(d){
       return '<div class="doc-row"><div><div class="name">'+esc(d.name||d.id)+'</div><span class="tag">公开</span></div>'+
@@ -159,7 +236,53 @@ function build({ outDir, docs }) {
   const docsJson = JSON.stringify(docs || []);
   let html = LANDING_HTML.replace('__DOCS_JSON__', docsJson);
   fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
+  // 全站聚合检索索引
+  fs.writeFileSync(path.join(dir, 'site-index.json'),
+    JSON.stringify(buildSiteIndex({ siteRoot: dir, docs })));
   return { outFile: path.join(dir, 'index.html'), docs };
 }
 
-module.exports = { build, LANDING_HTML };
+module.exports = { build, buildSiteIndex, LANDING_HTML };
+
+/**
+ * 生成站点级聚合检索索引 site-index.json（放在站点根），供欢迎页全站搜索。
+ * 集合每篇文档的 关键字 keywords + 全文正文 records（搬运自各 doc 的 search-index.json）。
+ * @param {object} o { siteRoot, docs } docs 形如 [{ id, name, href }]
+ * @returns {{keywords:Array, records:Array}}
+ */
+function buildSiteIndex({ siteRoot, docs }) {
+  const root = path.resolve(siteRoot);
+  const keywords = [];
+  const records = [];
+  const seenDoc = {};
+  for (const d of docs || []) {
+    const docRoot = d.href ? path.join(root, d.href.replace(/[\\/]+$/, ''), '') : null;
+    const docName = d.name || d.id;
+    // 每篇文档提供一条文档级命中（引导跳到文档首页）
+    keywords.push({ name: docName, href: d.href || ('d/' + (d.id) + '/'), doc: docName });
+    // 1) 单篇关键词
+    try {
+      const kwFile = docRoot && fs.existsSync(path.join(docRoot, 'keywords.json'))
+        ? JSON.parse(fs.readFileSync(path.join(docRoot, 'keywords.json'), 'utf8')) : null;
+      (kwFile && kwFile.keywords || []).forEach((k) => {
+        const rel = (k.href || '').replace(/\\/g, '/');
+        keywords.push({ name: k.name, href: d.href + rel, doc: docName });
+      });
+    } catch (_) {}
+    // 2) 单篇全文正文记录（搬运自已生成的 search-index.json.records）
+    try {
+      const idxFile = path.join(docRoot, 'search-index.json');
+      if (fs.existsSync(idxFile)) {
+        const idx = JSON.parse(fs.readFileSync(idxFile, 'utf8'));
+        const recs = (idx && idx.records) || [];
+        recs.forEach((r, i) => {
+          if (!r || !r.text) return;
+          // 截断正文以减少索引体积；保留 [page:...] 定位符
+          let txt = r.text.slice(0, 4000);
+          records.push({ doc: docName, text: txt });
+        });
+      }
+    } catch (_) {}
+  }
+  return { keywords, records };
+}

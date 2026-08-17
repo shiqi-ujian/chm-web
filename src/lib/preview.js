@@ -272,6 +272,7 @@ function buildFullText(docDir) {
   })(docDir);
 
   const records = [];
+  const titles = [];
   const chunks = [];
   const flush = () => { if (chunks.length) { records.push({ text: chunks.splice(0).join('\n') }); } };
 
@@ -279,11 +280,12 @@ function buildFullText(docDir) {
     let text = htmlToText(fs.readFileSync(file, 'utf8'));
     if (!text) continue;
     const rel = path.relative(docDir, file).replace(/\\/g, '/');
+    titles.push({ file: rel, title: text.slice(0, 120) });
     chunks.push('[page:' + rel + ']\n' + text.slice(0, 6000));
     if (chunks.length >= CHUNK_SIZE) flush();
   }
   flush();
-  return { records };
+  return { records, titles };
 }
 
 module.exports = { build, renderTree, esc, buildFullText };
