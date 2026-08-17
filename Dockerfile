@@ -23,9 +23,11 @@ COPY docs /app/docs
 # 为空会从 /app/seed-docs 复制回来（见 src/server.js ensureSeed）。
 COPY docs /app/seed-docs
 
-# 站点/数据目录放卷（在 Railway 上挂 Volume 到这两个路径，重启不丢上传）。
-ENV CHM_SITE=/app/docs \
-    CHM_DATA=/app/data \
+# 站点/数据目录放卷。Railway 一个服务只能挂一个 Volume，所以把站点内容与数据
+# 都放进同一个卷 /app/data 下：CHM_SITE=/app/data/site、CHM_DATA=/app/data/data。
+# 挂载时把 Volume mount 到 /app/data 即可（重启不丢上传/账号/私密文档）。
+ENV CHM_SITE=/app/data/site \
+    CHM_DATA=/app/data/data \
     HOST=0.0.0.0 \
     PORT=8080
 
