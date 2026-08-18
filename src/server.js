@@ -174,6 +174,7 @@ async function handleUpload(req, res) {
   if (!file || !file.filename || !file.data) { sendJSON(res, 400, { ok: false, error: '未收到文件' }); return; }
 
   const username = currentUser(req);
+  if (!username) { sendJSON(res, 401, { ok: false, error: '请先登录后再上传' }); return; }
   const visibility = (form.fields.visibility || 'public').trim() === 'private' ? 'private' : 'public';
 
   try {

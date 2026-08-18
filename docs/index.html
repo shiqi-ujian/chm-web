@@ -90,6 +90,9 @@
   .op-btn:hover{background:var(--b)}
   .op-btn.warn:hover{background:#fff1e6;color:#b35900;border-color:#ffd9b3}
   .mine{font-size:11px;color:var(--acc);background:var(--accent-soft);border-radius:20px;padding:1px 8px;flex:0 0 auto}
+  .upload-login{margin:-34px auto 24px;max-width:680px;padding:18px 22px;font-size:14px;color:var(--mut)}
+  .upload-login .link{font-size:13px;color:var(--acc);cursor:pointer;background:var(--card);border:1px solid var(--acc);border-radius:20px;padding:4px 14px}
+  .upload-login .link:hover{background:var(--accent-soft)}
   @media(max-width:560px){.steps{grid-template-columns:1fr}.top h1{font-size:24px}.doc-row{flex-wrap:wrap}.doc-row .ops{width:100%;justify-content:flex-end;margin-top:8px}}
 </style></head><body>
 <div class="top"><div class="brand">CHM 网页</div><h1>把 CHM 帮助文档变成手机也能看的网页</h1>
@@ -107,7 +110,11 @@
     <div class="sres" id="sres"></div>
   </div>
 
-  <div class="card upload">
+  <div class="card upload-login" id="uploadGateHint" style="display:none">
+    <div style="text-align:center;padding:6px">🔒 上传需要先登录。<button class="link" id="gateLogin" type="button" style="border:1px solid var(--acc);background:var(--card);border-radius:20px;padding:4px 14px;color:var(--acc);cursor:pointer">去登录 / 注册</button></div>
+  </div>
+
+  <div class="card upload" id="uploadCard">
     <div class="drop" id="drop" tabindex="0">
       <div class="big">点击选择 .chm，或拖进来</div>
       <div class="small">支持 .chm 格式 · 转换后立即可浏览 · 上传即用</div>
@@ -115,7 +122,7 @@
     </div>
     <div class="visrow" id="visrow">
       <label><input type="radio" name="vis" value="public" checked> 公开（所有人可看）</label>
-      <label><input type="radio" name="vis" value="private"> 私密（仅我 + 分享链接）</label>
+      <label><input type="radio" name="vis" value="private"> 私密（仅自己 + 分享链接）</label>
     </div>
     <div class="file-pick" id="filePick"></div>
     <div class="message" id="msg"></div>
@@ -182,6 +189,21 @@
     if(!loginBtn) return;
     if(currentUser){ who.textContent='你好，'+currentUser; loginBtn.textContent='退出'; }
     else { who.textContent=''; loginBtn.textContent='登录 / 注册'; }
+    updateUploadGate();
+  }
+  // C档：未登录时隐藏上传卡片、显示登录提示；登录后恢复（CSS 切换，不重建 DOM，
+  // 避免弄丢 msg/filePick/go 的原绑定）。
+  function updateUploadGate(){
+    var card=document.getElementById('uploadCard');
+    var hint=document.getElementById('uploadGateHint');
+    if(!card) return;
+    if(currentUser){
+      card.style.display='';
+      if(hint) hint.style.display='none';
+    } else {
+      card.style.display='none';
+      if(hint) hint.style.display='';
+    }
   }
   function loadMe(){
     if(!window.fetch || !USER_TOKEN) return;
@@ -232,6 +254,9 @@
         .catch(function(e){ err.textContent='网络错误：'+(e&&e.message||e); goBtn.disabled=false; });
     } else tryLogin();
   }
+  // 上传门上的「去登录 / 注册」按钮
+  var gateLogin=document.getElementById('gateLogin');
+  if(gateLogin) gateLogin.addEventListener('click',function(){ openAuth('login'); });
   if(loginBtn){
     loginBtn.addEventListener('click',function(){
       if(currentUser){

@@ -94,11 +94,13 @@ async function main() {
   const me = await json('GET', '/api/me', null, { 'X-User-Token': tok });
   ok('me = alice', me.st === 200 && me.body.user === 'alice', JSON.stringify(me.body));
 
-  // ---- 上传可见性 ----
+  // ---- 上传可见性 (C档：未登录一律不可上传) ----
   const anonPriv = await upload(null, 'private');
   ok('anon upload private 401', anonPriv.st === 401, String(anonPriv.st) + ' ' + (anonPriv.body.error || ''));
-  const pub = await upload(null, 'public', 'pubdoc.chm');
-  ok('anon upload public 200', pub.st === 200 && pub.body.url, String(pub.st));
+  const anonPub = await upload(null, 'public', 'anonpub.chm');
+  ok('anon upload public 401 (C档强制登录)', anonPub.st === 401, String(anonPub.st) + ' ' + (anonPub.body.error || ''));
+  const pub = await upload(tok, 'public', 'pubdoc.chm');
+  ok('owner upload public 200', pub.st === 200 && pub.body.url, String(pub.st));
   const idA = pub.body.id;
   ok('public doc readable at /d/', (await get('/d/' + idA + '/')) === 200);
 
