@@ -307,28 +307,31 @@ function clearHl(doc){
 function highlightIn(doc, terms){
   clearHl(doc);
   if (!terms.length || !doc || !doc.body) return 0;
+  var MAX_MARKS = 500;
   var walker = doc.createTreeWalker(doc.body, 4 /* SHOW_TEXT */, null);
   var nodes = [], n;
   while ((n = walker.nextNode())) nodes.push(n);
   var count = 0;
-  nodes.forEach(function(node){
+  for (var ni = 0; ni < nodes.length && count < MAX_MARKS; ni++){
+    var node = nodes[ni];
     var text = node.nodeValue || '', lower = text.toLowerCase();
     var hits = [];
-    terms.forEach(function(t){
-      var tl = t.toLowerCase(), from = 0, at;
-      while ((at = lower.indexOf(tl, from)) !== -1){ hits.push([at, t.length]); from = at + t.length; }
-    });
-    if (!hits.length) return;
+    for (var ti = 0; ti < terms.length && count + hits.length < MAX_MARKS; ti++){
+      var tl = terms[ti].toLowerCase(), from = 0, at;
+      while ((at = lower.indexOf(tl, from)) !== -1){ hits.push([at, terms[ti].length]); from = at + terms[ti].length; }
+    }
+    if (!hits.length) continue;
     hits.sort(function(a,b){ return a[0]-b[0]; });
     var frag = doc.createDocumentFragment(), pos = 0;
-    hits.forEach(function(h){
+    for (var hi = 0; hi < hits.length && count < MAX_MARKS; hi++){
+      var h = hits[hi];
       if (h[0] > pos) frag.appendChild(doc.createTextNode(text.slice(pos, h[0])));
       var mk = doc.createElement('mark'); mk.className = 'wz-hl'; mk.textContent = text.slice(h[0], h[0]+h[1]);
       frag.appendChild(mk); pos = h[0]+h[1]; count++;
-    });
+    }
     if (pos < text.length) frag.appendChild(doc.createTextNode(text.slice(pos)));
     node.parentNode.replaceChild(frag, node);
-  });
+  }
   return count;
 }
 function extractTerms(input){
@@ -365,7 +368,15 @@ document.getElementById('page-search-btn').addEventListener('click', function(){
   else { clearHl(fdoc()); psCount.textContent=''; }
 });
 if (psQ){
-  psQ.addEventListener('input', runPageSearch);
+  var psTimer = null;
+  var psRun = function(){
+    psTimer = null;
+    runPageSearch();
+  };
+  psQ.addEventListener('input', function(){
+    if (psTimer) window.clearTimeout(psTimer);
+    psTimer = window.setTimeout(psRun, 250);
+  });
   psQ.addEventListener('keydown', function(e){
     if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
     else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
