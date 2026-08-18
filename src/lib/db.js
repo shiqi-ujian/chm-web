@@ -1,6 +1,6 @@
 'use strict';
 // db.js — SQLite 存储层（better-sqlite3，WAL 模式）。
-// 只管理「状态元数据」：users / sessions / meta（文档元数据）/ user_usage（配额）。
+// 只管理「状态元数据」：users / sessions / meta（文档元数据）/ user_usage（配额）/ search_fts（检索）。
 // 文档实体文件仍走文件系统（docs/d 公开、data/private 私有）——那是静态产物，不该进库。
 // 打开时做一次性 JSON → SQLite 迁移（首次，DB 空且旧 JSON 存在时），并把旧 JSON 改名 .bak.<ts> 备份。
 const fs = require('fs');
@@ -55,6 +55,10 @@ function open(dir) {
       username TEXT PRIMARY KEY,
       docs     INTEGER NOT NULL DEFAULT 0,
       bytes    INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+      doc, title, body,
+      tokenize = 'unicode61'
     );
   `);
 

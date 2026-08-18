@@ -345,6 +345,8 @@ function rebuildSite() {
       outDir: SITE_ROOT,
       docs: listDocs(null).map((d) => ({ name: d.name, href: d.href, id: d.id })),
     });
+    // 重建后同步灌入 SQLite FTS 索引（在线检索底座）
+    LibSearch.rebuild(SITE_ROOT);
   } catch (e) { console.error('site rebuild failed', e); }
 }
 
