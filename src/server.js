@@ -437,7 +437,23 @@ function dirBytes(dir) {
 }
 
 const server = http.createServer((req, res) => {
-  const urlPath = (new URL(req.url, 'http://x')).pathname;
+  // 兜底：请求处理中的任何同步异常都不得打崩进程（畸形请求行/探针可触发，
+  // 例如 path 为 '//' 时 new URL 抛 ERR_INVALID_URL、%zz 让 decodeURIComponent 抛 URIError），
+  // 统一记录日志并回 500/400，进程保持存活。
+  try {
+    route(req, res);
+  } catch (e) {
+    console.error('handler error', req.method, req.url, (e && e.stack) || e);
+    if (!res.headersSent) sendJSON(res, 500, { ok: false, error: '服务器错误：' + ((e && e.message) || e) });
+    else res.end();
+  }
+});
+function route(req, res) {
+  // 防御：畸形请求行（如 path 为 '//'）会让 new URL 抛 ERR_INVALID_URL，解析失败按 400 处理。
+  let u = null;
+  try { u = new URL(req.url, 'http://x'); } catch (_) { u = null; }
+  if (!u) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Bad Request'); return; }
+  const urlPath = u.pathname;
   if (req.method === 'POST' && urlPath === '/api/register') {
     if (limited(rateLimits.auth, 'auth:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
     handleJson(req, res, (b) => auth.register(b));
@@ -462,7 +478,7 @@ const server = http.createServer((req, res) => {
     sendJSON(res, 200, u ? { usage: usageOf(u), username: u } : { usage: null, username: null });
   } else if (req.method === 'GET' && urlPath === '/api/search') {
     // B1 服务端检索：分页 + 高亮片段；文档一多时比前端整包拉索引更稳。
-    const u = new URL(req.url, 'http://x');
+    // 复用 route() 顶部已解析的 u（避免重复解析与重声明）
     const q = (u.searchParams.get('q') || '').trim();
     const limit = Math.min(Number(u.searchParams.get('limit')) || 10, 50);
     const offset = Math.max(Number(u.searchParams.get('offset')) || 0, 0);
@@ -507,7 +523,7 @@ const server = http.createServer((req, res) => {
   } else {
     serveStatic(req, res);
   }
-});
+}
 
 server.listen(Number(PORT), HOST, () => {
   const port = server.address().port;
