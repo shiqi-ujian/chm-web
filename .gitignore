@@ -10,3 +10,5 @@ logs/
 .dsh-vision-toolkit/
 # 运行时生成的站点索引（非手工维护）
 docs/_index.json
+# 部署与环境备份（含生产令牌/项目 ID，严禁入库）
+部署与环境备份_勿上传git.txt

@@ -21,7 +21,7 @@
 | M2 | 双端可浏览 + 可见性权限 | ✅ 完成（浏览/手机抽屉 + **真实上传闭环 + 账号体系 + 可见性**：注册/登录/会话、公开免登录 / 私密仅 owner+分享链接、文档归属"我的"、可见性切换实体迁移、公开/私密标签） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
 | M4 | 批量 + 私有部署导出 | ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
-| Rails部署 | 接正式后端（B 形态） | 🟡 进行中：已加 `HOST` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌开关（不设则不锁）；`7zz` 候选；`deploy/` 脚手架（Dockerfile / systemd / Caddy 示例）+ 根 `Dockerfile`/`.dockerignore` 供 Railway 直接用 |
+| 公网部署 | 接正式后端（Railway） | ✅ 已上线：`https://chm-web-production-16f9.up.railway.app`（项目 `profound-vitality` / 环境 `production`）。已接 `HOST` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌 + 持久盘 Volume `/app/data`（`/app/data/site` 站点 + `/app/data/data` 账号/元数据/私密文档）。访问密钥只在 Railway Variables + 本机 `data/deploy-tokens.txt`（gitignore），不入库 |
 
 ---
 
@@ -98,7 +98,7 @@
 
 ## 五、仍待办 / 下一步
 
-- [ ] **公网真实部署上线**：本地上传/账号/可见性闭环已验证可用，待接 Railway / 自有服务器（部署后设 `UPLOAD_TOKEN` / `EXPORT_TOKEN` + 持久盘）。
+- [x] **公网真实部署上线**：`https://chm-web-production-16f9.up.railway.app` 已登录/上传/账号/可见性闭环验证可用（Railway + Volume `/app/data` + `UPLOAD_TOKEN`/`EXPORT_TOKEN`）。
 - [ ] **转换完成整批自动打包下载**（M4 可选增强）：目前是「逐个转换入库 → 勾选导出」；可再加「一次批量上传即直接打包整批下载」。
 - [ ] 正文中文翻译：目录树已中文化；正文目前是原文（7-Zip 手册全部英文）。
 - [ ] autosync 在多台设备上的部署说明。
