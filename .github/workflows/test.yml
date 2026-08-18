@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22  # better-sqlite3@13 需要 Node >= 22
 
       # native 依赖 better-sqlite3 需编译工具链（ubuntu-latest 自带 build-essential/python3/make）
       - name: Install build tools + 7-Zip

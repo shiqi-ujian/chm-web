@@ -104,7 +104,7 @@
 ---
 
 ## 新电脑/工位开发上手（5 分钟）
-1. **clone + 装环境**：`git clone https://github.com/shiqi-ujian/chm-web.git`；装 **Node.js ≥ 20** 和 **7-Zip**（转换/测试必需）；然后 **`npm install`**（项目已引入 native 依赖 `better-sqlite3`）。
+1. **clone + 装环境**：`git clone https://github.com/shiqi-ujian/chm-web.git`；装 **Node.js ≥ 22** 和 **7-Zip**（转换/测试必需）；然后 **`npm install`**（项目已引入 native 依赖 `better-sqlite3`，其 v13 需要 Node ≥ 22）。
 2. **配置 git 身份**（仓库不随 push 带身份，新机器必须配）：
    ```bash
    git config user.name "qiujian.shi"

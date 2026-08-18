@@ -2,10 +2,10 @@
 # 与 deploy/Dockerfile 等价，但把已有的 docs/（已生成的阅读产物 + 欢迎页）
 # 一并打进镜像，作为「初始站点内容」——容器首次启动就能浏览现有文档。
 # Railway 会自动检测并据此构建，无需手动配置（见 README「用 Railway 上线」）。
-FROM node:20-slim
+FROM node:22-slim
 
 # 安装 7-Zip（新版 Debian 官方包 `7zip` 提供 7zz；p7zip-full 提供 7z 老式备选）
-# + better-sqlite3（native 模块）所需编译工具链。
+# + better-sqlite3（native 模块，v13 需 Node ≥ 22）所需编译工具链。
 RUN apt-get update \
     && apt-get install -y --no-install-recommends 7zip p7zip-full build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
