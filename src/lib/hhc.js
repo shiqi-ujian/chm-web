@@ -6,8 +6,8 @@
 // nested inside <UL>/<LI> (an <UL> after an entry makes that entry a folder).
 // Only Name + Local(href) are needed to draw the tree.
 
-const fs = require('fs');
 const path = require('path');
+const { readText } = require('./charset');
 
 function clean(text) {
   return text
@@ -83,26 +83,42 @@ function parseHhc(text) {
   return root;
 }
 
+/**
+ * 把 CHM 目录/索引里的 href 归一化为「相对文档根的路径」。
+ * - mk:@MSITStore:<file>::/path 或 <file>::/path → 只保留文档内相对路径 /path
+ * - 其他协议（http/https/mailto…）→ 原样保留
+ * - 文档内相对/根相对路径（如 专栏/5z说明.htm 或 /专栏/x.htm）→ 相对 dir 的路径
+ */
+function resolveHref(href, dir) {
+  if (!href) return null;
+  if (/^mk:@|::\//i.test(href)) {
+    let p = href.replace(/^.*?::\//i, '').replace(/\\/g, '/');
+    p = decodeURIComponent(p.replace(/^\/+/, ''));
+    if (p) return p;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
+  // 文档内相对/根相对路径：手工归一化（. / .. / 反斜杠 / 前导 /），
+  // 不依赖 URL 解析 —— file://C:/... 在 Windows 上会被误判 host，Linux 才正常。
+  try {
+    const raw = decodeURIComponent(String(href).replace(/\\/g, '/'));
+    const parts = raw.split('/');
+    const out = [];
+    for (const seg of parts) {
+      if (!seg || seg === '.') continue;
+      if (seg === '..') out.pop();
+      else out.push(seg);
+    }
+    return out.join('/');
+  } catch { return href; }
+}
+
 /** Parse a .hhc file; resolve hrefs against baseDir. */
 function parseHhcFile(file, baseDir) {
-  const text = clean(fs.readFileSync(file, 'utf8'));
+  const text = clean(readText(file));
   const tree = parseHhc(text);
-  const dir = path.resolve(baseDir || path.dirname(file)).replace(/\\/g, '/');
-  const resolve = (href) => {
-    if (!href) return null;
-    // CHM 内部链接：mk:@MSITStore:<file>::/<path> 或 <file>::/<path>
-    // 去掉协议与主机部分，只保留文档内相对路径 /path（可与文档真实文件对齐）
-    if (/^mk:@|::\//i.test(href)) {
-      let p = href.replace(/^.*?::\//i, '').replace(/\\/g, '/');
-      p = decodeURIComponent(p.replace(/^\/+/, ''));
-      if (p) return p.replace(/\//g, path.sep);
-    }
-    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
-    const url = new URL(href.replace(/\\/g, '/'), 'file://' + dir + '/');
-    return decodeURIComponent(url.pathname).replace(/^\//, '').replace(/\//g, path.sep);
-  };
-  const walk = (nodes) => nodes.map((n) => ({ ...n, href: resolve(n.href), children: walk(n.children) }));
+  const dir = path.resolve(baseDir || path.dirname(file));
+  const walk = (nodes) => nodes.map((n) => ({ ...n, href: resolveHref(n.href, dir), children: walk(n.children) }));
   return walk(tree);
 }
 
-module.exports = { parseHhc, parseHhcFile };
+module.exports = { parseHhc, parseHhcFile, resolveHref };

@@ -25,7 +25,7 @@ function rebuild(siteRoot) {
       if (k && k.name) ins.run(String(k.doc || ''), String(k.name).slice(0, 500), '');
     }
     for (const r of (idx.records || [])) {
-      if (r && r.text) ins.run(String(r.doc || ''), '', String(r.text).slice(0, 2000));
+      if (r && r.text) ins.run(String(r.doc || ''), String(r.name || '').slice(0, 500), String(r.text).slice(0, 2000));
     }
   });
   try { tx(); } catch (e) { console.error('[search] FTS rebuild failed', e); return 0; }
@@ -82,9 +82,10 @@ function search(siteRoot, query, { limit = 10, offset = 0 } = {}) {
            ORDER BY rank LIMIT ? OFFSET ?`
         ).all(ftsQuery, Math.max(0, limit), Math.max(0, offset));
         const hits = rows.map((r) => ({
-          doc: r.doc || '',
+          // doc 列存 id（slug）用于拼真实链接；标题列存文档名用于展示。
+          doc: (r.title || r.doc || ''),
           href: 'd/' + (r.doc || '') + '/',
-          snippet: (r.title || r.body || '').replace(/\[page:[^\]]*\]/g, '').trim(),
+          snippet: (r.body || r.title || '').replace(/\[page:[^\]]*\]/g, '').trim(),
         }));
         return { ok: true, query: q, total, hits };
       }

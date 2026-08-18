@@ -210,10 +210,10 @@ const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
     else{var c=null;rows.slice(0,20).forEach(function(r){if(r.grp&&r.grp!==c){h+='<div style="padding:8px 16px 2px;font-size:12px;color:var(--mut)">'+escS(r.grp)+'</div>';c=r.grp;}
       h+='<a href="'+escS(r.href)+'" style="display:block;padding:9px 16px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)"><b style="display:block;font-size:14px">'+escS(r.t)+'</b><span style="color:var(--mut);font-size:12px">'+escS(r.p||'')+'</span></a>';});}
     sres.innerHTML=h;sres.style.display='block';}
-  function local(q){q=String(q||'').toLowerCase();var rows=[];(siKw||[]).slice(0,120).forEach(function(k){if((k.name||'').toLowerCase().indexOf(q)!==-1)rows.push({grp:k.doc||'',href:k.href||'',t:k.name,p:k.doc});});
+  function local(q){q=String(q||'').toLowerCase();var rows=[];(siKw||[]).slice(0,120).forEach(function(k){if((k.name||'').toLowerCase().indexOf(q)!==-1)rows.push({grp:k.dn||k.doc||'',href:k.href||'',t:k.name,p:k.dn||k.doc||''});});
     (siRec||[]).forEach(function(rep){var lt=(rep.text||'').toLowerCase(),at=lt.indexOf(q);if(at===-1)return;
       var pg=(rep.text.match(/\\[page:([^\\]]+)\\]/)||[])[1]||'';var ctx=rep.text.slice(Math.max(0,at-30),at+100).replace(/\\s+/g,' ');
-      rows.push({grp:rep.doc||'',href:'d/'+(rep.doc||'')+'/'+pg,t:pg||'',p:ctx});});
+      rows.push({grp:rep.name||rep.doc||'',href:'d/'+(rep.doc||'')+'/'+pg,t:pg||'',p:ctx});});
     var seen={},u=[];rows.forEach(function(r){var k=r.href+'|'+r.t;if(!seen[k]){seen[k]=1;u.push(r);}});render(u);}
   function apiFn(q){fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20').then(function(r){return r.json();}).then(function(j){
     var rows=(j&&j.hits||[]).map(function(h){return {grp:h.doc||'',href:h.href||('d/'+(h.doc||'')+'/'),t:h.doc||'',p:h.snippet||''};});render(rows);}).catch(function(){local(q);});}
@@ -378,13 +378,15 @@ function buildSiteIndex({ siteRoot, docs }) {
   for (const d of docs || []) {
     const docRoot = d.href ? path.join(root, d.href.replace(/[\\/]+$/, '')) : null;
     const docName = d.name || d.id;
-    keywords.push({ name: docName, href: d.href || ('d/' + (d.id) + '/'), doc: docName });
+    // 键用文档 id（slug）：上传文档 name ≠ id，搜索结果的链接须指向 d/<id>/；
+    // dn 保留文档名供前端分组标题显示。
+    keywords.push({ name: docName, href: d.href || ('d/' + (d.id) + '/'), doc: d.id, dn: docName });
     try {
       const kwFile = docRoot && fs.existsSync(path.join(docRoot, 'keywords.json'))
         ? JSON.parse(fs.readFileSync(path.join(docRoot, 'keywords.json'), 'utf8')) : null;
       (kwFile && kwFile.keywords || []).forEach((k) => {
         const rel = (k.href || '').replace(/\\/g, '/');
-        keywords.push({ name: k.name, href: d.href + rel, doc: docName });
+        keywords.push({ name: k.name, href: d.href + rel, doc: d.id, dn: docName });
       });
     } catch (_) {}
     try {
@@ -395,7 +397,7 @@ function buildSiteIndex({ siteRoot, docs }) {
         recs.forEach((r) => {
           if (!r || !r.text) return;
           let txt = r.text.slice(0, 4000);
-          records.push({ doc: docName, text: txt });
+          records.push({ doc: d.id, name: docName, text: txt });
         });
       }
     } catch (_) {}

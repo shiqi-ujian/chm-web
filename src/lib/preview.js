@@ -8,6 +8,7 @@ const path = require('path');
 const { parseHhcFile } = require('./hhc');
 const parseHhk = require('./hhk').parseHhk;
 const { translate } = require('./translations');
+const { readText } = require('./charset');
 
 // Number of HTML pages per index-record / chunk for full-text search.
 const CHUNK_SIZE = 64;
@@ -24,6 +25,10 @@ function escAttr(s) {
 function relPath(baseDir, href) {
   if (!href) return '#';
   try {
+    // 外部协议（http/https/mailto…）保持原样；相对路径先对齐到文档根再求相对，
+    // 避免 path.relative 把相对目标按进程 CWD 解析成 ../../../../ 容器绝对路径。
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
+    if (!path.isAbsolute(href)) href = path.join(baseDir, href);
     return path.relative(baseDir, href).replace(/\\/g, '/').split('#')[0] || '#';
   } catch { return '#'; }
 }
@@ -644,7 +649,7 @@ function buildFullText(docDir) {
   const flush = () => { if (chunks.length) { records.push({ text: chunks.splice(0).join('\n') }); } };
 
   for (const file of allFiles) {
-    let text = htmlToText(fs.readFileSync(file, 'utf8'));
+    let text = htmlToText(readText(file));
     if (!text) continue;
     const rel = path.relative(docDir, file).replace(/\\/g, '/');
     titles.push({ file: rel, title: text.slice(0, 120) });

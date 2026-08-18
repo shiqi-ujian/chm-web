@@ -2,9 +2,9 @@
 // hhk.js — parse a CHM `.hhk` keyword index into a flat list of entries:
 //   [{ name, href }]
 // .hhk is the same sitemap shape as .hhc but with keyword entries (often flat).
-const fs = require('fs');
 const path = require('path');
-const { parseHhc } = require('./hhc');
+const { parseHhc, resolveHref } = require('./hhc');
+const { readText } = require('./charset');
 
 function clean(text) {
   return text
@@ -30,19 +30,11 @@ function flatten(tree, parentName = '') {
 
 /** Parse a .hhk file into flat keyword entries (href relative to baseDir). */
 function parseHhk(file, baseDir) {
-  const text = clean(fs.readFileSync(file, 'utf8'));
+  const text = clean(readText(file));
   const tree = parseHhc(text);
   const dir = path.resolve(baseDir || path.dirname(file));
-  const relHref = (href) => {
-    if (!href) return null;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
-    // normalize to forward slashes relative path
-    const abs = new URL(href.replace(/\\/g, '/'), 'file://' + dir.replace(/\\/g, '/') + '/').pathname;
-    const rel = require('path').relative(dir, decodeURIComponent(abs).replace(/^\//, '')).replace(/\\/g, '/');
-    return rel;
-  };
   const entries = flatten(tree);
-  return entries.map((e) => ({ name: e.name, title: e.title, href: relHref(e.href) }));
+  return entries.map((e) => ({ name: e.name, title: e.title, href: resolveHref(e.href, dir) }));
 }
 
 module.exports = { parseHhk, flatten };
