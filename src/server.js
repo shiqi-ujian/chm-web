@@ -98,9 +98,17 @@ function parseMultipart(buf, boundary) {
     const header = section.slice(0, headEnd).toString('latin1');
     const body = section.slice(headEnd + 4);
     const nameMatch = /name="([^"]*)"/.exec(header);
-    const filenameMatch = /filename="([^"]*)"/.exec(header);
-    if (filenameMatch) {
-      result.file = { field: nameMatch ? nameMatch[1] : null, filename: filenameMatch[1], data: body };
+    // filename 可能带 UTF-8 中文（现代浏览器按 UTF-8 编码 header）。
+    // header 已按 latin1 转码会破坏中文，因此从原始 buffer 里按 UTF-8 提取。
+    const fnRaw = /filename="([^"]*)"/.exec(section.slice(0, headEnd).toString('latin1'));
+    let filename = null;
+    if (fnRaw) {
+      // fnRaw[1] 是 latin1 字符串（每个字节对应一个码点 0-255），可无损还原回 Buffer
+      const bytes = Buffer.from(fnRaw[1], 'latin1');
+      try { filename = bytes.toString('utf8'); } catch { filename = fnRaw[1]; }
+    }
+    if (filename) {
+      result.file = { field: nameMatch ? nameMatch[1] : null, filename, data: body };
     } else if (nameMatch) {
       result.fields[nameMatch[1]] = body.toString('utf8');
     }
