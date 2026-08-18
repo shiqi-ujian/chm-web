@@ -162,6 +162,24 @@ async function main() {
   ok('after delete: /p/ gone (not 200)', (await get('/p/' + idB + '/', tok)) !== 200);
   ok('after delete: entity gone', !fs.existsSync(path.join(DATA, 'private', idB)));
 
+  // ---- 修改密码 ----
+  const cpAnon = await json('POST', '/api/change-password', { oldPassword: 'secret1', newPassword: 'newsecret1' });
+  ok('change-pwd anon 401', cpAnon.st === 401, String(cpAnon.st));
+  const cpWrong = await json('POST', '/api/change-password', { oldPassword: 'badold', newPassword: 'newsecret1' }, { 'X-User-Token': tok });
+  ok('change-pwd wrong old 403', cpWrong.st === 403, String(cpWrong.st));
+  const cpShort = await json('POST', '/api/change-password', { oldPassword: 'secret1', newPassword: '123' }, { 'X-User-Token': tok });
+  ok('change-pwd short new 400', cpShort.st === 400, String(cpShort.st));
+  const tok2 = (await json('POST', '/api/login', { username: 'alice', password: 'secret1' })).body.token;
+  ok('second session before change', !!tok2, '');
+  const cpOk = await json('POST', '/api/change-password', { oldPassword: 'secret1', newPassword: 'newsecret1' }, { 'X-User-Token': tok });
+  ok('change-pwd 200', cpOk.st === 200 && cpOk.body.ok === true, String(cpOk.st));
+  const oldLogin = await json('POST', '/api/login', { username: 'alice', password: 'secret1' });
+  ok('old pwd login 401', oldLogin.st === 401, String(oldLogin.st));
+  const newLogin = await json('POST', '/api/login', { username: 'alice', password: 'newsecret1' });
+  ok('new pwd login 200', newLogin.st === 200 && !!newLogin.body.token, String(newLogin.st));
+  ok('current session kept', (await json('GET', '/api/me', null, { 'X-User-Token': tok })).body.user === 'alice');
+  ok('other session revoked', (await json('GET', '/api/me', null, { 'X-User-Token': tok2 })).body.user === null);
+
   // ---- 登出 ----
   const out = await json('POST', '/api/logout', null, { 'X-User-Token': tok });
   ok('logout 200', out.st === 200);

@@ -308,7 +308,19 @@ const UPLOAD = page('上传 · CHM 网页', true, `
 const MINE = page('我的文档 · CHM 网页', true, `
   <div class="eyebrow">我的文档</div><h1>我的文档</h1>
   <div class="sub">管理你的私有 / 公开文档：改可见性、复制分享链接、删除。</div>`, `
-  <div style="max-width:820px;margin:28px auto 0" id="mineList"></div>`, `
+  <div style="max-width:820px;margin:28px auto 0" id="mineList"></div>
+  <div class="card" id="pwCard" style="max-width:820px;margin:28px auto 0;display:none">
+    <div class="eyebrow">账号</div>
+    <h2 style="font-size:17px;margin:0 0 4px">修改密码</h2>
+    <div class="sub">改完后其它设备上的登录会自动失效，当前会话保持。</div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:420px;margin-top:14px">
+      <input class="in" id="cpOld" type="password" placeholder="当前密码" autocomplete="current-password">
+      <input class="in" id="cpNew" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password">
+      <input class="in" id="cpConfirm" type="password" placeholder="确认新密码" autocomplete="new-password">
+      <div class="err" id="cpErr"></div>
+      <div style="display:flex;align-items:center;gap:10px"><button class="btn" id="cpGo" type="button">保存新密码</button></div>
+    </div>
+  </div>`, `
   var box=document.getElementById('mineList');
   function escS2(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   // 「我的文档」只展示当前登录用户自己上传的文档，绝不列公共区/他人/匿名种子文档。
@@ -337,8 +349,24 @@ const MINE = page('我的文档 · CHM 网页', true, `
   }
   function load(){render(mineOnly(window.__docs));
     fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(mineOnly(j.docs));}).catch(function(){});}
-  load();
-  window.__onAuth=function(){load();};`, 'mine');
+  // ---- 修改密码（仅登录后可见）----
+  var pwCard=document.getElementById('pwCard'),cpGo=document.getElementById('cpGo');
+  function showPw(on){if(pwCard)pwCard.style.display=on?'':'none';}
+  function changePw(){var o=document.getElementById('cpOld').value,n=document.getElementById('cpNew').value,c=document.getElementById('cpConfirm').value,er=document.getElementById('cpErr');
+    if(!o||!n){er.style.color='';er.textContent='请填写当前密码和新密码';return;}
+    if(n.length<6){er.style.color='';er.textContent='新密码至少 6 位';return;}
+    if(n!==c){er.style.color='';er.textContent='两次输入的新密码不一致';return;}
+    er.textContent='';if(cpGo)cpGo.disabled=true;
+    fetch('/api/change-password',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({oldPassword:o,newPassword:n})})
+      .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+        if(cpGo)cpGo.disabled=false;
+        if(x.st===200&&x.j.ok){er.style.color='#16a34a';er.textContent='密码已更新 ✓';
+          document.getElementById('cpOld').value='';document.getElementById('cpNew').value='';document.getElementById('cpConfirm').value='';}
+        else{er.style.color='';er.textContent=(x.j&&x.j.error)||'修改失败';}})
+      .catch(function(e){if(cpGo)cpGo.disabled=false;er.style.color='';er.textContent='网络错误：'+e.message;});}
+  if(cpGo)cpGo.addEventListener('click',changePw);
+  load();showPw(!!window.currentUser);
+  window.__onAuth=function(){load();showPw(!!window.currentUser);};`, 'mine');
 
 module.exports = { build, buildSiteIndex, WELCOME, BROWSE, UPLOAD, MINE, LANDING_HTML: WELCOME };
 

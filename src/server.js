@@ -469,6 +469,12 @@ function route(req, res) {
     auth.logout(t);
     setCookie(res, 'chm_user', '', { maxAge: 0 });
     sendJSON(res, 200, { ok: true });
+  } else if (req.method === 'POST' && urlPath === '/api/change-password') {
+    // 修改密码：需登录；校验旧密码后换盐重哈希，并注销该用户其它会话（当前会话保留）。
+    handleJson(req, res, (b) => {
+      const tok = (req.headers['x-user-token'] || '').trim() || parseCookies(req).chm_user;
+      return auth.changePassword(currentUser(req), b.oldPassword, b.newPassword, tok);
+    });
   } else if (req.method === 'GET' && urlPath === '/api/me') {
     sendJSON(res, 200, { user: currentUser(req) });
   } else if (req.method === 'GET' && urlPath === '/api/docs') {
@@ -536,7 +542,7 @@ server.listen(Number(PORT), HOST, () => {
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
   console.log('  auth      : upload=' + lockU + '  export=' + lockE + '  (UPLOAD_TOKEN/EXPORT_TOKEN)');
-  console.log('  POST /api/register|login|logout  → 账号');
+  console.log('  POST /api/register|login|logout|change-password  → 账号');
   console.log('  GET  /api/me / /api/docs         → 当前用户 / 可见文档列表（登录后含私有）');
   console.log('  POST /api/upload                 → 上传 .chm 并转换（表单可带 visibility=public|private）');
   console.log('  POST /api/doc/<id>/visibility|share → 改可见性 / 生成分享链接（仅 owner）');

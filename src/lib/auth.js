@@ -60,6 +60,30 @@ function logout(token) {
   dbm.db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
 }
 
+/**
+ * 修改密码：校验旧密码 → 换盐重哈希 → 注销该用户的其他会话（保留当前会话）。
+ * @param {string|null} username 当前登录用户名（null 表示未登录）
+ * @param {string} oldPassword 当前密码
+ * @param {string} newPassword 新密码（至少 6 位）
+ * @param {string} [currentToken] 当前会话 token（用于保留当前登录态）
+ */
+function changePassword(username, oldPassword, newPassword, currentToken) {
+  if (!username) throw new AuthError('请先登录', 401);
+  const u = dbm.db.prepare('SELECT salt, hash FROM users WHERE username = ?').get(username);
+  if (!u) throw new AuthError('用户不存在', 404);
+  const old = String(oldPassword == null ? '' : oldPassword);
+  if (hashPassword(old, u.salt) !== u.hash) throw new AuthError('当前密码不正确', 403);
+  const next = String(newPassword == null ? '' : newPassword);
+  if (next.length < 6) throw new AuthError('新密码至少 6 位', 400);
+  const salt = crypto.randomBytes(16).toString('hex');
+  dbm.db.prepare('UPDATE users SET salt = ?, hash = ? WHERE username = ?')
+    .run(salt, hashPassword(next, salt), username);
+  // 改密后旧登录态失效：注销该用户其它会话，当前会话保留
+  if (currentToken) dbm.db.prepare('DELETE FROM sessions WHERE username = ? AND token != ?').run(username, currentToken);
+  else dbm.db.prepare('DELETE FROM sessions WHERE username = ?').run(username);
+  return { ok: true };
+}
+
 /** 由 token 解析出用户名；无效或已过期返回 null */
 function userByToken(token) {
   if (!token) return null;
@@ -163,7 +187,7 @@ function readAllMeta() {
 
 module.exports = {
   init, AuthError,
-  register, login, logout, userByToken,
+  register, login, logout, changePassword, userByToken,
   ensureMeta, getMeta, setVisibility, share, deleteMeta, canRead, docIdByShareToken, privateDir,
   readAllMeta,
 };

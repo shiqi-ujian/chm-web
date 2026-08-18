@@ -7,6 +7,9 @@ samples/*.chm
 # 工作区根目录的待转换 chm 原稿（不入库，避免大文件进 git）
 *.chm
 !samples/7-zip.chm
+# 本地转换产物（chm 同名解包目录，可随时重新生成，不入库）
+/samples/7-zip/
+/5z*/
 *.tmp
 logs/
 # 视觉工具临时目录
