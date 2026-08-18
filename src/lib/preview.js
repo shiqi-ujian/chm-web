@@ -351,7 +351,7 @@ function runPageSearch(){
   psCount.textContent = terms.length ? (psTotal ? ('1/' + psTotal) : '0 结果') : '';
   if (psTotal) scrollToMark(0);
 }
-function scrollToMark(i){
+function scrollToMark(i, keepFocus){
   var doc = fdoc(); if (!doc) return;
   var marks = doc.querySelectorAll('mark.wz-hl');
   for (var k=0;k<marks.length;k++) marks[k].classList.remove('cur');
@@ -360,7 +360,9 @@ function scrollToMark(i){
   psCur = i;
   psCount.textContent = (i+1) + '/' + marks.length;
   try { marks[i].scrollIntoView({ block: 'center' }); } catch(e){}
-  var w = frame.contentWindow; if (w && w.focus) w.focus();
+  // 只有用户主动用键盘导航（Enter/↑↓）时才把焦点交给 iframe，
+  // 否则（搜索输入触发）会抢走输入框焦点，导致无法连续输入。
+  if (keepFocus){ var w = frame.contentWindow; if (w && w.focus) w.focus(); }
 }
 document.getElementById('page-search-btn').addEventListener('click', function(){
   psBar.classList.toggle('on');
@@ -378,15 +380,15 @@ if (psQ){
     psTimer = window.setTimeout(psRun, 250);
   });
   psQ.addEventListener('keydown', function(e){
-    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
-    else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
-    else if (e.key === 'ArrowUp' && e.altKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
-    else if (e.key === 'ArrowDown' && e.altKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur, true); }
+    else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur, true); }
+    else if (e.key === 'ArrowUp' && e.altKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur, true); }
+    else if (e.key === 'ArrowDown' && e.altKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur, true); }
     else if (e.key === 'Escape'){ psBar.classList.remove('on'); clearHl(fdoc()); }
   });
 }
-document.getElementById('ps-prev').addEventListener('click', function(){ if (psTotal) { psCur = (psCur - 1 + psTotal) % psTotal; scrollToMark(psCur); } });
-document.getElementById('ps-next').addEventListener('click', function(){ if (psTotal) { psCur = (psCur + 1) % psTotal; scrollToMark(psCur); } });
+document.getElementById('ps-prev').addEventListener('click', function(){ if (psTotal) { psCur = (psCur - 1 + psTotal) % psTotal; scrollToMark(psCur, true); } });
+document.getElementById('ps-next').addEventListener('click', function(){ if (psTotal) { psCur = (psCur + 1) % psTotal; scrollToMark(psCur, true); } });
 document.getElementById('ps-close').addEventListener('click', function(){ psBar.classList.remove('on'); clearHl(fdoc()); });
 
 /* ---------- 全站搜索（keywords + search-index，增强语法） ---------- */
