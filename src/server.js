@@ -9,7 +9,7 @@ const { processUpload, UploadError, cleanupTmp } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs } = require('./lib/site-export');
 const auth = require('./lib/auth');
-const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage } = require('./lib/quota');
+const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf } = require('./lib/quota');
 const LibSearch = require('./lib/search');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
@@ -455,6 +455,9 @@ const server = http.createServer((req, res) => {
     sendJSON(res, 200, { user: currentUser(req) });
   } else if (req.method === 'GET' && urlPath === '/api/docs') {
     sendJSON(res, 200, { docs: listDocs(currentUser(req)) });
+  } else if (req.method === 'GET' && urlPath === '/api/usage') {
+    const u = currentUser(req);
+    sendJSON(res, 200, u ? { usage: usageOf(u), username: u } : { usage: null, username: null });
   } else if (req.method === 'GET' && urlPath === '/api/search') {
     // B1 服务端检索：分页 + 高亮片段；文档一多时比前端整包拉索引更稳。
     const u = new URL(req.url, 'http://x');

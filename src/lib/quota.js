@@ -1,8 +1,10 @@
 'use strict';
 // quota.js — 公共服务护栏：每用户配额（文档数/总字节）+ 上传/导出接口限流 + 全局存储上限。
-// 纯 Node 零依赖；单实例进程内存态足够（重启返回宽松上限方向，可接受）。
+// 每用户用量持久化在 SQLite（src/lib/db.js 的 user_usage 表），重启不丢、删除精确释放。
+// 全局存储上限仍按磁盘扫描（docs/d + data/private 体积）作为近似。
 const fs = require('fs');
 const path = require('path');
+const dbm = require('./db');
 
 /** 简单滑动窗口限流器（进程内存态；单实例够用） */
 class SlidingWindow {
@@ -31,10 +33,11 @@ let perUserMaxBytes = 0;
 /** 初始化：dataDir + 配额环境变量。0 = 不限。 */
 function initQuota(dir, env = {}) {
   dataDir = path.resolve(dir);
-  fs.mkdirSync(dataDir, { recursive: true });
   maxGlobalBytes = Number(env.MAX_GLOBAL_BYTES) || 0;
   perUserMaxDocs = Number(env.MAX_USER_DOCS) || 0;
   perUserMaxBytes = Number(env.MAX_USER_BYTES) || 0;
+  // 确保 SQLite 已打开（user_usage 表可用）
+  dbm.open(dataDir);
 }
 
 function fsSizeRec(dir) {
@@ -56,35 +59,46 @@ function globalUsage() {
   return fsSizeRec(path.join(dataDir, '..', 'docs', 'd')) + fsSizeRec(path.join(dataDir, 'private'));
 }
 
-const userUsage = new Map(); // username -> { docs, bytes }
-function usageOf(username) { return userUsage.get(username) || { docs: 0, bytes: 0 }; }
+/** 每用户用量（文档数/字节）。持久化于 SQLite user_usage。 */
+function usageOf(username) {
+  if (!username) return { docs: 0, bytes: 0 };
+  const r = dbm.db.prepare('SELECT docs, bytes FROM user_usage WHERE username = ?').get(username);
+  return r ? { docs: Number(r.docs), bytes: Number(r.bytes) } : { docs: 0, bytes: 0 };
+}
 
-/** 校验并登记一次上传（校验失败抛 QuotaError，不入账） */
+function setUsage(username, docs, bytes) {
+  if (!username) return;
+  dbm.db.prepare(
+    'INSERT INTO user_usage (username, docs, bytes) VALUES (?,?,?) ' +
+    'ON CONFLICT(username) DO UPDATE SET docs=excluded.docs, bytes=excluded.bytes'
+  ).run(username, docs, bytes);
+}
+
+/** 校验并登记一次上传（校验失败抛 QuotaError，不入账）。事务内更新用量。 */
 function checkUploadQuota(username, byteSize) {
   if (!username) return;
-  const u = usageOf(username);
-  if (perUserMaxDocs && (u.docs + 1) > perUserMaxDocs) {
+  const use = usageOf(username);
+  if (perUserMaxDocs && (use.docs + 1) > perUserMaxDocs) {
     throw new QuotaError('每个用户最多上传 ' + perUserMaxDocs + ' 个文档', 429);
   }
-  if (perUserMaxBytes && (u.bytes + byteSize) > perUserMaxBytes) {
+  if (perUserMaxBytes && (use.bytes + byteSize) > perUserMaxBytes) {
     throw new QuotaError('该用户上传总量超限', 413);
   }
   if (maxGlobalBytes) {
     const g = globalUsage() + byteSize;
     if (g > maxGlobalBytes) throw new QuotaError('站点存储已满，请稍后再试', 507);
   }
-  u.docs += 1; u.bytes += byteSize;
-  userUsage.set(username, u);
-  return u;
+  setUsage(username, use.docs + 1, use.bytes + byteSize);
+  return usageOf(username);
 }
 
-/** 用户删除文档时释放占用 */
-function releaseQuota(username, byteSize) {
+/** 用户删除文档时释放占用（精确扣减）。 */
+function releaseQuota(username, byteSize, { docs = 1 } = {}) {
   if (!username) return;
-  const u = usageOf(username);
-  u.docs = Math.max(0, u.docs - 1);
-  u.bytes = Math.max(0, u.bytes - (byteSize || 0));
-  if (!u.docs && !u.bytes) userUsage.delete(username);
+  const use = usageOf(username);
+  setUsage(username,
+    Math.max(0, use.docs - docs),
+    Math.max(0, use.bytes - (byteSize || 0)));
 }
 
-module.exports = { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage };
+module.exports = { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf };
