@@ -78,7 +78,7 @@
 - 现象：winget 装好 7-Zip 26.02（默认**不进 PATH**）后，`node bin\cli.js convert` 报 `7z extract failed (null): undefined`。
 - 根因：`chm.js resolveSeven()` 候选列表 `[SEVENZ, '7z', '7za', '7zz', 默认路径]` 中，第一个非绝对路径候选（`'7z'`）被**无条件立即返回**（`return c`），后面的绝对路径兜底永远走不到；本机 PATH 无 7z → `spawnSync` ENOENT → `status=null`。
 - 修复：非绝对路径候选改用 `spawnSync(c, ['i'], { stdio: 'ignore' })` 探测可用性（`status===0` 才采用），失败继续下一个候选；绝对路径仍做 `existsSync` 预检。
-- 验证：`npm test` 6 项全过（SERVE / HHC / FULLTEXT / SITE / ZIP / EXPORT_DOCS），`e2e-test.js` 上传闭环 200 + 新文档可访问。
+- 验证：`npm test` 6 项全过（SERVE / HHC / FULLTEXT / SITE / ZIP / EXPORT_DOCS），上传闭环 200 + 新文档可访问（原 `e2e-test.js` 手动冒烟脚本已废弃，上传闭环由 `test-auth.js` 覆盖）。
 
 ### 7. 新工作区本机环境修复（2026-08-17）
 - 安装 7-Zip 26.02（`winget install 7zip.7zip`），验证 `7z.exe` + 自带 `7-zip.chm` 样本。
@@ -94,7 +94,7 @@
 - **实体迁移**：owner 切换可见性时实体在 `docs/d/` 与 `data/private/` 间搬移（`migrateDoc`），并重建欢迎页/索引。
 - **接口**：`POST /api/register|login|logout`、`GET /api/me`、`POST /api/doc/<id>/visibility|share`、`/api/docs` 按可见性过滤（匿名只见公开，owner 多看到自己的私有）。
 - 前端欢迎页：登录/注册 modal、上传可见性单选、文档行公开/私密标签 + "我的"标记 + owner 的设公开/设私密/复制分享链接操作。
-- 自测：`test-auth.js`（32 项）并入 `npm test`，全绿；`e2e-test.js` 回归通过。
+- 自测：`test-auth.js`（32 项）并入 `npm test`，全绿；上传闭环由 `test-auth.js` 回归覆盖（原 `e2e-test.js` 已废弃删除）。
 
 ### 9. GBK 页面整页乱码（已解决，2026-08-18）
 - 现象：`/d/dnd-26-08-06-60c6bd/#城主指南2024/Credits.htm` 等 640 个页面打开后中文全变 `????`/方块。

@@ -140,12 +140,18 @@ chm-web/
 ├─ 上传网页教程.md   # 把转换好的站点上传到静态托管的图文步骤
 ├─ package.json     # 依赖清单 + convert/serve/test 脚本
 ├─ bin/cli.js       # CLI 入口
+├─ tools/           # 开发辅助脚本（重建壳/索引，非生产代码）
+│  ├─ rebuild-docs.js     # 重建 docs/d 下所有文档的壳 + 索引
+│  ├─ rebuild-landing.js  # 重建欢迎页（应用 landing.js 改动）
+│  └─ rebuild-shells.js   # 重建所有文档阅读壳 index.html
+├─ .deploy-tools/   # 服务器运维脚本（SSH 部署等，本机用）
 ├─ src/
-│  ├─ cli.js        # convert / extract / scan / serve 命令
+│  ├─ cli.js        # convert / extract / scan / serve / fix-charsets 命令
 │  └─ lib/
 │     ├─ chm.js      # 7-Zip 解包 + 扫描
 │     ├─ hhc.js      # 解析 .hhc 目录树
 │     ├─ hhk.js      # 解析 .hhk 关键字
+│     ├─ charset.js  # 字符集检测 / 归一化（GBK→UTF-8）
 │     ├─ preview.js  # 生成 index.html / __chm_nav.html / keywords.json / search-index.json
 │     ├─ serve.js    # 零依赖静态服务器
 │     ├─ landing.js  # 欢迎页 + 全站聚合检索 site-index.json
