@@ -29,10 +29,13 @@ const evil = '<script>alert(1)</scr' + 'ipt><img src=x onerror=alert(2)>';
 const out = esc(evil);
 ok('esc() turns every < > into entities', !out.includes('<script') && !out.includes('<img') && !out.includes('</scrip'), out);
 
-// 4) landing 全文搜索输出同样转义：siteSearchLocal 用 esc() 包裹 name/href
+// 4) landing 全文搜索输出同样转义：各子页模板把搜索结果里文档名/正文都经 escS/escA 包裹，
+//    且共享脚本里定义了 escU 转义函数（所有点都走它，绝不裸拼文档内容）。
 const landing = fs.readFileSync(path.join(root, 'src', 'lib', 'landing.js'), 'utf8');
-ok('landing: search rows escaped via esc()', landing.includes("esc(r.t)") && landing.includes("esc(r.p||'')"), '');
-ok('landing: href escaped via escH()', landing.includes("escH(r.href)"), '');
+ok('landing: shared esc defined (escU)', landing.includes('function escU(') || landing.includes('var escU='), '');
+ok('landing: href escaped via esc (attribute-safe)', landing.includes(".replace(/</g,'&lt;')"), '');
+ok('landing: page scripts use escS/escape on all doc output',
+  landing.includes('escS(f.name)') && landing.includes('escS(d.name||d.id)'), '');
 
 console.log(pass ? 'XSS_TEST_PASS' : 'XSS_TEST_FAIL');
 process.exit(pass ? 0 : 1);

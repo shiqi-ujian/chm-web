@@ -1,7 +1,12 @@
 'use strict';
-// landing.js — 站点欢迎页（首页）：标题说明 + 上传入口 + 我的文档。
-// 纯静态自包含页（内联 CSS/JS），可直接被静态托管托管；上传到位后，
-// form 的 action/接口地址可换成真实后端，无需改这套 UI。
+// landing.js —— 多页架构：把原单一巨大欢迎页拆成 4 个独立静态子页。
+//   index.html   欢迎页（Hero + 全站搜索 + 热门文档）
+//   browse.html  浏览文档（公开文档列表）
+//   upload.html  上传页（登录门控上传工作台）
+//   mine.html    我的文档（登录用户的文档管理）
+// 全部纯静态自包含（内联 CSS/JS），可被静态托管 / 离线 zip 承载；
+// 动态数据（登录态、文档列表、上传）仍由后端 API 提供，失败时前端回退到
+// 构建期注入的 __DOCS_JSON__（公开文档清单）。不再烘焙任何访问令牌（A3）。
 const fs = require('fs');
 const path = require('path');
 
@@ -11,616 +16,355 @@ function esc(s) {
     .replace(/"/g, '&quot;');
 }
 
-const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CHM 网页 · 免费在线阅读工具</title>
-<style>
-  :root{--acc:#7c3aed;--accdark:#6d28d9;--bg:#f6f7fb;--card:#fff;--ink:#1e293b;--mut:#64748b;--line:#e2e8f0;--accent-soft:#f3e8ff;--hover:#f1f5f9;--ok:#1a7f37;--err:#cf222e}
-  [data-theme="dark"]{--acc:#a78bfa;--accdark:#c4b5fd;--bg:#0f172a;--card:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--line:#334155;--accent-soft:#312e81;--hover:#334155;--ok:#4ade80;--err:#f87171}
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--bg);line-height:1.6}
-  .top{background:linear-gradient(135deg,#7c3aed 0%,#a78bfa 100%);color:#fff;padding:44px 16px 56px;text-align:center}
-  .top .brand{font-size:15px;opacity:.85;letter-spacing:1px}
-  .top h1{font-size:30px;margin:10px 0 8px;font-weight:700}
-  .top .sub{font-size:15px;opacity:.95;max-width:560px;margin:0 auto}
-  .wrap{max-width:960px;margin:0 auto;padding:0 16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 18px rgba(0,0,0,.06)}
-  .searchbar{max-width:680px;margin:0 auto 24px;position:relative}
-  .searchbar input{width:100%;padding:14px 44px 14px 18px;border:1px solid var(--line);border-radius:999px;font-size:16px;outline:none;box-shadow:0 2px 10px rgba(0,0,0,.05)}
-  .searchbar input:focus{border-color:var(--acc)}
-  .searchbar .ico{position:absolute;right:18px;top:50%;transform:translateY(-50%);color:var(--mut);font-size:16px}
-  .sres{position:absolute;top:52px;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.14);max-height:62vh;overflow:auto;display:none;z-index:90}
-  .sres.on{display:block}
-  .sres .empty{padding:14px 16px;color:var(--mut);font-size:14px}
-  .sres .grp{padding:8px 14px 2px;font-size:12px;color:var(--mut);letter-spacing:.5px}
-  .sres a{display:block;padding:9px 16px;border-bottom:1px solid var(--b);text-decoration:none}
-  .sres a:last-of-type{border-bottom:0}
-  .sres a:hover{background:var(--hover)}
-  .sres a .t{font-weight:600;color:var(--ink);font-size:14px;display:block}
-  .sres a .p{color:var(--mut);font-size:12px;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px}
-  .sres a .tt{font-size:11px;color:var(--acc);background:var(--accent-soft);border-radius:20px;padding:1px 8px;margin-left:8px;flex:0 0 auto}
-  .upload{margin:-34px auto 24px;max-width:680px;padding:22px}
-  .drop{border:2px dashed #b6c2d0;border-radius:12px;padding:36px 20px;text-align:center;cursor:pointer;transition:.15s}
-  .drop:hover,.drop.over{border-color:var(--acc);background:var(--accent-soft)}
-  .drop .big{font-size:20px;font-weight:600}
-  .drop .small{color:var(--mut);font-size:13px;margin-top:6px}
-  .drop input{display:none}
-  .btn{display:inline-block;background:var(--acc);color:#fff;border:0;border-radius:10px;padding:12px 26px;font-size:16px;font-weight:600;cursor:pointer;margin-top:16px}
-  .btn:hover{background:var(--accdark)}
-  .btn:disabled{background:#9db6d9;cursor:not-allowed}
-  .file-pick{display:none}
-  .file-pick.show{display:block;margin-top:14px;font-size:14px;color:var(--mut)}
-  .pickrow{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;background:#fff}
-  .pickrow .fn{font-weight:600;font-size:13.5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-  .pickrow .fb{color:var(--mut);font-size:12px;margin-left:8px;flex:0 0 auto}
-  .pickrow .rm{border:0;background:#f0f2f5;color:var(--mut);border-radius:50%;width:20px;height:20px;line-height:1;cursor:pointer;margin-left:8px;flex:0 0 auto}
-  .pickrow .rm:hover{background:#ffebe9;color:var(--err)}
-  .message{margin-top:14px;font-size:14px;min-height:20px}
-  .message .err{color:var(--err)}
-  .message .ok{color:var(--ok)}
-  .steps{max-width:680px;margin:0 auto 28px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  .step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;text-align:center}
-  .step .n{width:28px;height:28px;line-height:28px;border-radius:50%;background:var(--accent-soft);color:var(--acc);font-weight:700;margin:0 auto 8px}
-  .step b{font-size:15px}
-  .step p{font-size:13px;color:var(--mut);margin:6px 0 0}
-  .docs{max-width:680px;margin:0 auto 48px}
-  .docs h2{font-size:18px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between}
-  .docs h2 .export{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:var(--accent-soft);border-radius:20px;padding:4px 12px}
-  .docs h2 .export:hover{background:#d6e9ff}
-  .docs h2 .exp-other{font-size:12px;font-weight:600;color:var(--acc);text-decoration:none;background:var(--accent-soft);border-radius:20px;padding:4px 12px;margin-right:6px}
-  .doc-row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-  .doc-row .left{display:flex;align-items:center;min-width:0}
-  .doc-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);cursor:pointer;margin-right:12px;flex:0 0 auto}
-  .doc-row .name{display:inline-block;font-weight:600;font-size:15px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:36vw}
-  .doc-row .tag{font-size:12px;color:var(--mut);background:#f0f2f5;border-radius:20px;padding:2px 10px}
-  .doc-row a{color:var(--acc);text-decoration:none;font-size:14px}
-  .doc-row a:hover{text-decoration:underline}
-  .foot{text-align:center;color:var(--mut);font-size:13px;padding:20px 0 32px}
-  .authbar{max-width:680px;margin:0 auto 20px;display:flex;justify-content:flex-end;align-items:center;gap:10px}
-  .authbar .who{font-size:13px;color:var(--mut)}
-  .authbar .link{font-size:13px;color:var(--acc);cursor:pointer;background:var(--card);border:1px solid var(--acc);border-radius:20px;padding:4px 14px}
-  .authbar .link:hover{background:var(--accent-soft)}
-  .theme-btn{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:4px 12px;cursor:pointer;font-size:13px}
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:200}
-  .modal.on{display:flex}
-  .modal .box{background:#fff;border-radius:14px;padding:24px;width:min(92vw,360px);box-shadow:0 10px 40px rgba(0,0,0,.2)}
-  .modal h3{margin:0 0 14px;font-size:17px}
-  .modal label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
-  .modal input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none}
-  .modal input:focus{border-color:var(--acc)}
-  .modal .row{display:flex;gap:10px;margin-top:16px}
-  .modal .row .btn{margin:0;flex:1;text-align:center}
-  .modal .ghost{background:#fff;color:var(--acc);border:1px solid var(--acc)}
-  .modal .err{color:var(--err);font-size:12.5px;margin-top:10px;min-height:16px}
-  .visrow{margin-top:12px;font-size:13.5px;color:var(--mut);display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap}
-  .visrow label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
-  .visrow input{accent-color:var(--acc)}
-  .tag.pub{background:#e6ffec;color:#1a7f37}
-  .tag.priv{background:#fff1e6;color:#b35900}
-  .doc-row .mid{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-  .doc-row .ops{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-  .op-btn{font-size:12px;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:20px;padding:3px 10px;cursor:pointer}
-  .op-btn:hover{background:var(--b)}
-  .op-btn.warn:hover{background:#fff1e6;color:#b35900;border-color:#ffd9b3}
-  .mine{font-size:11px;color:var(--acc);background:var(--accent-soft);border-radius:20px;padding:1px 8px;flex:0 0 auto}
-  .upload-login{margin:-34px auto 24px;max-width:680px;padding:18px 22px;font-size:14px;color:var(--mut)}
-  .upload-login .link{font-size:13px;color:var(--acc);cursor:pointer;background:var(--card);border:1px solid var(--acc);border-radius:20px;padding:4px 14px}
-  .upload-login .link:hover{background:var(--accent-soft)}
-  @media(max-width:560px){.steps{grid-template-columns:1fr}.top h1{font-size:24px}.doc-row{flex-wrap:wrap}.doc-row .ops{width:100%;justify-content:flex-end;margin-top:8px}}
-</style></head><body>
-<div class="top"><div class="brand">CHM 网页</div><h1>把 CHM 帮助文档变成手机也能看的网页</h1>
-<div class="sub">上传 .chm，自动解包为可浏览、可搜索的静态页面，PC / 手机随时翻阅，完全免费。</div></div>
-<div class="wrap">
-  <div class="authbar" id="authbar">
-    <button class="theme-btn" id="themeBtn" title="切换深色模式" type="button">🌙</button>
-    <span class="who" id="who"></span>
-    <button class="link" id="loginBtn" type="button">登录 / 注册</button>
-  </div>
+/* ============ 共享设计 token 与公共片段（浅紫延续） ============ */
 
-  <div class="searchbar">
-    <input type="text" id="siteq" placeholder="搜索全部文档（标题 / 关键字 / 正文）…" autocomplete="off">
-    <span class="ico">⌕</span>
-    <div class="sres" id="sres"></div>
-  </div>
+const CSS = `
+:root{--acc:#7c3aed;--acc-dark:#6d28d9;--acc-soft:#f3e8ff;--bg:#f6f7fb;--card:#fff;
+  --ink:#1e293b;--mut:#64748b;--line:#e2e8f0;--hover:#f1f5f9;--ok:#1a7f37;--err:#cf222e;
+  --radius-lg:18px;--radius:12px;--shadow-sm:0 1px 3px rgba(15,23,42,.06);
+  --shadow-md:0 12px 32px rgba(88,45,161,.12);}
+[data-theme="dark"]{--acc:#a78bfa;--acc-dark:#c4b5fd;--acc-soft:#312e81;--bg:#0d1524;--card:#1b2740;
+  --ink:#e6ecf5;--mut:#94a3b8;--line:#2a3a56;--hover:#243450;--ok:#4ade80;--err:#f87171;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1020px;margin:0 auto;padding:0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--acc);color:#fff;border:0;border-radius:12px;
+  padding:12px 24px;font-size:15px;font-weight:700;cursor:pointer;transition:.18s transform,.18s box-shadow;text-decoration:none}
+.btn:hover{background:var(--acc-dark);transform:translateY(-1px);box-shadow:var(--shadow-md)}
+.btn:disabled{background:#9db6d9;cursor:not-allowed;transform:none;box-shadow:none}
+.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+.btn.ghost:hover{background:var(--acc-soft)}
+.btn.danger{background:var(--err)}.btn.sm{padding:6px 14px;font-size:13px;border-radius:9px}
+.in{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px;
+  background:var(--bg);color:var(--ink);outline:none}
+.in:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.field{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+.message{margin-top:12px;font-size:14px;min-height:20px}.message .err{color:var(--err)}.message .ok{color:var(--ok)}
+.tag{display:inline-block;font-size:12px;color:var(--mut);background:var(--hover);border-radius:999px;padding:2px 10px}
+.tag.pub{background:rgba(26,127,55,.14);color:var(--ok)}.tag.priv{color:#b35900;background:rgba(179,89,0,.12)}
+.foot{text-align:center;color:var(--mut);font-size:13px;padding:28px 0 36px}
+.header{position:sticky;top:0;z-index:100;height:60px;display:flex;align-items:center;gap:16px;
+  padding:0 clamp(16px,4vw,40px);backdrop-filter:blur(10px);background:rgba(246,247,251,.82);border-bottom:1px solid var(--line)}
+[data-theme="dark"] .header{background:rgba(13,21,36,.82)}
+.header .logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;color:var(--ink);white-space:nowrap}
+.header .logo .dot{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,#7c3aed,#c084fc)}
+.header nav{display:flex;gap:4px;margin-left:8px}
+.header nav a{padding:7px 13px;border-radius:10px;font-size:14px;color:var(--mut);font-weight:600}
+.header nav a:hover{background:var(--hover);color:var(--ink);text-decoration:none}
+.header nav a.on{background:var(--acc-soft);color:var(--acc)}
+.header .spacer{flex:1}.header .who{font-size:13px;color:var(--mut);white-space:nowrap}
+.auth-link{border:1px solid var(--line);background:var(--card);color:var(--acc);border-radius:999px;
+  padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer}
+.auth-link:hover{background:var(--acc-soft);border-color:var(--acc);text-decoration:none}
+.theme-btn{border:1px solid var(--line);background:var(--card);border-radius:999px;width:34px;height:34px;
+  cursor:pointer;font-size:15px;display:grid;place-items:center}
+.hero{background:linear-gradient(160deg,#7c3aed 0%,#9f5bd5 45%,#c084fc 100%);color:#fff;
+  padding:clamp(36px,7vw,64px) 16px;text-align:center}
+.hero.small{padding:clamp(22px,3vw,34px) 16px}
+.hero .eyebrow{opacity:.9;letter-spacing:2px;font-size:13px;font-weight:600}
+.hero h1{font-size:clamp(24px,4.5vw,36px);margin:10px auto;font-weight:800;max-width:720px}
+.hero .sub{font-size:clamp(14px,2vw,16px);opacity:.95;max-width:560px;margin:0 auto}
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.4);display:none;align-items:center;justify-content:center;z-index:300}
+.modal.on{display:flex}
+.modal .box{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);
+  padding:26px;width:min(92vw,380px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal h3{margin:0 0 6px;font-size:18px}
+.modal .row{display:flex;gap:10px;margin-top:18px}.modal .row .btn{margin:0;flex:1;text-align:center}
+.modal .err{color:var(--err);font-size:12.5px;margin-top:10px;min-height:16px}
+.row-card{display:flex;align-items:center;gap:14px;padding:18px;margin-bottom:12px;transition:.16s box-shadow}
+.row-card:hover{box-shadow:var(--shadow-md)}
+@media(max-width:640px){.header nav a{font-size:13px;padding:6px 9px}.header .logo span.txt{display:none}}
+`;
 
-  <div class="card upload-login" id="uploadGateHint" style="display:none">
-    <div style="text-align:center;padding:6px">🔒 上传需要先登录。<button class="link" id="gateLogin" type="button" style="border:1px solid var(--acc);background:var(--card);border-radius:20px;padding:4px 14px;color:var(--acc);cursor:pointer">去登录 / 注册</button></div>
-  </div>
+const NAV = `
+<div class="header">
+  <div class="logo"><span class="dot"></span><span class="txt">CHM 网页</span></div>
+  <nav>
+    <a href="index.html" data-nav="home">首页</a>
+    <a href="browse.html" data-nav="browse">浏览文档</a>
+    <a href="upload.html" data-nav="upload">上传</a>
+    <a href="mine.html" data-nav="mine">我的文档</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="who" id="who"></span>
+  <button class="theme-btn" id="themeBtn" title="切换深色模式" type="button">🌙</button>
+  <button class="auth-link" id="loginBtn" type="button">登录 / 注册</button>
+</div>`;
 
-  <div class="card upload" id="uploadCard">
-    <div class="drop" id="drop" tabindex="0">
-      <div class="big">点击选择 .chm，或拖进来</div>
-      <div class="small">支持 .chm 格式 · 转换后立即可浏览 · 上传即用</div>
-      <input type="file" id="file" accept=".chm">
-    </div>
-    <div class="visrow" id="visrow">
-      <label><input type="radio" name="vis" value="public" checked> 公开（所有人可看）</label>
-      <label><input type="radio" name="vis" value="private"> 私密（仅自己 + 分享链接）</label>
-    </div>
-    <div class="file-pick" id="filePick"></div>
-    <div class="message" id="msg"></div>
-    <div style="text-align:center"><button class="btn" id="go" disabled>转换文档</button></div>
-  </div>
-
-  <div class="steps">
-    <div class="step"><div class="n">1</div><b>上传 .chm</b><p>选择或拖入你的帮助文档</p></div>
-    <div class="step"><div class="n">2</div><b>自动转换</b><p>解包为静态 HTML + 目录 + 关键字</p></div>
-    <div class="step"><div class="n">3</div><b>分享浏览</b><p>手机 / 电脑打开即读，可搜索</p></div>
-  </div>
-
-  <div class="docs">
-    <h2>我的文档 <span style="display:inline-flex"><a class="exp-other" id="exportSelBtn" href="javascript:void(0)" title="把勾选的文档打包成独立可部署的裸站 zip 下载">导出选中 zip ⬇</a><a class="export" id="exportBtn" href="javascript:void(0)" title="把整站打包成可部署的 zip 下载">导出整站 zip ⬇</a></span></h2>
-    <div id="docsList"></div>
-  </div>
-
-  <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示</div>
-</div>
+const MODAL = `
 <div class="modal" id="authModal">
   <div class="box">
     <h3 id="authTitle">登录</h3>
-    <label>用户名</label><input id="au" autocomplete="username">
-    <label>密码</label><input id="ap" type="password" autocomplete="current-password">
+    <label class="field">用户名</label><input class="in" id="au" autocomplete="username">
+    <label class="field">密码</label><input class="in" id="ap" type="password" autocomplete="current-password">
     <div class="err" id="authErr"></div>
-    <div class="row">
-      <button class="btn ghost" id="authSwitch" type="button">去注册</button>
-      <button class="btn" id="authGo" type="button">登录</button>
-    </div>
+    <div class="row"><button class="btn ghost" id="authSwitch" type="button">去注册</button>
+      <button class="btn" id="authGo" type="button">登录</button></div>
   </div>
-</div>
+</div>`;
+
+// 公共 JS：主题/登录模态/文档清单 + 各页脚本（pageScript 占位）。
+// navActive 用于高亮当前导航。
+function SHARED_JS(pageScript) {
+  return `(function(){
+var escU=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+var theme=(function(){try{return localStorage.getItem('chm-theme')||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}catch(e){return 'light';}})();
+document.documentElement.dataset.theme=theme;
+var tb=document.getElementById('themeBtn');
+if(tb){tb.textContent=theme==='dark'?'☀️':'🌙';tb.addEventListener('click',function(){var n=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  document.documentElement.dataset.theme=n;try{localStorage.setItem('chm-theme',n);}catch(e){}tb.textContent=n==='dark'?'☀️':'🌙';});}
+(function(){var nav=document.querySelector('[data-nav="__NAV_ACTIVE__"]');if(nav)nav.classList.add('on');})();
+var USER_TOKEN=(function(){try{return localStorage.getItem('chm_user')||'';}catch(e){return '';}})();
+function userHeaders(){return USER_TOKEN?{'X-User-Token':USER_TOKEN}:{};}
+window.userHeaders=userHeaders;
+var currentUser=null,who=document.getElementById('who'),lb=document.getElementById('loginBtn');
+window.currentUser=currentUser;
+function renderAuth(){window.currentUser=currentUser;if(who)who.textContent=currentUser?('你好，'+currentUser):'';if(lb)lb.textContent=currentUser?'退出':'登录 / 注册';}
+window.renderAuth=renderAuth;
+function afterMe(){try{if(window.__onAuth)window.__onAuth();}catch(e){}}
+function loadMe(){if(!window.fetch||!USER_TOKEN)return;fetch('/api/me',{headers:userHeaders()}).then(function(r){return r.json();})
+  .then(function(j){currentUser=(j&&j.user)||null;renderAuth();afterMe();}).catch(function(){renderAuth();afterMe();});}
+var modal=document.getElementById('authModal');
+window.__openAuth=function(){if(modal)modal.classList.add('on');};
+window.__closeAuth=function(){if(modal)modal.classList.remove('on');};
+function doAuth(){var u=document.getElementById('au').value.trim(),p=document.getElementById('ap').value,er=document.getElementById('authErr');
+  if(!u||!p){er.textContent='请填写用户名和密码';return;}
+  var mode=document.getElementById('authTitle').textContent.indexOf('注册')===0?'register':'login';
+  fetch('/api/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+    .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+      if(x.st===200&&x.j.token){USER_TOKEN=x.j.token;try{localStorage.setItem('chm_user',USER_TOKEN);}catch(e){}
+        currentUser=x.j.username||u;window.__closeAuth();renderAuth();afterMe();}
+      else er.textContent=(x.j&&x.j.error)||'失败';})
+    .catch(function(e){er.textContent='网络错误：'+e.message;});}
+if(lb)lb.addEventListener('click',function(){if(currentUser){fetch('/api/logout',{method:'POST',headers:userHeaders()}).catch(function(){});USER_TOKEN='';currentUser=null;
+  try{localStorage.removeItem('chm_user');}catch(e){}renderAuth();afterMe();}else window.__openAuth();});
+if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
+  document.getElementById('authSwitch').addEventListener('click',function(){
+    var reg=document.getElementById('authTitle').textContent==='登录';
+    document.getElementById('authTitle').textContent=reg?'注册新账号':'登录';
+    document.getElementById('authGo').textContent=reg?'注册':'登录';
+    document.getElementById('authSwitch').textContent=reg?'去登录':'去注册';});
+  modal.addEventListener('click',function(e){if(e.target===modal)window.__closeAuth();});}
+var DOCS=(typeof __DOCS_JSON__!=='undefined'&&__DOCS_JSON__)?__DOCS_JSON__:[];
+window.__docs=DOCS;window.__setDocs=function(d){window.__docs=d;};
+window.__onAuth=window.__onAuth||function(){};
+loadMe();
+${pageScript}
+})();`;
+}
+
+/** 页面骨架：nav + hero + 正文 + foot + 模态 + 公共脚本 + 页面脚本 */
+function page(title, heroSmall, heroInner, body, pageScript, navActive) {
+  return `<!doctype html><html lang="zh" data-theme="light"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<style>${CSS}</style>
+</head><body>
+${NAV}
+<div class="hero${heroSmall ? ' small' : ''}">${heroInner}</div>
+<div class="wrap">${body}</div>
+<div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示</div>
+${MODAL}
 <script>
-(function(){
-  // 主题（深色/浅色，记忆 + 跟随系统）
-  var theme = (function(){ try { return localStorage.getItem('chm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch(e){ return 'light'; } })();
-  document.documentElement.dataset.theme = theme;
-  var themeBtn = document.getElementById('themeBtn');
-  if (themeBtn){
-    themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
-    themeBtn.addEventListener('click', function(){
-      var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-      document.documentElement.dataset.theme = next;
-      try { localStorage.setItem('chm-theme', next); } catch(e){}
-      themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
-    });
-  }
-  // 安全策略（A3）：不再把 UPLOAD_TOKEN/EXPORT_TOKEN 烘焙进页面源码（view-source
-  // 会泄露密钥）。浏览器端的上传/导出鉴权改为「依赖已登录会话」：
-  //   - 上传：服务端已强制登录（未登录 401）。
-  //   - 导出：服务端要求「已登录用户 或 服务方令牌」。
-  // 同源 fetch 会自动带 chm_user cookie，服务端据此识别当前用户；文件名/类型校验
-  // 在服务端完成。因此这里不再需要也不持有任何 X-Auth-Token 明文密钥。
-  function authHeaders(){ return {}; }
-  function uploadHeaders(){ return {}; }
-
-  // ---- M2 账号：登录/注册/退出（token 存 localStorage，请求带 X-User-Token）----
-  var USER_TOKEN = (function(){ try { return localStorage.getItem('chm_user') || ''; } catch(e){ return ''; } })();
-  function userHeaders(){ var h=authHeaders(); if(USER_TOKEN) h['X-User-Token']=USER_TOKEN; return h; }
-  var currentUser=null;
-  var authMode='login';
-  var authModal=document.getElementById('authModal');
-  var loginBtn=document.getElementById('loginBtn');
-  var who=document.getElementById('who');
-  function renderAuth(){
-    if(!loginBtn) return;
-    if(currentUser){ who.textContent='你好，'+currentUser; loginBtn.textContent='退出'; }
-    else { who.textContent=''; loginBtn.textContent='登录 / 注册'; }
-    updateUploadGate();
-  }
-  // C档：未登录时隐藏上传卡片、显示登录提示；登录后恢复（CSS 切换，不重建 DOM，
-  // 避免弄丢 msg/filePick/go 的原绑定）。
-  function updateUploadGate(){
-    var card=document.getElementById('uploadCard');
-    var hint=document.getElementById('uploadGateHint');
-    if(!card) return;
-    if(currentUser){
-      card.style.display='';
-      if(hint) hint.style.display='none';
-    } else {
-      card.style.display='none';
-      if(hint) hint.style.display='';
-    }
-  }
-  function loadMe(){
-    if(!window.fetch || !USER_TOKEN) return;
-    fetch('/api/me',{headers:userHeaders()}).then(function(r){ return r.json(); })
-      .then(function(j){ currentUser=(j&&j.user)||null; renderAuth(); refreshDocs(); })
-      .catch(function(){});
-  }
-  function openAuth(mode){
-    authMode=mode||'login';
-    document.getElementById('authTitle').textContent = authMode==='register' ? '注册新账号' : '登录';
-    document.getElementById('authGo').textContent = authMode==='register' ? '注册' : '登录';
-    document.getElementById('authSwitch').textContent = authMode==='register' ? '去登录' : '去注册';
-    document.getElementById('authErr').textContent='';
-    authModal.classList.add('on');
-    document.getElementById('au').focus();
-  }
-  function closeAuth(){ authModal.classList.remove('on'); }
-  function doAuth(){
-    var u=document.getElementById('au').value.trim();
-    var p=document.getElementById('ap').value;
-    var err=document.getElementById('authErr');
-    var goBtn=document.getElementById('authGo');
-    if(!u||!p){ err.textContent='请填写用户名和密码'; return; }
-    goBtn.disabled=true;
-    var mode=authMode;
-    function tryLogin(){
-      fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-        .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
-        .then(function(x){
-          if(x.st===200 && x.j.token){
-            USER_TOKEN=x.j.token;
-            try{ localStorage.setItem('chm_user',USER_TOKEN); }catch(e){}
-            currentUser=x.j.username||u;
-            closeAuth(); renderAuth(); refreshDocs();
-            msg.innerHTML='<span class=ok>'+(mode==='register'?'注册成功，已自动登录。':'登录成功。')+'</span>';
-          } else { err.textContent=(x.j&&x.j.error)||'登录失败'; }
-          goBtn.disabled=false;
-        })
-        .catch(function(e){ err.textContent='网络错误：'+(e&&e.message||e); goBtn.disabled=false; });
-    }
-    if(mode==='register'){
-      fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-        .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
-        .then(function(x){
-          if(x.st===200) tryLogin();
-          else { err.textContent=(x.j&&x.j.error)||'注册失败'; goBtn.disabled=false; }
-        })
-        .catch(function(e){ err.textContent='网络错误：'+(e&&e.message||e); goBtn.disabled=false; });
-    } else tryLogin();
-  }
-  // 上传门上的「去登录 / 注册」按钮
-  var gateLogin=document.getElementById('gateLogin');
-  if(gateLogin) gateLogin.addEventListener('click',function(){ openAuth('login'); });
-  if(loginBtn){
-    loginBtn.addEventListener('click',function(){
-      if(currentUser){
-        fetch('/api/logout',{method:'POST',headers:userHeaders()}).catch(function(){});
-        USER_TOKEN=''; currentUser=null;
-        try{ localStorage.removeItem('chm_user'); }catch(e){}
-        renderAuth(); refreshDocs();
-        msg.innerHTML='<span class=ok>已退出登录。</span>';
-      } else { openAuth('login'); }
-    });
-  }
-  if(authModal){
-    document.getElementById('authGo').addEventListener('click',doAuth);
-    document.getElementById('authSwitch').addEventListener('click',function(){ openAuth(authMode==='register'?'login':'register'); });
-    authModal.addEventListener('click',function(e){ if(e.target===authModal) closeAuth(); });
-    document.getElementById('ap').addEventListener('keydown',function(e){ if(e.key==='Enter') doAuth(); });
-  }
-  function saveBlob(blob, filename){
-    var url=URL.createObjectURL(blob);
-    var dl=document.createElement('a'); dl.href=url; dl.download=filename;
-    document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
-  }
-  var exportBtn=document.getElementById('exportBtn');
-  if(exportBtn){
-    exportBtn.addEventListener('click',function(e){
-      e.preventDefault();
-      if(window.location.protocol==='file:'){ alert('纯静态打开时无法打包，请用本地服务或线上站点访问后导出。'); return; }
-      exportBtn.textContent='打包中…';
-      fetch('site-export.zip',{headers:authHeaders()})
-        .then(function(r){ if(!r.ok) throw new Error('导出被拒绝('+r.status+')：请配置正确访问令牌'); return r.blob(); })
-        .then(function(b){ saveBlob(b,'site-export.zip'); })
-        .catch(function(err){ alert('导出失败：'+err.message); })
-        .then(function(){ exportBtn.textContent='⬇ 导出整站 zip ⬇'; });
-    });
-  }
-  var drop=document.getElementById('drop');
-  var file=document.getElementById('file');
-  var pick=document.getElementById('filePick');
-  var msg=document.getElementById('msg');
-  var go=document.getElementById('go');
-  var chosenList=[];   // 批量：Array<File>
-  var allFiles=[];     // 所有合法 .chm
-  var seq=0;           // 标识本次选区，避免过期回调写坏列表
-  var ok=[], fail=[];  // 批量进度
-  function noop(){}
-  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function escH(s){ return esc(s).replace(/'/g,'&#39;'); }
-  function fmtSize(b){ if(!b&&b!==0)return ''; if(b<1024)return b+' B'; if(b<1048576)return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
-  function isValidChm(name){ return /\.chm$/i.test(name||''); }
-  function setStep3(){ updateSelUI(); }
-  function updateSelUI(){
-    pick.classList.toggle('show', allFiles.length>0);
-    pick.innerHTML=(allFiles||[]).map(function(f,i){
-      return '<div class="pickrow"><span class="fn">'+esc(f.name)+'</span><span class="fb">'+fmtSize(f.size)+'</span>'+
-             '<button type="button" class="rm" data-i="'+i+'">✕</button></div>';
-    }).join('');
-    Array.prototype.forEach.call(pick.querySelectorAll('button.rm'),function(b){
-      b.addEventListener('click',function(){ removeFile(Number(b.getAttribute('data-i'))); });
-    });
-    go.disabled=!(allFiles.length>0);
-    go.textContent = allFiles.length>1 ? ('转换 '+allFiles.length+' 个文档') : '转换文档';
-  }
-  function removeFile(i){
-    if(i>=0 && i<allFiles.length){ allFiles.splice(i,1); updateSelUI(); }
-  }
-
-  // ---- 全站搜索：加载 site-index.json，跨所有文档过滤 ----
-  var sres=document.getElementById('sres');
-  var siteq=document.getElementById('siteq');
-  var siKeywords=[], siRecords=[], siLoaded=false, siTimer=null;
-  function loadSiteIndex(){
-    if(!window.fetch || siLoaded) return;
-    fetch('site-index.json').then(function(r){ return r.json(); }).then(function(j){
-      siKeywords=j.keywords||[]; siRecords=j.records||[]; siLoaded=true;
-    }).catch(function(){ siLoaded=true; });
-  }
-  // 在线有后端时优先走服务端 /api/search（分页、更稳）；失败/纯静态时回退
-  // 到本地 site-index.json 客户端过滤（离线 zip 导出仍可用）。
-  var apiSearch=false;
-  function probeApi(){ try{ if(!window.fetch) return; fetch('/api/search?q=__probe__').then(function(r){ apiSearch=r.status===200; }).catch(function(){ apiSearch=false; }); }catch(e){ apiSearch=false; } }
-  var apiSeq=0;
-  function siteSearch(v){
-    if (apiSearch) return siteSearchApi(v);
-    return siteSearchLocal(v);
-  }
-  function siteSearchApi(s){
-    if(!s) return;
-    var mySeq=++apiSeq;
-    fetch('/api/search?q='+encodeURIComponent(s)+'&limit=20')
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        if(mySeq!==apiSeq) return;
-        var arr=[];
-        (j&&j.hits||[]).forEach(function(h){
-          arr.push({grp:h.doc||'',href:h.href||('d/'+(h.doc||'')+'/'),t:(h.doc||''),p:h.snippet||''});
-        });
-        renderRows(arr);
-      }).catch(function(){ if(mySeq===apiSeq) siteSearchLocal(q); });
-  }
-  function siteSearchLocal(q){
-    var s=String(q||'').toLowerCase();
-    if(!s){ if(sres) sres.className='sres'; return; }
-    var rows=[], docTitle={};
-    (siKeywords||[]).forEach(function(k){ if(!docTitle[k.doc]) docTitle[k.doc]=k.name; });
-    (siKeywords||[]).slice(0,120).forEach(function(k){
-      if((k.name||'').toLowerCase().indexOf(s)!==-1) rows.push({grp:'关键字 · '+(k.doc||''),href:k.href,t:k.name||'',p:k.doc||''});
-    });
-    (siRecords||[]).forEach(function(rec,i){
-      var lt=(rec.text||'').toLowerCase();
-      var at=lt.indexOf(s);
-      if(at===-1) return;
-      var page=(rec.text.match(/\[page:([^\]]+)\]/)||[])[1]||'';
-      var href='d/'+(rec.doc||'')+'/'+page;
-      var ctx=rec.text.slice(Math.max(0,at-36),at+64).replace(/\s+/g,' ').replace(/\[page:[^\]]*\]/g,'').trim();
-      rows.push({grp:(rec.doc||''),href:href,t:page||'',p:ctx||''});
-      if(rows.filter(function(x){return x.rec===i;}).length>60) return;
-    });
-    var seen={},uniq=[];
-    rows.forEach(function(r){ var key=r.href+'|'+r.t; if(!seen[key]){ seen[key]=1; uniq.push(r); } });
-    renderRows(uniq);
-  }
-  function renderRows(rows){
-    if(!sres) return;
-    var html='';
-    if(!rows.length){ html='<div class="empty">无匹配结果</div>'; }
-    else {
-      var cur=null;
-      rows.slice(0,20).forEach(function(r){
-        if(r.grp && r.grp!==cur){ html+='<div class="grp">'+esc(r.grp)+'</div>'; cur=r.grp; }
-        html+='<a href="'+escH(r.href)+'"><span class="t">'+esc(r.t)+'</span><span class="p">'+esc(r.p||'')+'</span></a>';
-      });
-    }
-    sres.innerHTML=html; sres.className='sres on';
-  }
-  if(siteq){
-    loadSiteIndex();
-    probeApi();
-    siteq.addEventListener('input',function(){ window.clearTimeout(siTimer);
-      siTimer=window.setTimeout(function(){
-        var v=siteq.value||'';
-        if(!v){ if(sres)sres.className='sres'; return; }
-        siteSearch(v);
-      },220);
-    });
-  }
-  document.addEventListener('click',function(e){
-    if(siteq && e.target!==siteq && !sres.contains(e.target)) sres.className='sres';
-  });
-
-  // 渲染“我的文档”：优先请求后端列表，失败则用生成时注入的占位清单
-  var selectedDocs = {};   // id -> true，用于“导出选中”
-  function renderDocs(list){
-    var box=document.getElementById('docsList');
-    var arr = (list && list.length) ? list : (typeof __DOCS_JSON__!=='undefined'?__DOCS_JSON__:[]); /* __DOCS_JSON__ injected at build */
-    if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>';
-      updateExportSelBtn(); return; }
-    box.innerHTML=arr.map(function(d){
-      var id=(d.id||d.href||'').replace(/[\\/]+$/,'').split('/').pop();
-      var priv=d.visibility==='private';
-      var mine=currentUser && d.owner===currentUser;
-      var chk='<label class="left"><input type="checkbox" data-id="'+escH(id)+'" '+(selectedDocs[id]?'checked':'')+'><span class="name">'+esc(d.name||id)+'</span></label>';
-      var tag='<span class="tag '+(priv?'priv':'pub')+'">'+(priv?'私密':'公开')+'</span>';
-      var mid=(mine?'<span class="mine">我的</span>':'');
-      var ops='<span class="ops">';
-      if(mine){
-        ops+='<button type="button" class="op-btn warn" data-vis="'+escH(id)+'">'+(priv?'设为公开':'设为私密')+'</button>';
-        ops+='<button type="button" class="op-btn" data-share="'+escH(id)+'">复制分享链接</button>';
-      }
-      ops+='</span>';
-      return '<div class="doc-row">'+chk+'<span class="mid">'+tag+mid+'</span><a href="'+escH(d.href||d.url)+'">打开 ›</a>'+ops+'</div>';
-    }).join('');
-    Array.prototype.forEach.call(box.querySelectorAll('input[type=checkbox]'),function(c){
-      c.addEventListener('change',function(){
-        var id=c.getAttribute('data-id');
-        if(c.checked) selectedDocs[id]=true; else delete selectedDocs[id];
-        updateExportSelBtn();
-      });
-    });
-    // owner 操作：改可见性 / 复制分享链接（事件委托）
-    Array.prototype.forEach.call(box.querySelectorAll('[data-vis],[data-share]'),function(b){
-      b.addEventListener('click',function(){
-        var id=b.getAttribute('data-vis')||b.getAttribute('data-share');
-        if(b.getAttribute('data-vis')) toggleVisibility(id,b);
-        else copyShare(id,b);
-      });
-    });
-    updateExportSelBtn();
-  }
-  function toggleVisibility(id, btn){
-    var target=(btn.textContent||'').indexOf('公开')!==-1 ? 'public' : 'private'; // “设为公开”→“public”
-    btn.disabled=true;
-    fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})})
-      .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
-      .then(function(x){
-        if(x.st===200){ refreshDocs(); msg.innerHTML='<span class=ok>已'+(target==='public'?'设为公开':'设为私密')+'。</span>'; }
-        else { btn.disabled=false; msg.innerHTML='<span class=err>'+esc((x.j&&x.j.error)||'操作失败')+'</span>'; }
-      })
-      .catch(function(e){ btn.disabled=false; msg.innerHTML='<span class=err>网络错误：'+esc(e&&e.message||e)+'</span>'; });
-  }
-  function copyShare(id, btn){
-    btn.disabled=true;
-    fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'})
-      .then(function(r){ return r.json().then(function(j){ return {st:r.status,j:j}; }); })
-      .then(function(x){
-        btn.disabled=false;
-        if(x.st!==200 || !x.j.sharePath){ msg.innerHTML='<span class=err>'+esc((x.j&&x.j.error)||'生成分享链接失败')+'</span>'; return; }
-        var url=location.origin+location.pathname.replace(/\/[^/]*$/,'/')+x.j.sharePath;
-        function done(){ msg.innerHTML='<span class=ok>分享链接已复制（仅持有链接者可打开）：</span>'; }
-        if(navigator.clipboard && navigator.clipboard.writeText){
-          navigator.clipboard.writeText(url).then(done).catch(function(){ prompt('复制分享链接：', url); done(); });
-        } else { prompt('复制分享链接：', url); done(); }
-      })
-      .catch(function(e){ btn.disabled=false; msg.innerHTML='<span class=err>网络错误：'+esc(e&&e.message||e)+'</span>'; });
-  }
-  function selectedIds(){ var a=[]; for(var k in selectedDocs){ if(selectedDocs[k]) a.push(k); } return a; }
-  function updateExportSelBtn(){
-    var b=document.getElementById('exportSelBtn');
-    if(!b) return;
-    var n=selectedIds().length;
-    b.textContent = n ? ('导出选中('+n+') zip ⬇') : '导出选中 zip ⬇';
-    b.style.opacity = n ? '1' : '.5';
-  }
-  // 导出选中：请求后端 /api/export-docs?ids=…，下载独立裸站 zip
-  var exportSelBtn=document.getElementById('exportSelBtn');
-  if(exportSelBtn){
-    exportSelBtn.addEventListener('click',function(e){
-      e.preventDefault();
-      var ids=selectedIds();
-      if(!ids.length){ alert('请先勾选要导出的文档。'); return; }
-      if(window.location.protocol==='file:'){ alert('纯静态打开时无法打包，请用本地服务或线上站点访问后导出。'); return; }
-      exportSelBtn.textContent='打包中…';
-      fetch('/api/export-docs?ids='+encodeURIComponent(ids.join(',')),{headers:authHeaders()})
-        .then(function(r){
-          if(!r.ok) throw new Error('导出被拒绝('+r.status+')：请配置正确访问令牌');
-          return r.blob();
-        })
-        .then(function(blob){
-          var url=URL.createObjectURL(blob);
-          var dl=document.createElement('a');
-          dl.href=url; dl.download='chm-docs-export.zip';
-          document.body.appendChild(dl); dl.click(); document.body.removeChild(dl);
-          setTimeout(function(){ URL.revokeObjectURL(url); },4000);
-        })
-        .catch(function(err){ alert('导出失败：'+err.message); })
-        .then(function(){ setTimeout(function(){ updateExportSelBtn(); }, 300); });
-    });
-  }
-  function refreshDocs(){
-    if(!window.fetch) return;
-    fetch('/api/docs',{headers:userHeaders()}).then(function(r){ return r.json(); }).then(function(j){
-      if(j && j.docs) renderDocs(j.docs);
-    }).catch(function(){ /* 无后端时保持静态注入 */ });
-  }
-  (function initDocs(){ renderDocs(null); refreshDocs(); loadMe(); updateUploadGate(); })();
-
-  // 批量上传 UI：支持多选 / 拖拽多个 .chm
-  function addFiles(list){
-    var added=0, skipped=[];
-    Array.prototype.forEach.call(list||[],function(f){
-      if(!isValidChm(f.name)){ skipped.push(f.name); return; }
-      // 去重（按 name+size）
-      if(allFiles.some(function(x){return x.name===f.name && x.size===f.size;})) return;
-      allFiles.push(f); added++;
-    });
-    if(skipped.length) msg.innerHTML='<span class=err>已跳过非 .chm 文件：'+esc(skipped.slice(0,3).join('、'))+ (skipped.length>3?' 等': '') +'</span>';
-    updateSelUI();
-  }
-
-  drop.addEventListener('click',function(){ file.click(); });
-  drop.addEventListener('dragover',function(e){ e.preventDefault(); drop.classList.add('over'); });
-  drop.addEventListener('dragleave',function(){ drop.classList.remove('over'); });
-  drop.addEventListener('drop',function(e){ e.preventDefault(); drop.classList.remove('over'); if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
-  file.addEventListener('change',function(){ if(file.files&&file.files.length){ addFiles(file.files); file.value=''; } });
-
-  // ---- 批量转换：逐个上传，汇总成功/失败 ----
-  function currentVisibility(){
-    var sel=document.querySelector('input[name=vis]:checked');
-    return (sel && sel.value==='private') ? 'private' : 'public';
-  }
-  function doUploadOne(file, cb){
-    var fd=new FormData();
-    fd.append('file', file);
-    fd.append('visibility', currentVisibility());
-    var h = uploadHeaders();
-    if (USER_TOKEN) h['X-User-Token'] = USER_TOKEN;
-    fetch('/api/upload',{method:'POST',body:fd,headers:h})
-      .then(function(res){ return res.json().then(function(j){ return {st:res.status,j:j}; }); })
-      .then(function(x){ cb(null, x); })
-      .catch(function(e){ cb(e); });
-  }
-  function runBatch(){
-    var files=allFiles.slice();
-    if(!files.length){ msg.innerHTML='<span class=err>请先选择 .chm 文件</span>'; return; }
-    if(!window.fetch || !window.FormData){ msg.innerHTML='<span class=err>当前环境不支持上传。</span>'; return; }
-    var mySeq=++seq;
-    go.disabled=true;
-    ok=[]; fail=[];
-    function update(){ go.textContent='转换中 '+ (ok.length+fail.length) +'/'+files.length; }
-    function done(){
-      go.disabled=false; go.textContent='转换文档';
-      allFiles=[]; updateSelUI();
-      renderDocs(null); refreshDocs();
-      if(fail.length){
-        msg.innerHTML='<span class=err>完成 '+ok.length+'，失败 '+fail.length+' 个（'+esc(fail.join('、'))+'）</span>';
-      } else if(ok.length){
-        msg.innerHTML='<span class=ok>全部转换成功！'+ok.length+' 篇已可在“我的文档”中打开。</span>';
-      }
-    }
-    files.forEach(function(f){
-      doUploadOne(f, function(res){
-        if(seq!==mySeq) return; // 已作废
-        if(res && res[1] && res[1].ok){ ok.push(res[1].name||f.name); }
-        else { fail.push(f.name); }
-        update();
-        if(ok.length+fail.length===files.length) done();
-      });
-    });
-  }
-  go.addEventListener('click',runBatch);
-})();
+${SHARED_JS(pageScript).split('__NAV_ACTIVE__').join(esc(navActive || 'home'))}
 </script>
 </body></html>`;
+}
+
+/* ============ 四个页面 ============ */
+
+const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
+  <div class="eyebrow">CHM 网页</div>
+  <h1>把 CHM 帮助文档变成手机也能看的网页</h1>
+  <div class="sub">上传 .chm，自动解包为可浏览、可搜索的静态页面，PC / 手机随时翻阅，完全免费。</div>`, `
+  <div style="margin:-26px auto 26px;max-width:680px;position:relative">
+    <div class="card" style="padding:14px;box-shadow:var(--shadow-md)">
+      <div style="position:relative">
+        <input class="in" style="padding:13px 46px 13px 18px;border-radius:999px;font-size:15px" id="siteq" type="search" placeholder="搜索全部文档（标题 / 关键字 / 正文）…" autocomplete="off">
+        <span style="position:absolute;right:20px;top:50%;transform:translateY(-50%);color:var(--mut)">⌕</span>
+        <div id="sres" style="position:absolute;top:56px;left:0;right:0;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.16);max-height:62vh;overflow:auto;display:none;z-index:90"></div>
+      </div>
+    </div>
+  </div>
+  <div style="max-width:680px;margin:0 auto 28px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+    <div class="card" style="padding:20px;text-align:center"><div style="font-size:26px">📄</div><b style="display:block;margin-top:6px">上传 .chm</b><p style="font-size:13px;color:var(--mut);margin:4px 0 0">选择或拖入帮助文档</p></div>
+    <div class="card" style="padding:20px;text-align:center"><div style="font-size:26px">⚙️</div><b style="display:block;margin-top:6px">自动转换</b><p style="font-size:13px;color:var(--mut);margin:4px 0 0">解包为静态 HTML + 目录 + 关键字</p></div>
+    <div class="card" style="padding:20px;text-align:center"><div style="font-size:26px">📱</div><b style="display:block;margin-top:6px">随处浏览</b><p style="font-size:13px;color:var(--mut);margin:4px 0 0">手机 / 电脑打开即读，可搜索</p></div>
+  </div>
+  <div style="text-align:center"><a class="btn" href="upload.html">立即上传 →</a></div>
+  <div style="max-width:680px;margin:40px auto 0">
+    <h2 style="font-size:18px;margin:0 0 14px">热门文档</h2>
+    <div id="recentDocs"></div>
+  </div>`, `
+  /* 欢迎页：全站搜索 + 热门文档 */
+  var sres=document.getElementById('sres'),siteq=document.getElementById('siteq');
+  var siKw=[],siRec=[],api=false;
+  function escA(x){return escS(x).replace(/'/g,'&#39;');}
+  function loadSite(){try{if(!window.fetch)return;fetch('site-index.json').then(function(r){return r.json();}).then(function(j){siKw=j.keywords||[];siRec=j.records||[];}).catch(function(){});}catch(e){}}
+  function probeApi(){try{fetch('/api/search?q=__p__').then(function(r){api=r.status===200;}).catch(function(){});}catch(e){}}
+  loadSite();probeApi();
+  function render(rows){var h='';if(!rows.length)h='<div style="padding:14px;color:var(--mut);font-size:14px">无匹配结果</div>';
+    else{var c=null;rows.slice(0,20).forEach(function(r){if(r.grp&&r.grp!==c){h+='<div style="padding:8px 16px 2px;font-size:12px;color:var(--mut)">'+escS(r.grp)+'</div>';c=r.grp;}
+      h+='<a href="'+escS(r.href)+'" style="display:block;padding:9px 16px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)"><b style="display:block;font-size:14px">'+escS(r.t)+'</b><span style="color:var(--mut);font-size:12px">'+escS(r.p||'')+'</span></a>';});}
+    sres.innerHTML=h;sres.style.display='block';}
+  function local(q){q=String(q||'').toLowerCase();var rows=[];(siKw||[]).slice(0,120).forEach(function(k){if((k.name||'').toLowerCase().indexOf(q)!==-1)rows.push({grp:k.doc||'',href:k.href||'',t:k.name,p:k.doc});});
+    (siRec||[]).forEach(function(rep){var lt=(rep.text||'').toLowerCase(),at=lt.indexOf(q);if(at===-1)return;
+      var pg=(rep.text.match(/\\[page:([^\\]]+)\\]/)||[])[1]||'';var ctx=rep.text.slice(Math.max(0,at-30),at+100).replace(/\\s+/g,' ');
+      rows.push({grp:rep.doc||'',href:'d/'+(rep.doc||'')+'/'+pg,t:pg||'',p:ctx});});
+    var seen={},u=[];rows.forEach(function(r){var k=r.href+'|'+r.t;if(!seen[k]){seen[k]=1;u.push(r);}});render(u);}
+  function apiFn(q){fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20').then(function(r){return r.json();}).then(function(j){
+    var rows=(j&&j.hits||[]).map(function(h){return {grp:h.doc||'',href:h.href||('d/'+(h.doc||'')+'/'),t:h.doc||'',p:h.snippet||''};});render(rows);}).catch(function(){local(q);});}
+  siteq.addEventListener('input',function(){var v=siteq.value.trim();if(!v){sres.style.display='none';return;}if(api)apiFn(v);else local(v);});
+  document.addEventListener('click',function(e){if(e.target!==siteq&&!sres.contains(e.target))sres.style.display='none';});
+  function recentRender(list){var box=document.getElementById('recentDocs');var arr=list&&list.length?list:window.__docs||[];
+    if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
+    box.innerHTML=arr.slice(0,6).map(function(d){var priv=d.visibility==='private';
+      return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
+      '<span style="flex:1;min-width:0"><b style="display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+escS(d.name||d.id)+'</b>'+
+      '<span class="tag '+(priv?'priv':'pub')+'">'+(priv?'私密':'公开')+'</span></span>'+
+      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开 →</a></div>';}).join('');}
+  function recent(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs){window.__setDocs(j.docs);recentRender(j.docs);}}).catch(function(){recentRender();});}
+  recent();
+  window.__onAuth=function(){renderAuth();if(window.location.hash==='#mine')location.reload();};
+`, 'home');
+
+const BROWSE = page('浏览文档 · CHM 网页', true, `
+  <div class="eyebrow">浏览文档</div><h1>站内文档</h1>
+  <div class="sub">所有公开文档，随时翻阅。</div>`, `
+  <div style="max-width:820px;margin:28px auto 0">
+    <input class="in" id="browseQ" placeholder="在标题中筛选…" style="margin-bottom:18px">
+    <div id="browseList"></div>
+  </div>`, `
+  var box=document.getElementById('browseList');
+  function render(list){var arr=list&&list.length?list:window.__docs||[];
+    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">暂无文档</div>';return;}
+    box.innerHTML=arr.filter(function(d){return d.visibility!=='private';}).map(function(d){
+      return '<div class="card row-card"><span style="font-size:24px">📘</span>'+
+      '<span style="flex:1;min-width:0"><b style="display:block;font-size:16px">'+escS(d.name||d.id)+'</b>'+
+      '<span class="tag pub">公开</span></span>'+
+      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开 →</a></div>';}).join('');}
+  function load(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(j.docs);}).catch(function(){render();});}
+  load();
+  var q=document.getElementById('browseQ');if(q)q.addEventListener('input',function(){var s=q.value.trim().toLowerCase();
+    var arr=(window.__docs||[]).filter(function(d){return (d.name||d.id||'').toLowerCase().indexOf(s)!==-1;});render(arr);});
+  window.__onAuth=function(){};`, 'browse');
+
+const UPLOAD = page('上传 · CHM 网页', true, `
+  <div class="eyebrow">上传</div><h1>上传 .chm</h1>
+  <div class="sub">登录后可上传，转换后立即可浏览。</div>`, `
+  <div id="uploadGate" style="max-width:680px;margin:30px auto;text-align:center"><div class="card" style="padding:30px">
+    🔒 上传需要先登录。<br><br><button class="btn" id="gateLogin">去登录 / 注册</button></div></div>
+  <div id="uploadWork" style="max-width:680px;margin:30px auto;display:none">
+    <div class="card" style="padding:24px">
+      <div id="drop" tabindex="0" style="border:2px dashed #b6c2d0;border-radius:14px;padding:40px 20px;text-align:center;cursor:pointer">
+        <div style="font-size:20px;font-weight:700">点击选择 .chm，或拖进来</div>
+        <div style="color:var(--mut);font-size:13px;margin-top:6px">支持 .chm 格式 · 可多选</div>
+        <input type="file" id="file" accept=".chm" multiple style="display:none">
+      </div>
+      <div style="margin-top:14px;display:flex;gap:16px;justify-content:center;font-size:13.5px;color:var(--mut)">
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="vis" value="public" checked> 公开（所有人可看）</label>
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="vis" value="private"> 私密（仅自己 + 分享链接）</label>
+      </div>
+      <div id="filePick" style="margin-top:14px;font-size:14px;color:var(--mut)"></div>
+      <div class="message" id="msg"></div>
+      <div style="text-align:center"><button class="btn" id="go" disabled>转换文档</button></div>
+    </div>
+    <div class="card" style="margin-top:18px;padding:20px;font-size:13.5px;color:var(--mut)">
+      <b>批量说明</b>：可一次选择多个 .chm，逐个转换并汇总进度；转换后到「我的文档」里管理可见性与分享。
+    </div>
+  </div>`, `
+  var gate=document.getElementById('uploadGate'),work=document.getElementById('uploadWork');
+  document.getElementById('gateLogin').addEventListener('click',function(){window.__openAuth();});
+  function updateGate(){if(window.currentUser){work.style.display='';gate.style.display='none';}else{work.style.display='none';gate.style.display='';}}
+  window.__onAuth=updateGate;loadMe();updateGate();
+  var file=document.getElementById('file'),drop=document.getElementById('drop'),go=document.getElementById('go'),msg=document.getElementById('msg');
+  var all=[],seq=0,ok=[],fail=[];
+  function sel(){var pk=document.getElementById('filePick');pk.innerHTML=all.map(function(f,i){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px">'+
+    '<b>'+escS(f.name)+'</b><button type="button" data-i="'+i+'" class="rm" style="border:0;background:var(--hover);border-radius:50%;width:22px;height:22px;cursor:pointer">✕</button></div>';}).join('');
+    Array.prototype.forEach.call(pk.querySelectorAll('.rm'),function(b){b.addEventListener('click',function(){all.splice(+b.getAttribute('data-i'),1);sel();});});
+    go.textContent=all.length>1?('转换 '+all.length+' 个文档'):'转换文档';go.disabled=!(all.length>0);}
+  function addFiles(list){list=list||[];Array.prototype.forEach.call(list,function(f){if(/\.chm$/i.test(f.name||''))all.push(f);else msg.innerHTML='<span class="err">跳过非 .chm：'+escS(f.name)+'</span>';});sel();}
+  function vis(){var r=document.querySelector('input[name=vis]:checked');return (r&&r.value==='private')?'private':'public';}
+  function doUpload(f,cb){var fd=new FormData();fd.append('file',f);fd.append('visibility',vis());
+    fetch('/api/upload',{method:'POST',body:fd,headers:userHeaders()}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});})
+      .then(function(x){if(x.st===200&&x.j.ok)ok.push(x.j.name||f.name);else fail.push(f.name);cb();})
+      .catch(function(){fail.push(f.name);cb();});}
+  function runBatch(){var files=all.slice();if(!files.length){msg.innerHTML='<span class="err">先选择 .chm 文件</span>';return;}
+    var mySeq=++seq;go.disabled=true;ok=[];fail=[];
+    function finish(){go.disabled=false;all=[];sel();
+      msg.innerHTML=fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>');}
+    (function loop(i){if(i>=files.length)return finish();var f=files[i];go.textContent='转换中 '+i+'/'+files.length;
+      doUpload(f,function(){if(seq!==mySeq)return;loop(i+1);});})(0);}
+  drop.addEventListener('click',function(){file.click();});
+  drop.addEventListener('dragover',function(e){e.preventDefault();drop.style.borderColor='var(--acc)';});
+  drop.addEventListener('dragleave',function(){drop.style.borderColor='#b6c2d0';});
+  drop.addEventListener('drop',function(e){e.preventDefault();addFiles(e.dataTransfer&&e.dataTransfer.files);drop.style.borderColor='#b6c2d0';});
+  file.addEventListener('change',function(){addFiles(file.files);file.value='';});
+  go.addEventListener('click',runBatch);`, 'upload');
+
+const MINE = page('我的文档 · CHM 网页', true, `
+  <div class="eyebrow">我的文档</div><h1>我的文档</h1>
+  <div class="sub">管理你的私有 / 公开文档：改可见性、复制分享链接、删除。</div>`, `
+  <div style="max-width:820px;margin:28px auto 0" id="mineList"></div>`, `
+  var box=document.getElementById('mineList');
+  function escS2(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function toggleVis(id,btn){var target=btn.textContent.indexOf('公开')!==-1?'public':'private';
+    fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})}).then(function(){load();});}
+  function shareLink(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'}).then(function(r){return r.json();}).then(function(j){
+      if(j.sharePath){var url=location.origin+location.pathname.replace(/\\/[^\\/]*$/,'/')+j.sharePath;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已复制');});}else{alert('分享链接：'+url);}}});}
+  function del(id){if(!confirm('删除该文档？不可恢复。'))return;fetch('/api/doc/'+encodeURIComponent(id),{method:'DELETE',headers:userHeaders()}).then(function(){load();});}
+  function render(list){var arr=list&&list.length?list:window.__docs||[];
+    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">登录后可管理你的上传文档。</div>';return;}
+    box.innerHTML=arr.map(function(d){
+      var mine=window.currentUser&&d.owner===window.currentUser;
+      return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
+      '<span style="flex:1;min-width:0"><b style="display:block">'+escS2(d.name||d.id)+'</b>'+
+      '<span class="tag '+(d.visibility==='private'?'priv':'pub')+'">'+(d.visibility==='private'?'私密':'公开')+'</span>'+
+      (mine?'<span class="tag">我的</span>':'')+'</span>'+
+      '<a href="'+escS2(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开</a>'+
+      (mine?('<span style="flex:100%;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">'+
+        '<button class="btn ghost sm" data-vis="'+escS2(d.id)+'">'+(d.visibility==='private'?'设为公开':'设为私密')+'</button>'+
+        '<button class="btn ghost sm" data-share="'+escS2(d.id)+'">复制分享链接</button>'+
+        '<button class="btn danger sm" data-del="'+escS2(d.id)+'">删除</button></span>'):'')+'</div>';}).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-vis]'),function(b){b.addEventListener('click',function(){toggleVis(b.getAttribute('data-vis'),b);});});
+    Array.prototype.forEach.call(box.querySelectorAll('[data-share]'),function(b){b.addEventListener('click',function(){shareLink(b.getAttribute('data-share'));});});
+    Array.prototype.forEach.call(box.querySelectorAll('[data-del]'),function(b){b.addEventListener('click',function(){del(b.getAttribute('data-del'));});});
+  }
+  function load(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(j.docs);}).catch(function(){render();});}
+  load();
+  window.__onAuth=function(){load();};`, 'mine');
+
+module.exports = { build, buildSiteIndex, WELCOME, BROWSE, UPLOAD, MINE, LANDING_HTML: WELCOME };
 
 /**
- * 生成欢迎页到 outDir/index.html，并引用文档根入口。
- * 注意（A3 安全）：不再把 UPLOAD_TOKEN/EXPORT_TOKEN 注入页面源码 —— 那会让
- * 任何访问首页者 view-source 拿到明文密钥。浏览器端登录态(同源 cookie)由服务端
- * 校验；token 参数仍保留入参但默认不烘焙，避免破坏旧签名调用。
- * @param {object} o { outDir, docs }
- *   docs 形如 [{ name, href }]，注入“我的文档”。
+ * 生成站点四个子页到 outDir（index/browse/upload/mine.html）。
+ * 注意（A3 安全）：不再把 UPLOAD_TOKEN/EXPORT_TOKEN 注入任何页面源码 —— 那会让
+ * view-source 拿到明文密钥。浏览器端登录态(同源 cookie)由服务端校验。
+ * @param {object} o { outDir, docs } docs 形如 [{ id, name, href }]（公开清单）
  */
 function build({ outDir, docs }) {
   const dir = path.resolve(outDir);
   fs.mkdirSync(dir, { recursive: true });
   const docsJson = JSON.stringify(docs || []);
-  // 全局替换：模板只剩 __DOCS_JSON__ 需注入；其余占位符已移除。
-  let html = LANDING_HTML.replace(/__DOCS_JSON__/g, docsJson);
-  fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
-  // 全站聚合检索索引
+  const write = (file, html) => fs.writeFileSync(path.join(dir, file),
+    html.replace(/__DOCS_JSON__/g, docsJson), 'utf8');
+
+  write('index.html', WELCOME);
+  write('browse.html', BROWSE);
+  write('upload.html', UPLOAD);
+  write('mine.html', MINE);
+
+  // 全站聚合检索索引（欢迎页/浏览页共用）
   fs.writeFileSync(path.join(dir, 'site-index.json'),
     JSON.stringify(buildSiteIndex({ siteRoot: dir, docs })));
   return { outFile: path.join(dir, 'index.html'), docs };
 }
 
-module.exports = { build, buildSiteIndex, LANDING_HTML };
-
 /**
- * 生成站点级聚合检索索引 site-index.json（放在站点根），供欢迎页全站搜索。
- * 集合每篇文档的 关键字 keywords + 全文正文 records（搬运自各 doc 的 search-index.json）。
+ * 生成站点级聚合检索索引 site-index.json，供欢迎页全站搜索。
  * @param {object} o { siteRoot, docs } docs 形如 [{ id, name, href }]
  * @returns {{keywords:Array, records:Array}}
  */
@@ -628,13 +372,10 @@ function buildSiteIndex({ siteRoot, docs }) {
   const root = path.resolve(siteRoot);
   const keywords = [];
   const records = [];
-  const seenDoc = {};
   for (const d of docs || []) {
-    const docRoot = d.href ? path.join(root, d.href.replace(/[\\/]+$/, ''), '') : null;
+    const docRoot = d.href ? path.join(root, d.href.replace(/[\\/]+$/, '')) : null;
     const docName = d.name || d.id;
-    // 每篇文档提供一条文档级命中（引导跳到文档首页）
     keywords.push({ name: docName, href: d.href || ('d/' + (d.id) + '/'), doc: docName });
-    // 1) 单篇关键词
     try {
       const kwFile = docRoot && fs.existsSync(path.join(docRoot, 'keywords.json'))
         ? JSON.parse(fs.readFileSync(path.join(docRoot, 'keywords.json'), 'utf8')) : null;
@@ -643,15 +384,13 @@ function buildSiteIndex({ siteRoot, docs }) {
         keywords.push({ name: k.name, href: d.href + rel, doc: docName });
       });
     } catch (_) {}
-    // 2) 单篇全文正文记录（搬运自已生成的 search-index.json.records）
     try {
-      const idxFile = path.join(docRoot, 'search-index.json');
-      if (fs.existsSync(idxFile)) {
+      const idxFile = docRoot && path.join(docRoot, 'search-index.json');
+      if (idxFile && fs.existsSync(idxFile)) {
         const idx = JSON.parse(fs.readFileSync(idxFile, 'utf8'));
         const recs = (idx && idx.records) || [];
-        recs.forEach((r, i) => {
+        recs.forEach((r) => {
           if (!r || !r.text) return;
-          // 截断正文以减少索引体积；保留 [page:...] 定位符
           let txt = r.text.slice(0, 4000);
           records.push({ doc: docName, text: txt });
         });
