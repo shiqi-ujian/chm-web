@@ -11,6 +11,7 @@ const { exportSite, exportDocs } = require('./lib/site-export');
 const auth = require('./lib/auth');
 const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf } = require('./lib/quota');
 const LibSearch = require('./lib/search');
+const { sniffFileCharset } = require('./lib/charset');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
@@ -193,7 +194,13 @@ function serveStatic(req, res) {
     res.writeHead(404); res.end('Not Found'); return;
   }
   const ext = path.extname(file).toLowerCase();
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  // HTML 按文件实际字符集下发 charset（存量 GBK 文档即使 meta 写得不规范也能正确显示）
+  let contentType = MIME[ext] || 'application/octet-stream';
+  if (ext === '.html' || ext === '.htm') {
+    const cs = sniffFileCharset(file);
+    if (cs) contentType += '; charset=' + cs;
+  }
+  res.writeHead(200, { 'Content-Type': contentType });
   fs.createReadStream(file).pipe(res);
 }
 
@@ -310,7 +317,12 @@ function listDocs(username) {
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); res.end('Not Found'); return; }
   const ext = path.extname(file).toLowerCase();
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  let contentType = MIME[ext] || 'application/octet-stream';
+  if (ext === '.html' || ext === '.htm') {
+    const cs = sniffFileCharset(file);
+    if (cs) contentType += '; charset=' + cs;
+  }
+  res.writeHead(200, { 'Content-Type': contentType });
   fs.createReadStream(file).pipe(res);
 }
 

@@ -4,6 +4,7 @@ const { convert } = require('./lib/convert');
 const { extractChm, scan } = require('./lib/chm');
 const { serve } = require('./lib/serve');
 const { exportSite, exportDocs } = require('./lib/site-export');
+const { normalizeCharsets } = require('./lib/charset');
 const path = require('path');
 const fs = require('fs');
 
@@ -17,6 +18,7 @@ Usage:
   node bin/cli.js extract <input.chm> [outDir]   # unpack only
   node bin/cli.js scan <dir>                     # inspect a dir
   node bin/cli.js serve <dir> [port]             # static server
+  node bin/cli.js fix-charsets <dir>             # re-normalize an existing doc to UTF-8 (repair GBK/乱码)
   node bin/cli.js export-site <siteRoot> [out.zip]  # pack whole site into a deployable zip
   node bin/cli.js export-docs <siteRoot> <out.zip> [ids…]  # pack selected docs as a standalone static sub-site zip
   node bin/cli.js help
@@ -38,6 +40,10 @@ async function main() {
   } else if (cmd === 'serve') {
     const { server, port } = await serve(path.resolve(input));
     console.log(`serving ${input} → http://localhost:${port}`);
+  } else if (cmd === 'fix-charsets') {
+    const dir = path.resolve(input);
+    const r = normalizeCharsets(dir);
+    console.log(`normalized ${dir} → scanned=${r.scanned} rewritten=${r.rewritten}`);
   } else if (cmd === 'export-site') {
     const outZip = arg2 || 'site-export-' + Date.now() + '.zip';
     const r = exportSite({ siteRoot: path.resolve(input) });

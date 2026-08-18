@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { extractChm } = require('./chm');
 const { copyDocContent } = require('./sanitize');
+const { normalizeCharsets } = require('./charset');
 
 class UploadError extends Error {
   constructor(msg, status) { super(msg); this.status = status || 400; }
@@ -98,6 +99,8 @@ async function convertOne(input, outDir, id, name, o = {}) {
   await extractChm(input, tmp, { timeoutMs: (o && o.timeoutMs) || 120 * 1000 });
   copyDocContent(tmp, outDir);
   fs.rmSync(tmp, { recursive: true, force: true });
+  // 统一转 UTF-8：修复 GBK 页面 + 非法 <meta content="...charset=..."> 声明导致的整页乱码
+  try { normalizeCharsets(outDir); } catch (e) { console.error('normalizeCharsets failed', e); }
   // 修复链接大小写与实际文件不一致（Linux 严格区分大小写）
   try { require('./fixlinks').fixLinks(outDir); } catch (e) { console.error('fixlinks failed', e); }
   // 生成阅读壳 index.html + keywords.json（复用 preview parser）

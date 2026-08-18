@@ -67,6 +67,21 @@
 
 ---
 
+## 四、字符集乱码修复（2026-08-18 已解决）
+
+**现象**：`/d/<id>/#城主指南2024/Credits.htm` 等页面打开后中文全变 `????`/方块。
+
+**根因**：页面是 **GBK 编码**，但 `<meta>` 声明写成了非法形式 `<meta content="text/html; charset=gb2312">`（无 `http-equiv` 也无 `charset` 属性），浏览器不认；服务端又没带 charset 头 → 按 UTF-8 解码 → 乱码。
+
+**修复（三处）**：
+1. **转换管线转 UTF-8**：`src/lib/charset.js#normalizeCharsets(dir)` 把解包出的 html/css/hhc/hhk 全部按实际字符集转 UTF-8 并重写为合法 `<meta charset="utf-8">`；`convert.js convert()` 与 `upload.js convertOne()` 已接入（先转码再 fixlinks）。
+2. **服务端按文件下发 charset**：`server.js` 与 `serve.js` 对 html 用 `sniffFileCharset(file)` 探测并追加 `; charset=...` —— **存量 GBK 文档升级代码后即可正常显示，无需重新转换**。
+3. **fixlinks 字符集安全**：读用 `readText`（按实际编码）、写回 UTF-8，避免 GBK 二次乱码。
+
+**修复存量文档**：`node bin/cli.js fix-charsets <docDir>` 原地转 UTF-8；或直接重新上传 `.chm`（新转换自动转 UTF-8）。自测：`test-charset.js` 新增回归项，`npm test` 全绿。
+
+---
+
 ## 开发顺序（建议）
 
 1. **P0·跑通**：`7z` 解一个 CHM → 起静态服务 → 手机能开 → **约 3~5 天**

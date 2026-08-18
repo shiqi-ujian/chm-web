@@ -7,12 +7,15 @@ const { build } = require('./preview');
 const landing = require('./landing');
 const { copyDocContent } = require('./sanitize');
 const { fixLinks } = require('./fixlinks');
+const { normalizeCharsets } = require('./charset');
 
 async function convert(input, outArg) {
   const abs = path.resolve(input);
   let out = path.resolve(outArg || abs.replace(/\.chm$/i, ''));
   const extracted = await extractChm(abs, out);
   const dir = out;
+  // 统一转 UTF-8：修复 GBK 页面 + 非法 <meta content="...charset=..."> 声明导致的整页乱码
+  normalizeCharsets(dir);
   // 修复 hhc/hhk/正文链接大小写与实际文件不一致（Linux 严格区分大小写）
   fixLinks(dir);
   const files = scan(dir);

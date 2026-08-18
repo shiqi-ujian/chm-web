@@ -96,6 +96,18 @@
 - 前端欢迎页：登录/注册 modal、上传可见性单选、文档行公开/私密标签 + "我的"标记 + owner 的设公开/设私密/复制分享链接操作。
 - 自测：`test-auth.js`（32 项）并入 `npm test`，全绿；`e2e-test.js` 回归通过。
 
+### 9. GBK 页面整页乱码（已解决，2026-08-18）
+- 现象：`/d/dnd-26-08-06-60c6bd/#城主指南2024/Credits.htm` 等 640 个页面打开后中文全变 `????`/方块。
+- 根因（两层）：
+  1. **页面是 GBK/GB2312 编码**，但 `<meta>` 声明写成 **非法形式** `<meta content="text/html; charset=gb2312">`（既无 `http-equiv` 也无 `charset` 属性）——浏览器只认 `<meta charset>` 或 `<meta http-equiv="Content-Type" ...>`，这种声明被忽略。
+  2. 服务端下发 `Content-Type: text/html` **不带 charset**，浏览器按默认 UTF-8 解码 GBK 字节 → 整页乱码。
+- 修复（三处）：
+  1. **转换管线统一转 UTF-8**：新增 `charset.js#normalizeCharsets(dir)`，解包后把 html/htm/css/hhc/hhk 全部按检测到的字符集转成 UTF-8，并重写为合法 `<meta charset="utf-8">`；`convert.js convert()` 与 `upload.js convertOne()` 均已接入（先转码再 fixlinks）。
+  2. **服务端按文件实际字符集下发 charset**：`server.js` 与 `serve.js` 对 html/htm 用 `charset.js#sniffFileCharset(file)` 探测并追加 `; charset=...`——**存量 GBK 文档即使不重新转换，升级代码后也能正常显示**。
+  3. **`fixlinks.js` 改字符集安全读写**：读用 `readText`（按实际编码），写回统一 UTF-8，避免把 GBK 当 utf8 读出来再写回造成二次乱码。
+- 新增命令 `node bin/cli.js fix-charsets <dir>`：对已转换的存量文档目录原地修复乱码。
+- 自测：`test-charset.js` 新增 normalizeCharsets 回归项；`npm test` 14 项全绿；用 `DND.26.08.06.chm` 实测：6919 个 html 全部转 UTF-8、无 U+FFFD、全部带合法 `<meta charset="utf-8">`，Credits.htm 浏览器渲染正常。
+
 ---
 
 ## 五、仍待办 / 下一步

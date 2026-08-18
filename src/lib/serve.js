@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { sniffFileCharset } = require('./charset');
 
 const MIME = {
   '.html': 'text/html', '.htm': 'text/html',
@@ -33,7 +34,13 @@ function serve(root, port = 8080) {
       res.writeHead(404); res.end('Not found'); return;
     }
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+    let contentType = MIME[ext] || 'application/octet-stream';
+    // HTML 按文件实际字符集下发 charset（兼容 GBK 存量页面，避免乱码）
+    if (ext === '.html' || ext === '.htm') {
+      const cs = sniffFileCharset(file);
+      if (cs) contentType += '; charset=' + cs;
+    }
+    res.writeHead(200, { 'Content-Type': contentType });
     fs.createReadStream(file).pipe(res);
   });
   const listenPort = Number.isFinite(Number(port)) && Number(port) > 0 ? Number(port) : 0;

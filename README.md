@@ -185,6 +185,7 @@ node bin\cli.js serve 输出目录 8080
 # 3) 其它命令
 node bin\cli.js scan  输出目录            # 查看一个目录里有哪些 html/hhc/hhk
 node bin\cli.js extract 你的文档.chm 输出目录   # 仅解包，不生成预览
+node bin\cli.js fix-charsets 输出目录     # 存量文档乱码修复：把 GBK 页面统一转 UTF-8（重写 charset 声明）
 ```
 
 npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir> [port]`、`npm test`（自测）。
@@ -214,6 +215,7 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
   - 检索：凡是有后端时欢迎页搜索自动走**服务端 `/api/search`**（在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳），纯静态/离线 zip 仍回退到本地 `site-index.json` 客户端索引。
   - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db` 并全绿；`npm test` 覆盖全部 13 项。
   - **SQLite 化（better-sqlite3，WAL）**：`users/sessions/meta` 与配额 `user_usage` 迁移到 SQLite，一次性 JSON→迁移并备份 `.bak.<ts>`；检索灌入 FTS5 虚拟表。
+  - **字符集归一化**：解包后所有 html/css/hhc/hhk 按实际字符集转 UTF-8 并重写为合法 `<meta charset="utf-8">`（`charset.js#normalizeCharsets`），服务端对 html 按文件实际编码下发 charset 头（`sniffFileCharset`），修复 GBK 中文 CHM 整页乱码；`fix-charsets` 命令可修复存量文档。
 
 ## 后续优化方向（P1→P2，按需推进）
 

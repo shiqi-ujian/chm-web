@@ -6,6 +6,7 @@
 // 相对链接（含 ./ ../ 前缀）解析为根相对路径后对齐实际大小写；找不到匹配保持原样。
 const fs = require('fs');
 const path = require('path');
+const { readText } = require('./charset');
 
 /** 扫描目录，建立 小写相对路径 → 实际相对路径 映射（根相对，/ 分隔） */
 function scanDirMap(dir) {
@@ -67,7 +68,9 @@ function isExternal(v) {
 /** 重写单个文件里的相对链接；rel 为该文件相对根目录的路径 */
 function fixFile(file, rel, map) {
   const baseDir = rel.indexOf('/') === -1 ? '' : rel.slice(0, rel.lastIndexOf('/'));
-  const raw = fs.readFileSync(file, 'utf8');
+  // 按实际字符集读取（GBK 页面也能正确改链接），写回统一 UTF-8，
+  // 避免把 GBK 字节当 utf8 读出来再写回造成二次乱码。
+  const raw = readText(file);
   let out = raw;
   let changed = false;
 
