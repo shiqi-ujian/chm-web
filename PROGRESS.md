@@ -103,7 +103,7 @@
 - [x] **公网真实部署上线**：`https://chm-web-production-16f9.up.railway.app` 已登录/上传/账号/可见性闭环验证可用（Railway + Volume `/app/data` + `UPLOAD_TOKEN`/`EXPORT_TOKEN`）。
 - [x] **P1 稳健/安全批处理**：原子写、会话清理、限流/配额、并发上传槽位+超时清理、阅读壳 XSS 修复、移除页面烘焙密钥、服务端检索 `/api/search`（新测试 test-quota/xss/search-api/atomic 全绿）。
 - [ ] **转换完成整批自动打包下载**（M4 可选增强）：目前是「逐个转换入库 → 勾选导出」；可再加「一次批量上传即直接打包整批下载」。
-- [ ] **SQLite 化（可选重构）**：当前仍用 JSON+原子写，行为正确；若要更强并发/更省 IO，可把 `auth`/`server` 迁移到 `better-sqlite3`（目标见 `README 后续优化`）。
+
 - [ ] 正文中文翻译：目录树已中文化；正文目前是原文（7-Zip 手册全部英文）。
 - [ ] autosync 在多台设备上的部署说明。
 
@@ -116,24 +116,24 @@ src/lib/
   chm.js        7z 解包 + 扫描（异步 spawn + 超时）
   hhc.js        .hhc 目录树解析
   hhk.js        .hhk 关键字解析
-  preview.js    阅读壳(index.html) + 目录/关键字/全文检索 + search-index.json（搜索结果转义防 XSS）
+  
   landing.js    欢迎页(index.html) + 全站聚合检索 site-index.json（不再烘焙令牌；搜索优先 /api/search，失败回退本地）
-  quota.js      公共服务护栏：每用户配额 + 滑动窗口限流 + 全局存储上限
-  search.js     服务端检索 /api/search（分页+高亮；文档一多更稳）
+  
+  
   zip.js        零依赖 zip 打包器（STORE + DEFLATE）
   site-export.js  整站导出（含 manifest.json）：exportSite()/collectFiles()/exportDocs()/aggregateSiteIndex()
   upload.js      上传→转换→存盘→索引（异步解包+超时；cleanupTmp 清理残留）
-  auth.js        账号体系 + 可见性 ACL（原子写 + 会话 30 天清理）
+  
   convert.js    convert() + buildSite()
   serve.js      零依赖静态服务器
   sanitize.js   剔除 CHM 内部 #/$ 元数据
   translations.js  目录名中英对照
-  server.js     真实后端（API + 静态 + 私有文档 /p/ + 分享 /s/ + 限流/配额 + /api/search）
+  
 scripts/
   autosync.ps1      自动同步(拉取+推送，不自动提交)
   autosync_run.vbs  隐藏启动 autosync.ps1
  docs/          站点/发布产物（GitHub Pages 根）
 ```
-（新测试 `test-quota / test-xss / test-search-api / test-atomic` 均随 `npm test` 跑；`test-export-docs.js` 亦然。）
+
 
 **运行**：`node bin/cli.js convert 文件.chm 输出目录`；`node bin/cli.js serve 输出目录 8080`；`npm test` 自测。

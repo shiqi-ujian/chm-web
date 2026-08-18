@@ -211,14 +211,15 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
 - [x] **P1·健壮与安全**（公共服务护栏）：
   - 稳定性：**原子写**（临时文件+rename+重试，防崩溃损坏）、会话 30 天过期清理、账号/上传/导出**限流 + 每用户/全局配额**、并发上传槽位（**异步 7z 解包 + 超时 + 失败自动清理临时文件**）。
   - 安全：修复阅读壳/欢迎页**存储型 XSS**（搜索结果一律转义再高亮）；**移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**，改为已登录会话由服务端校验。
-  - 检索：凡是有后端时欢迎页搜索自动走**服务端 `/api/search`**（分页+高亮、文档多时更稳），纯静态/离线 zip 仍回退到本地 `site-index.json` 客户端索引。
-  - 新增 `test-quota / test-xss / test-search-api / test-atomic` 并全绿；`npm test` 覆盖全部 12 项。
+  - 检索：凡是有后端时欢迎页搜索自动走**服务端 `/api/search`**（在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳），纯静态/离线 zip 仍回退到本地 `site-index.json` 客户端索引。
+  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db` 并全绿；`npm test` 覆盖全部 13 项。
+  - **SQLite 化（better-sqlite3，WAL）**：`users/sessions/meta` 与配额 `user_usage` 迁移到 SQLite，一次性 JSON→迁移并备份 `.bak.<ts>`；检索灌入 FTS5 虚拟表。
 
 ## 后续优化方向（P1→P2，按需推进）
 
 1. **批量上传即打包**：一次多选上传后直接打整批 zip 下载（当前是逐个入库→勾选导出）。
-2. **SQLite 化（可选重构）**：目前 JSON+原子写行为正确；若要更强并发/更省 IO，把 `auth`/`server` 迁移到 `better-sqlite3`（含 FTS5 全文检索）、上传改用流式 `busboy`。
-3. **文档管理与产品体验**：重命名/标签/作者、按标签筛选、每用户用量页。
+2. **文档管理与产品体验**：重命名/标签/作者、按标签筛选、每用户用量页前端展示（后端 /api/usage 已就绪）。
+3. **上传流式化（可选）**：改用 `busboy` 流式接收大文件。
 4. **正文中文翻译**（涉及外部服务/预算，单独评估）。
 
 ---

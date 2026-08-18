@@ -58,10 +58,11 @@
 - **限流/配额（`src/lib/quota.js`）**：账号/上传/导出接口滑动窗口限流（`RATE_AUTH_MAX`/`RATE_UPLOAD_MAX`/`RATE_EXPORT_MAX`）；每用户文档数/字节配额（`MAX_USER_DOCS`/`MAX_USER_BYTES`）+ 全局存储上限（`MAX_GLOBAL_BYTES`）。
 - **安全**：
   - 修复阅读壳/欢迎页**存储型 XSS**：`renderResults`/`hl`/欢迎页搜索输出一律先 `esc()` 再环绕 `<mark>` 高亮，杜绝把文档标题/正文当 HTML 执行。
+  
   - **移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**（此前后台源码可 `view-source` 拿到密钥致防护失效）。现改为：公网下上传/导出要求「请求带有效 token 或 已登录会话（同源 cookie）」，由服务端校验；未配置 token 时保持不锁（本地/离线兼容）。欢迎页不再注入任何密钥。
-- **检索**：新增服务端 `/api/search`（`src/lib/search.js`：分页+高亮片段；文档一多更稳）；欢迎页在线时优先走 API，纯静态/离线 zip 回退本地 `site-index.json`。
-- 新增 `test-quota / test-xss / test-search-api / test-atomic`，`npm test` 跑全 12 项。
-
+  - **检索**：新增服务端 `/api/search`（`src/lib/search.js`：在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳）；欢迎页在线时优先走 API，纯静态/离线 zip 回退本地 `site-index.json`。
+  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db`，`npm test` 跑全 13 项。
+  - **存储层（better-sqlite3，WAL，`src/lib/db.js`）**：`users/sessions/meta` 与配额 `user_usage` 从 JSON+原子写迁移到 SQLite；首次打开自动一次性迁移并备份 `.bak.<ts>`（可回滚）；检索灌入 FTS5 虚拟表。**注意**：`better-sqlite3` 是 native 依赖，已给 CI/Railway/Docker/systemd 补编译工具链 + `npm install`。
 **部署注意（M5）**：以上环境变量均为可选；除非在 Railway 变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。部署令牌仍只放 Railway Variables + 本机 gitignore 文件，**不要写入页面源码**。
 
 ---
@@ -103,16 +104,15 @@
 ---
 
 ## 新电脑/工位开发上手（5 分钟）
-
-1. **clone + 装环境**：`git clone https://github.com/shiqi-ujian/chm-web.git`；装 **Node.js ≥ 16**（零依赖，无需 npm install）和 **7-Zip**（转换/测试必需）。
+1. **clone + 装环境**：`git clone https://github.com/shiqi-ujian/chm-web.git`；装 **Node.js ≥ 20** 和 **7-Zip**（转换/测试必需）；然后 **`npm install`**（项目已引入 native 依赖 `better-sqlite3`）。
 2. **配置 git 身份**（仓库不随 push 带身份，新机器必须配）：
    ```bash
    git config user.name "qiujian.shi"
    git config user.email "qiujian.shi@ui-surgical.com"
    ```
-3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`）。本地快速验证也可：
+3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`；跑 13 项含 SQLite `test-db`）。本地快速验证也可：
    `node test-serve.js docs/d/7-zip` 等（见 `.github/workflows/test.yml` 里的命令序列）。
-4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 8 项测试，红了先看 CI 报错再提交。
+4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 13 项测试，红了先看 CI 报错再提交。
 5. **上线部署**：
    - 平时：push 到 main → Railway 自动部署（约 1-2 分钟）。
    - GitHub 异常/webhook 失效时：装 Railway CLI（`npm i -g @railway/cli`）→ `railway login`（浏览器授权）→ `railway redeploy --from-source -y`。
