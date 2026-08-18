@@ -133,36 +133,39 @@ if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
     document.getElementById('authGo').textContent=reg?'注册':'登录';
     document.getElementById('authSwitch').textContent=reg?'去登录':'去注册';});
   modal.addEventListener('click',function(e){if(e.target===modal)window.__closeAuth();});}
-var DOCS=(typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}]!=='undefined'&&[{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}])?[{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}]:[];
+var DOCS=(typeof [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]!=='undefined'&&[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}])?[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]:[];
 window.__docs=DOCS;window.__setDocs=function(d){window.__docs=d;};
 window.__onAuth=window.__onAuth||function(){};
 loadMe();
 
   var box=document.getElementById('mineList');
   function escS2(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  // 「我的文档」只展示当前登录用户自己上传的文档，绝不列公共区/他人/匿名种子文档。
+  function mineOnly(list){return (list||[]).filter(function(d){return window.currentUser&&d.owner===window.currentUser;});}
   function toggleVis(id,btn){var target=btn.textContent.indexOf('公开')!==-1?'public':'private';
     fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})}).then(function(){load();});}
   function shareLink(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'}).then(function(r){return r.json();}).then(function(j){
       if(j.sharePath){var url=location.origin+location.pathname.replace(/\/[^\/]*$/,'/')+j.sharePath;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已复制');});}else{alert('分享链接：'+url);}}});}
   function del(id){if(!confirm('删除该文档？不可恢复。'))return;fetch('/api/doc/'+encodeURIComponent(id),{method:'DELETE',headers:userHeaders()}).then(function(){load();});}
-  function render(list){var arr=list&&list.length?list:window.__docs||[];
-    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">登录后可管理你的上传文档。</div>';return;}
+  function render(arr){arr=arr||[];
+    if(!window.currentUser){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">请先登录，才能查看和管理你的上传文档。</div>';return;}
+    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">你还没有上传文档，去「上传」页传一个 .chm 吧。</div>';return;}
     box.innerHTML=arr.map(function(d){
-      var mine=window.currentUser&&d.owner===window.currentUser;
       return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
       '<span style="flex:1;min-width:0"><b style="display:block">'+escS2(d.name||d.id)+'</b>'+
       '<span class="tag '+(d.visibility==='private'?'priv':'pub')+'">'+(d.visibility==='private'?'私密':'公开')+'</span>'+
-      (mine?'<span class="tag">我的</span>':'')+'</span>'+
-      '<a href="'+escS2(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开</a>'+
-      (mine?('<span style="flex:100%;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">'+
+      '<span class="tag">我的</span></span>'+
+      '<a href="'+escS2(d.href||(d.visibility==='private'?'p/':'d/')+d.id+'/')+'" class="btn ghost sm">打开</a>'+
+      '<span style="flex:100%;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">'+
         '<button class="btn ghost sm" data-vis="'+escS2(d.id)+'">'+(d.visibility==='private'?'设为公开':'设为私密')+'</button>'+
         '<button class="btn ghost sm" data-share="'+escS2(d.id)+'">复制分享链接</button>'+
-        '<button class="btn danger sm" data-del="'+escS2(d.id)+'">删除</button></span>'):'')+'</div>';}).join('');
+        '<button class="btn danger sm" data-del="'+escS2(d.id)+'">删除</button></span></div>';}).join('');
     Array.prototype.forEach.call(box.querySelectorAll('[data-vis]'),function(b){b.addEventListener('click',function(){toggleVis(b.getAttribute('data-vis'),b);});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-share]'),function(b){b.addEventListener('click',function(){shareLink(b.getAttribute('data-share'));});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-del]'),function(b){b.addEventListener('click',function(){del(b.getAttribute('data-del'));});});
   }
-  function load(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(j.docs);}).catch(function(){render();});}
+  function load(){render(mineOnly(window.__docs));
+    fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(mineOnly(j.docs));}).catch(function(){});}
   load();
   window.__onAuth=function(){load();};
 })();
