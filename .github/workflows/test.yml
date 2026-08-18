@@ -29,6 +29,10 @@ jobs:
           node test-zip.js
           node test-export-docs.js
           node test-auth.js samples/7-zip.chm
+          node test-quota.js samples/7-zip.chm
+          node test-xss.js
+          node test-search-api.js
+          node test-atomic.js
 
       # 全站导出冒烟（生成 site-export.zip 验证打包链路）
       - name: Export smoke

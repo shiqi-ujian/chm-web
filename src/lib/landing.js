@@ -182,13 +182,14 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
       themeBtn.textContent = next === 'dark' ? '☀️' : '🌙';
     });
   }
-  // 部署到公网时若开启了 EXPORT_TOKEN，构建期把 token 注入 __AUTH_TOKEN__，
-  // 前端下载导出与整站 zip 时带上 X-Auth-Token。
-  var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
-  function authHeaders(){ return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {}; }
-  // 上传用独立的 UPLOAD_TOKEN（注入 __UPLOAD_TOKEN__），与导出 token 分离。
-  var UPLOAD_TOKEN = (typeof __UPLOAD_TOKEN__!=='undefined' && __UPLOAD_TOKEN__) ? __UPLOAD_TOKEN__ : '';
-  function uploadHeaders(){ return UPLOAD_TOKEN ? { 'X-Auth-Token': UPLOAD_TOKEN } : {}; }
+  // 安全策略（A3）：不再把 UPLOAD_TOKEN/EXPORT_TOKEN 烘焙进页面源码（view-source
+  // 会泄露密钥）。浏览器端的上传/导出鉴权改为「依赖已登录会话」：
+  //   - 上传：服务端已强制登录（未登录 401）。
+  //   - 导出：服务端要求「已登录用户 或 服务方令牌」。
+  // 同源 fetch 会自动带 chm_user cookie，服务端据此识别当前用户；文件名/类型校验
+  // 在服务端完成。因此这里不再需要也不持有任何 X-Auth-Token 明文密钥。
+  function authHeaders(){ return {}; }
+  function uploadHeaders(){ return {}; }
 
   // ---- M2 账号：登录/注册/退出（token 存 localStorage，请求带 X-User-Token）----
   var USER_TOKEN = (function(){ try { return localStorage.getItem('chm_user') || ''; } catch(e){ return ''; } })();
@@ -347,17 +348,37 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
       siKeywords=j.keywords||[]; siRecords=j.records||[]; siLoaded=true;
     }).catch(function(){ siLoaded=true; });
   }
-  function siteSearch(){
-    var s=(siteq&&siteq.value||'').trim().toLowerCase();
+  // 在线有后端时优先走服务端 /api/search（分页、更稳）；失败/纯静态时回退
+  // 到本地 site-index.json 客户端过滤（离线 zip 导出仍可用）。
+  var apiSearch=false;
+  function probeApi(){ try{ if(!window.fetch) return; fetch('/api/search?q=__probe__').then(function(r){ apiSearch=r.status===200; }).catch(function(){ apiSearch=false; }); }catch(e){ apiSearch=false; } }
+  var apiSeq=0;
+  function siteSearch(v){
+    if (apiSearch) return siteSearchApi(v);
+    return siteSearchLocal(v);
+  }
+  function siteSearchApi(s){
+    if(!s) return;
+    var mySeq=++apiSeq;
+    fetch('/api/search?q='+encodeURIComponent(s)+'&limit=20')
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(mySeq!==apiSeq) return;
+        var arr=[];
+        (j&&j.hits||[]).forEach(function(h){
+          arr.push({grp:h.doc||'',href:h.href||('d/'+(h.doc||'')+'/'),t:(h.doc||''),p:h.snippet||''});
+        });
+        renderRows(arr);
+      }).catch(function(){ if(mySeq===apiSeq) siteSearchLocal(q); });
+  }
+  function siteSearchLocal(q){
+    var s=String(q||'').toLowerCase();
     if(!s){ if(sres) sres.className='sres'; return; }
     var rows=[], docTitle={};
-    // 已知文档名用于把 [page:...] 的可读标题带进结果
     (siKeywords||[]).forEach(function(k){ if(!docTitle[k.doc]) docTitle[k.doc]=k.name; });
-    // 1) 关键字
     (siKeywords||[]).slice(0,120).forEach(function(k){
       if((k.name||'').toLowerCase().indexOf(s)!==-1) rows.push({grp:'关键字 · '+(k.doc||''),href:k.href,t:k.name||'',p:k.doc||''});
     });
-    // 2) 全文正文
     (siRecords||[]).forEach(function(rec,i){
       var lt=(rec.text||'').toLowerCase();
       var at=lt.indexOf(s);
@@ -366,14 +387,13 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
       var href='d/'+(rec.doc||'')+'/'+page;
       var ctx=rec.text.slice(Math.max(0,at-36),at+64).replace(/\s+/g,' ').replace(/\[page:[^\]]*\]/g,'').trim();
       rows.push({grp:(rec.doc||''),href:href,t:page||'',p:ctx||''});
-      if(rows.filter(function(x){return x.rec===i;}).length>60) return; // guard
+      if(rows.filter(function(x){return x.rec===i;}).length>60) return;
     });
-    // 去重
     var seen={},uniq=[];
     rows.forEach(function(r){ var key=r.href+'|'+r.t; if(!seen[key]){ seen[key]=1; uniq.push(r); } });
-    renderSite(uniq);
+    renderRows(uniq);
   }
-  function renderSite(rows){
+  function renderRows(rows){
     if(!sres) return;
     var html='';
     if(!rows.length){ html='<div class="empty">无匹配结果</div>'; }
@@ -388,7 +408,14 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
   }
   if(siteq){
     loadSiteIndex();
-    siteq.addEventListener('input',function(){ window.clearTimeout(siTimer); siTimer=window.setTimeout(siteSearch,200); });
+    probeApi();
+    siteq.addEventListener('input',function(){ window.clearTimeout(siTimer);
+      siTimer=window.setTimeout(function(){
+        var v=siteq.value||'';
+        if(!v){ if(sres)sres.className='sres'; return; }
+        siteSearch(v);
+      },220);
+    });
   }
   document.addEventListener('click',function(e){
     if(siteq && e.target!==siteq && !sres.contains(e.target)) sres.className='sres';
@@ -466,11 +493,6 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
     var n=selectedIds().length;
     b.textContent = n ? ('导出选中('+n+') zip ⬇') : '导出选中 zip ⬇';
     b.style.opacity = n ? '1' : '.5';
-  }
-  // 可选请求头：服务于部署到公网时带 key —— 由构建期注入 __AUTH_TOKEN__
-  var AUTH_TOKEN = (typeof __AUTH_TOKEN__!=='undefined' && __AUTH_TOKEN__) ? __AUTH_TOKEN__ : '';
-  function authHeaders(){
-    return AUTH_TOKEN ? { 'X-Auth-Token': AUTH_TOKEN } : {};
   }
   // 导出选中：请求后端 /api/export-docs?ids=…，下载独立裸站 zip
   var exportSelBtn=document.getElementById('exportSelBtn');
@@ -575,18 +597,18 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
 
 /**
  * 生成欢迎页到 outDir/index.html，并引用文档根入口。
- * @param {object} o { outDir, docs, token? } docs 形如 [{ name, href }]，注入“我的文档”；
- *   token 可选：非空则注入 __AUTH_TOKEN__，供前端上传/导出时自动带上 X-Auth-Token。
+ * 注意（A3 安全）：不再把 UPLOAD_TOKEN/EXPORT_TOKEN 注入页面源码 —— 那会让
+ * 任何访问首页者 view-source 拿到明文密钥。浏览器端登录态(同源 cookie)由服务端
+ * 校验；token 参数仍保留入参但默认不烘焙，避免破坏旧签名调用。
+ * @param {object} o { outDir, docs }
+ *   docs 形如 [{ name, href }]，注入“我的文档”。
  */
-function build({ outDir, docs, token, uploadToken }) {
+function build({ outDir, docs }) {
   const dir = path.resolve(outDir);
   fs.mkdirSync(dir, { recursive: true });
   const docsJson = JSON.stringify(docs || []);
-  const tok = token ? JSON.stringify(String(token)) : '""';
-  const upTok = uploadToken ? JSON.stringify(String(uploadToken)) : '""';
-  // 全局替换（/g）：模板中 __DOCS_JSON__ / __AUTH_TOKEN__ / __UPLOAD_TOKEN__ 出现多次，
-  // 只替换第一个会导致三元表达式真分支残留裸标识符 → ReferenceError。
-  let html = LANDING_HTML.replace(/__DOCS_JSON__/g, docsJson).replace(/__AUTH_TOKEN__/g, tok).replace(/__UPLOAD_TOKEN__/g, upTok);
+  // 全局替换：模板只剩 __DOCS_JSON__ 需注入；其余占位符已移除。
+  let html = LANDING_HTML.replace(/__DOCS_JSON__/g, docsJson);
   fs.writeFileSync(path.join(dir, 'index.html'), html, 'utf8');
   // 全站聚合检索索引
   fs.writeFileSync(path.join(dir, 'site-index.json'),

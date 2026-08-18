@@ -432,10 +432,19 @@ function renderResults(hits, terms){
   lastHits = hits;
   resultsEl.innerHTML = '';
   if (!hits.length){ resultsEl.innerHTML = '<div class="empty">无匹配结果</div>'; resultsEl.hidden = false; return; }
+  // XSS 修复：全文/关键字索引可能来自任意上传文档（页面标题、正文），
+  // 绝不能直接把其内容当 HTML 拼进 DOM —— 先转义再环绕高亮 <mark>，杜绝脚本注入。
+  function escapeHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   function hl(s){
-    var out = String(s);
-    terms.slice().sort(function(a,b){ return b.length - a.length; }).forEach(function(t){
-      out = out.split(t).join('<mark>' + t + '</mark>');
+    var out = escapeHtml(String(s == null ? '' : s));
+    terms.slice().sort(function(a,b){ return (b||'').length - (a||'').length; }).forEach(function(t){
+      var te = escapeHtml(String(t || ''));
+      if (!te) return;
+      out = out.split(te).join('<mark>' + te + '</mark>');
     });
     return out;
   }

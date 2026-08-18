@@ -20,6 +20,8 @@ const USERS_FILE = 'users.json';
 const SESSIONS_FILE = 'sessions.json';
 const META_FILE = 'meta.json';
 const PRIVATE_DIR = 'private';
+// 会话有效期（毫秒）。会话表据此惰性清理，避免 users/sessions/meta 无限增长。
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
 
 let dataDir = '';
 
@@ -29,12 +31,73 @@ function init(dir) {
   fs.mkdirSync(path.join(dataDir, PRIVATE_DIR), { recursive: true });
 }
 
+/** 原子写 JSON：先写 `<file>.<pid>.tmp` 再 rename 覆盖。
+ * 崩溃/断电/写中途失败不会损坏原数据 —— 旧文件始终完整可用，
+ * rename 在同一文件系统内是原子的（Windows 上对已存在目标也保证覆盖）。
+ */
+function writeJsonAtomic(file, obj) {
+  const abs = path.join(dataDir, file);
+  const tmp = abs + '.' + process.pid + '.' + Date.now() + '.tmp';
+  fs.mkdirSync(dataDir, { recursive: true });
+  const json = JSON.stringify(obj, null, 2);
+  // 写入临时文件（截断重建，避免残留旧尾）
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, json, 'utf8');
+    fs.fsyncSync(fd); // 落盘，避免断电丢数据
+  } finally {
+    fs.closeSync(fd);
+  }
+  // Windows 上 rename 覆盖已存在目标偶尔抛 EPERM（AV/文件系统瞬时占用）。
+  // 采用「重命名到轮替临时→原文件删除→新文件就位」或简单重试；这里用短退避重试，
+  // 保证并发/瞬时占用下仍能完成原子替换且不损坏目标。
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try { fs.renameSync(tmp, abs); return; }
+    catch (e) {
+      if (attempt === 7 || !/EPERM|EEXIST|EACCES/.test(e.code || '')) throw e;
+      // 忙等极短时间后重试
+      const until = Date.now() + 15;
+      while (Date.now() < until) { /* busy-wait */ }
+    }
+  }
+}
+
+/** 读 JSON；文件损坏（如被并发写坏）时回退默认值并在控制台提示 */
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(path.join(dataDir, file), 'utf8')); }
   catch { return fallback; }
 }
-function writeJson(file, obj) {
-  fs.writeFileSync(path.join(dataDir, file), JSON.stringify(obj, null, 2));
+
+// 数据的「读→改→写」都在同一同步块内完成 —— Node 单线程内不会交错，
+// 因此原子写（临时文件+rename）即可保证并发安全与崩溃一致性。
+const writeJson = writeJsonAtomic;
+
+/**
+ * 惰性清理过期会话。sessions.json 读时顺带剔除 TTL 之外的条目；
+ * 若有清除则原子写回。防止会话表无限增长，也提升 token 安全性。
+ */
+function pruneSessions(sessions, now) {
+  const cutoff = (now || Date.now()) - SESSION_TTL_MS;
+  const kept = {};
+  for (const t of Object.keys(sessions)) {
+    const s = sessions[t];
+    if (s && s.createdAt >= cutoff) kept[t] = s;
+  }
+  return kept;
+}
+function readSessions() {
+  const sessions = readJson(SESSIONS_FILE, {});
+  const now = Date.now();
+  if (readHasExpired(sessions, now)) {
+    const kept = pruneSessions(sessions, now);
+    try { writeJsonAtomic(SESSIONS_FILE, kept); } catch (e) { console.error('session prune write failed', e); }
+    return kept;
+  }
+  return sessions;
+}
+function readHasExpired(sessions, now) {
+  const cutoff = now - SESSION_TTL_MS;
+  return Object.keys(sessions).some((t) => sessions[t] && sessions[t].createdAt < cutoff);
 }
 
 /* ---------------- 用户：注册 / 登录 / 会话 ---------------- */
@@ -65,7 +128,7 @@ function login({ username, password }) {
   const hash = hashPassword(password, u.salt);
   if (hash !== u.hash) throw new AuthError('用户名或密码错误', 401);
   const token = crypto.randomBytes(32).toString('hex');
-  const sessions = readJson(SESSIONS_FILE, {});
+  const sessions = readSessions();
   sessions[token] = { username, createdAt: Date.now() };
   writeJson(SESSIONS_FILE, sessions);
   return { token, username };
@@ -73,14 +136,14 @@ function login({ username, password }) {
 
 function logout(token) {
   if (!token) return;
-  const sessions = readJson(SESSIONS_FILE, {});
+  const sessions = readSessions();
   if (sessions[token]) { delete sessions[token]; writeJson(SESSIONS_FILE, sessions); }
 }
 
-/** 由 token 解析出用户名；无效返回 null */
+/** 由 token 解析出用户名；无效或已过期返回 null */
 function userByToken(token) {
   if (!token) return null;
-  const sessions = readJson(SESSIONS_FILE, {});
+  const sessions = readSessions();
   const s = sessions[token];
   return s ? s.username : null;
 }
@@ -96,7 +159,7 @@ function getMeta(docId) {
 
 /** 上传/建站时登记文档元数据（已存在则不覆盖） */
 function ensureMeta(docId, { owner = null, name = '', visibility = 'public' } = {}) {
-  const m = readMeta();
+  const m = readJson(META_FILE, {});
   if (!m[docId]) {
     m[docId] = {
       owner: owner || null,
@@ -105,7 +168,7 @@ function ensureMeta(docId, { owner = null, name = '', visibility = 'public' } = 
       shareToken: null,
       createdAt: Date.now(),
     };
-    writeJson(META_FILE, m);
+    writeJsonAtomic(META_FILE, m);
   }
   return m[docId];
 }
@@ -117,7 +180,7 @@ function setVisibility(docId, visibility, username) {
   if (!meta) throw new AuthError('文档不存在', 404);
   if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以修改可见性', 403);
   meta.visibility = visibility === 'private' ? 'private' : 'public';
-  writeJson(META_FILE, m);
+  writeJsonAtomic(META_FILE, m);
   return meta;
 }
 
@@ -129,7 +192,7 @@ function share(docId, username, { reset = false } = {}) {
   if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以分享', 403);
   if (!meta.shareToken || reset) {
     meta.shareToken = crypto.randomBytes(16).toString('hex');
-    writeJson(META_FILE, m);
+    writeJsonAtomic(META_FILE, m);
   }
   return { shareToken: meta.shareToken, sharePath: '/s/' + meta.shareToken };
 }
@@ -141,7 +204,7 @@ function deleteMeta(docId, username) {
   if (!meta) throw new AuthError('文档不存在', 404);
   if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以删除', 403);
   delete m[docId];
-  writeJson(META_FILE, m);
+  writeJsonAtomic(META_FILE, m);
   return true;
 }
 

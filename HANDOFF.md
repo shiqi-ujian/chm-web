@@ -53,6 +53,17 @@
 - 部署物：根 `Dockerfile`（Railway 直用）+ `deploy/`（Docker / systemd / Caddy 示例）
 - 验收：选中多个 CHM，一次转换后能整包导出为 zip/静态站点 ✅
 
+### M5 — 健壮与安全（P1 公共服务护栏）✅ 已完成
+- **稳定性**：状态文件原子写（临时文件 + rename + 短退避重试，防崩溃/瞬时占用损坏）、会话 30 天惰性过期清理、并发上传槽位（`MAX_CONCURRENT_UPLOADS`）+ 异步 7z 解包（`src/lib/chm.js` 改 `spawn`）+ 超时 + 失败自动清理临时文件（`cleanupTmp`）。
+- **限流/配额（`src/lib/quota.js`）**：账号/上传/导出接口滑动窗口限流（`RATE_AUTH_MAX`/`RATE_UPLOAD_MAX`/`RATE_EXPORT_MAX`）；每用户文档数/字节配额（`MAX_USER_DOCS`/`MAX_USER_BYTES`）+ 全局存储上限（`MAX_GLOBAL_BYTES`）。
+- **安全**：
+  - 修复阅读壳/欢迎页**存储型 XSS**：`renderResults`/`hl`/欢迎页搜索输出一律先 `esc()` 再环绕 `<mark>` 高亮，杜绝把文档标题/正文当 HTML 执行。
+  - **移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**（此前后台源码可 `view-source` 拿到密钥致防护失效）。现改为：公网下上传/导出要求「请求带有效 token 或 已登录会话（同源 cookie）」，由服务端校验；未配置 token 时保持不锁（本地/离线兼容）。欢迎页不再注入任何密钥。
+- **检索**：新增服务端 `/api/search`（`src/lib/search.js`：分页+高亮片段；文档一多更稳）；欢迎页在线时优先走 API，纯静态/离线 zip 回退本地 `site-index.json`。
+- 新增 `test-quota / test-xss / test-search-api / test-atomic`，`npm test` 跑全 12 项。
+
+**部署注意（M5）**：以上环境变量均为可选；除非在 Railway 变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。部署令牌仍只放 Railway Variables + 本机 gitignore 文件，**不要写入页面源码**。
+
 ---
 
 ## 开发顺序（建议）

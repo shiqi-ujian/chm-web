@@ -1,6 +1,6 @@
 'use strict';
 // chm.js — 7-Zip based unpack + normalization
-const { spawnSync } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -33,17 +33,40 @@ function resolveSeven() {
 }
 
 /**
- * Extract a .chm file into a folder (extract .hhc .hhk★...).
- * Uses 7-Zip. Returns { ok, dir, files }.
+ * Extract a .chm file into a folder. Uses 7-Zip.
+ * 异步版本：spawn（不阻塞事件循环）。设超时，超时/失败会清理半成品。
+ * @param {string} input .chm 路径
+ * @param {string} outDir 目标目录
+ * @param {object} o { timeoutMs } 可选解包超时（默认 120s）
+ * @returns {Promise<{ok:true, dir:string}>}
  */
-async function extractChm(input, outDir) {
+function extractChm(input, outDir, o = {}) {
   const seven = resolveSeven();
+  const timeoutMs = o.timeoutMs || 120 * 1000;
   fs.mkdirSync(outDir, { recursive: true });
-  const res = spawnSync(seven, ['x', input, `-o${outDir}`, '-y'], { stdio: 'pipe' });
-  if (res.status !== 0) {
-    throw new Error(`7z extract failed (${res.status}): ${res.stderr || res.stdout}`);
-  }
-  return { ok: true, dir: outDir };
+  return new Promise((resolve, reject) => {
+    const child = spawn(seven, ['x', input, `-o${outDir}`, '-y'], { stdio: 'ignore' });
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+    child.on('error', (err) => { clearTimeout(timer); reject(new Error('7z 启动失败: ' + err.message)); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        try { fs.rmSync(outDir, { recursive: true, force: true }); } catch (_) {}
+        reject(new Error('7z 解包超时（> ' + Math.round(timeoutMs / 1000) + 's），已清理半成品'));
+      } else if (code === 0) {
+        resolve({ ok: true, dir: outDir });
+      } else {
+        try { fs.rmSync(outDir, { recursive: true, force: true }); } catch (_) {}
+        reject(new Error('7z 解包失败（exit ' + code + '）：' + (stderr || '未知原因')));
+      }
+    });
+    if (child.stderr) child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-4000); });
+  });
 }
 
 /** list top-level loose files of interest in an unpacked dir */
@@ -56,4 +79,4 @@ function scan(dir) {
   };
 }
 
-module.exports = { extractChm, scan };
+module.exports = { extractChm, scan, resolveSeven };

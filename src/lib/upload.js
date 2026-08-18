@@ -66,7 +66,7 @@ async function processUpload(buf, origName, o = {}) {
     ? path.join(dataDir, 'private', id)
     : path.join(siteRoot, 'd', id);
   try {
-    await convertOne(tmpChm, docDir, id, path.parse(origName).name);
+    await convertOne(tmpChm, docDir, id, path.parse(origName).name, o);
   } catch (e) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     throw new UploadError('转换失败：' + (e && e.message || e), 500);
@@ -90,11 +90,12 @@ async function processUpload(buf, origName, o = {}) {
 }
 
 /** 单独文档：7z 解到临时 → sanitize 到正式目录，再补生成阅读壳 */
-async function convertOne(input, outDir, id, name) {
+async function convertOne(input, outDir, id, name, o = {}) {
   const tmp = path.join(path.dirname(outDir), '.tmp_' + id);
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
   fs.rmSync(tmp, { recursive: true, force: true });
-  await extractChm(input, tmp);
+  // extractChm 已改为异步 spawn + 超时（失败自动清理 tmp）
+  await extractChm(input, tmp, { timeoutMs: (o && o.timeoutMs) || 120 * 1000 });
   copyDocContent(tmp, outDir);
   fs.rmSync(tmp, { recursive: true, force: true });
   // 修复链接大小写与实际文件不一致（Linux 严格区分大小写）
@@ -116,4 +117,36 @@ async function convertOne(input, outDir, id, name) {
   }
 }
 
-module.exports = { processUpload, UploadError, safeId };
+/**
+ * 清理遗留的临时文件/目录（崩溃或超时残留）：data/tmp 内容、
+ * 各文档目录下的 `.tmp_*` 半成品、以及 uploads 里过期的临时 .chm。
+ */
+function cleanupTmp({ dataDir, siteRoot, ageMs = 24 * 60 * 60 * 1000 } = {}) {
+  const now = Date.now();
+  const roots = [path.join(dataDir, 'tmp'), path.join(dataDir, 'uploads')];
+  for (const r of roots) {
+    try {
+      const entries = fs.readdirSync(r, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(r, e.name);
+        let s;
+        try { s = fs.statSync(full); } catch { continue; }
+        if (now - s.mtimeMs < ageMs) continue;
+        try { fs.rmSync(full, { recursive: true, force: true }); } catch {}
+      }
+    } catch {}
+  }
+  // 站点文档目录下的 .tmp_<id> 半成品
+  const dDir = path.join(siteRoot, 'd');
+  try {
+    for (const e of fs.readdirSync(dDir, { withFileTypes: true })) {
+      if (e.isDirectory() && /^\.tmp_/.test(e.name)) {
+        const full = path.join(dDir, e.name);
+        let s; try { s = fs.statSync(full); } catch { continue; }
+        if (now - s.mtimeMs >= ageMs) { try { fs.rmSync(full, { recursive: true, force: true }); } catch {} }
+      }
+    }
+  } catch {}
+}
+
+module.exports = { processUpload, UploadError, safeId, cleanupTmp };

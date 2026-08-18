@@ -5,25 +5,61 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { processUpload, UploadError } = require('./lib/upload');
+const { processUpload, UploadError, cleanupTmp } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs } = require('./lib/site-export');
 const auth = require('./lib/auth');
+const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage } = require('./lib/quota');
+const LibSearch = require('./lib/search');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
 const DATA_DIR = path.resolve(process.env.CHM_DATA || path.join(__dirname, '..', 'data'));
 auth.init(DATA_DIR); // 账号/会话/文档元数据/私有文档目录
+initQuota(DATA_DIR, {
+  MAX_GLOBAL_BYTES: process.env.MAX_GLOBAL_BYTES,
+  MAX_USER_DOCS: process.env.MAX_USER_DOCS,
+  MAX_USER_BYTES: process.env.MAX_USER_BYTES,
+});
+
+// —— 接口限流（滑动窗口，进程内存态）：防止账号/上传被暴力刷爆。
+const rateLimits = {
+  auth: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_AUTH_MAX) || 30 }),
+  upload: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_UPLOAD_MAX) || 20 }),
+  export: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_EXPORT_MAX) || 30 }),
+};
+function limited(limiter, key, res) {
+  if (!limiter.allow(key)) { sendJSON(res, 429, { ok: false, error: '请求过于频繁，请稍后再试' }); return true; }
+  return false;
+}
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0'; // 默认绑全接口；本机调试可设 127.0.0.1
 const MAX_BYTES = 80 * 1024 * 1024;
 
-// —— 简单鉴权(A 形态)：用环境变量设 token 即开启对应防护；不设则保持现状（不锁）。
-// UPLOAD_TOKEN  保护写操作（POST /api/upload）
-// EXPORT_TOKEN  保护文档导出（/api/export-docs、/site-export.zip）
-// 客户端须在请求头带 X-Auth-Token: <token>。
+// —— 鉴权(A 形态，A3 收紧)：用环境变量设 token 即开启对应防护；不设则保持不锁。
+//   UPLOAD_TOKEN 保护写操作（POST /api/upload）；EXPORT_TOKEN 保护文档导出。
+//   公网下除非请求头带有效 X-Auth-Token，否则须为已登录用户（同源 cookie）。
+//   密钥不再烘焙进页面源码，避免被任何人 view-source 拿到。
 const UPLOAD_TOKEN = process.env.UPLOAD_TOKEN || '';
 const EXPORT_TOKEN = process.env.EXPORT_TOKEN || '';
+
+// —— 并发上传护栏：限制同时进行的 7z 解包数量，其余排队，避免打爆服务器。
+const MAX_CONCURRENT_UPLOADS = Number(process.env.MAX_CONCURRENT_UPLOADS) || 2;
+let activeUploads = 0;
+const uploadWaiters = [];
+async function withUploadSlot(fn) {
+  if (activeUploads >= MAX_CONCURRENT_UPLOADS) {
+    await new Promise((r) => uploadWaiters.push(r));
+  }
+  activeUploads++;
+  try {
+    return await fn();
+  } finally {
+    activeUploads--;
+    const next = uploadWaiters.shift();
+    if (next) next();
+  }
+}
 
 /** 请求头是否带有效 token（token 未设置时放行） */
 function authorized(req, token) {
@@ -154,7 +190,14 @@ function serveStatic(req, res) {
 }
 
 async function handleUpload(req, res) {
-  if (!authorized(req, UPLOAD_TOKEN)) { deny(req, res); return; }
+  // 限流（IP/账号级）
+  const ip = (req.socket && req.socket.remoteAddress) || 'unknown';
+  if (limited(rateLimits.upload, 'up:' + ip, res)) return;
+  // A3 授权收紧：UPLOAD_TOKEN 不再烘焙进页面。公网下上传要求：有效 UPLOAD_TOKEN
+  // 或 已登录用户（同源 cookie / X-User-Token）。未配置 token 时保持不锁（本地/离线）。
+  if (UPLOAD_TOKEN && !authorized(req, UPLOAD_TOKEN) && !currentUser(req)) {
+    deny(req, res); return;
+  }
   const contentType = req.headers['content-type'] || '';
   const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
   const boundary = m && (m[1] || m[2]);
@@ -177,14 +220,27 @@ async function handleUpload(req, res) {
   if (!username) { sendJSON(res, 401, { ok: false, error: '请先登录后再上传' }); return; }
   const visibility = (form.fields.visibility || 'public').trim() === 'private' ? 'private' : 'public';
 
+  // 配额：校验前先锁定在内存使用量（文档数 + 字节），超限 429/413/507。
+  let quotaRegistered = false;
   try {
-    const r = await processUpload(file.data, file.filename, {
+    checkUploadQuota(username, file.data.length);
+    quotaRegistered = true;
+  } catch (e) {
+    if (e instanceof QuotaError) { sendJSON(res, e.status, { ok: false, error: e.message }); return; }
+    throw e;
+  }
+
+  // 并发护栏：解包在受限槽位内执行，避免并发 7z 拖垮进程。
+  try {
+    const r = await withUploadSlot(() => processUpload(file.data, file.filename, {
       siteRoot: SITE_ROOT, dataDir: DATA_DIR, maxBytes: MAX_BYTES, visibility, owner: username,
-    });
+    }));
     // 更新"我的文档"索引（docs/_index.json，只含公开文档）并重建欢迎页
     rebuildSite();
     sendJSON(res, 200, { ok: true, ...r });
   } catch (e) {
+    // 上传/转换失败时回收配额
+    if (quotaRegistered) releaseQuota(username, file.data.length);
     if (e instanceof UploadError || e instanceof auth.AuthError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
     else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
   }
@@ -288,8 +344,6 @@ function rebuildSite() {
     landing.build({
       outDir: SITE_ROOT,
       docs: listDocs(null).map((d) => ({ name: d.name, href: d.href, id: d.id })),
-      token: EXPORT_TOKEN,
-      uploadToken: UPLOAD_TOKEN,
     });
   } catch (e) { console.error('site rebuild failed', e); }
 }
@@ -311,7 +365,17 @@ function ensureSeed() {
 
 /** 打包整站为 zip 下载 */
 function handleSiteExport(req, res) {
-  if (!authorized(req, EXPORT_TOKEN)) { deny(req, res); return; }
+  // 限流
+  if (limited(rateLimits.export, 'exp:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
+  // A3 授权收紧：EXPORT_TOKEN 不再烘焙进页面。公网下导出要求：
+  //   - 显式鉴权：请求头带有效 EXPORT_TOKEN（服务方/运维），或
+  //   - 已登录用户（同源 cookie / X-User-Token）。
+  // 两者都有则放行；本地未配置 token 时保持不锁（兼容本地/离线）。
+  if (EXPORT_TOKEN) {
+    if (authorized(req, EXPORT_TOKEN)) { /* 服务方令牌放行 */ }
+    else if (currentUser(req)) { /* 登录用户放行 */ }
+    else { deny(req, res); return; }
+  }
   const r = exportSite({ siteRoot: SITE_ROOT });
   const name = 'chm-web-site-' + Date.now() + '.zip';
   res.writeHead(200, {
@@ -324,7 +388,14 @@ function handleSiteExport(req, res) {
 
 /** 打包"选中若干文档"为独立静态子站 zip 下载（批量导出/私密部署的核心） */
 function handleExportDocs(req, res) {
-  if (!authorized(req, EXPORT_TOKEN)) { deny(req, res); return; }
+  // 限流
+  if (limited(rateLimits.export, 'exp:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
+  // A3 授权收紧：同 handleSiteExport。
+  if (EXPORT_TOKEN) {
+    if (authorized(req, EXPORT_TOKEN)) { /* 放行 */ }
+    else if (currentUser(req)) { /* 登录用户放行 */ }
+    else { deny(req, res); return; }
+  }
   const u = new URL(req.url, 'http://x');
   const ids = (u.searchParams.get('ids') || '')
     .split(',')
@@ -340,11 +411,36 @@ function handleExportDocs(req, res) {
   res.end(r.zip);
 }
 
+/** 删除某文档（公开区 d/ 与私有区 private/）并释放配额；返回实际移除路径与体积 */
+function removeDocFiles(id) {
+  let removed = [];
+  let size = 0;
+  const pub = path.join(SITE_ROOT, 'd', id);
+  if (fs.existsSync(pub)) { size += dirBytes(pub); fs.rmSync(pub, { recursive: true, force: true }); removed.push('d/' + id); }
+  const priv = auth.privateDir(id);
+  if (fs.existsSync(priv)) { size += dirBytes(priv); fs.rmSync(priv, { recursive: true, force: true }); removed.push('private/' + id); }
+  return { removed, size };
+}
+function dirBytes(dir) {
+  let sum = 0;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) sum += dirBytes(full);
+      else sum += fs.statSync(full).size;
+    }
+  } catch (_) {}
+  return sum;
+}
+
 const server = http.createServer((req, res) => {
   const urlPath = (new URL(req.url, 'http://x')).pathname;
   if (req.method === 'POST' && urlPath === '/api/register') {
+    if (limited(rateLimits.auth, 'auth:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
     handleJson(req, res, (b) => auth.register(b));
   } else if (req.method === 'POST' && urlPath === '/api/login') {
+    if (limited(rateLimits.auth, 'auth:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
     handleJson(req, res, (b) => {
       const r = auth.login(b);
       setCookie(res, 'chm_user', r.token, { maxAge: 60 * 60 * 24 * 30, sameSite: 'Lax' });
@@ -359,6 +455,13 @@ const server = http.createServer((req, res) => {
     sendJSON(res, 200, { user: currentUser(req) });
   } else if (req.method === 'GET' && urlPath === '/api/docs') {
     sendJSON(res, 200, { docs: listDocs(currentUser(req)) });
+  } else if (req.method === 'GET' && urlPath === '/api/search') {
+    // B1 服务端检索：分页 + 高亮片段；文档一多时比前端整包拉索引更稳。
+    const u = new URL(req.url, 'http://x');
+    const q = (u.searchParams.get('q') || '').trim();
+    const limit = Math.min(Number(u.searchParams.get('limit')) || 10, 50);
+    const offset = Math.max(Number(u.searchParams.get('offset')) || 0, 0);
+    sendJSON(res, 200, LibSearch.search(SITE_ROOT, q, { limit, offset }));
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/visibility$/.test(urlPath)) {
     const id = decodeURIComponent(urlPath.split('/')[3]);
     handleJson(req, res, (b) => {
@@ -375,12 +478,11 @@ const server = http.createServer((req, res) => {
     const id = decodeURIComponent(urlPath.split('/')[3]);
     const u = currentUser(req);
     try {
+      const meta = auth.getMeta(id);
       auth.deleteMeta(id, u);
-      let removed = [];
-      const pub = path.join(SITE_ROOT, 'd', id);
-      if (fs.existsSync(pub)) { fs.rmSync(pub, { recursive: true, force: true }); removed.push('d/' + id); }
-      const priv = auth.privateDir(id);
-      if (fs.existsSync(priv)) { fs.rmSync(priv, { recursive: true, force: true }); removed.push('private/' + id); }
+      const { removed, size } = removeDocFiles(id);
+      // 释放配额（删 1 文档 + 释放其体积）
+      if (meta && meta.owner) releaseQuota(meta.owner, size);
       rebuildSite();
       sendJSON(res, 200, { ok: true, id, removed });
     } catch (e) {
@@ -407,6 +509,8 @@ server.listen(Number(PORT), HOST, () => {
   // 空卷时从镜像种子填充初始站点内容，再用当前环境变量重建欢迎页
   ensureSeed();
   rebuildSite();
+  // 启动时清理崩溃/超时残留的临时文件（异步，不阻塞监听）
+  try { cleanupTmp({ dataDir: DATA_DIR, siteRoot: SITE_ROOT }); } catch (e) { console.error('cleanup failed', e); }
   console.log('chm-web server listening: http://' + HOST + ':' + port);
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
