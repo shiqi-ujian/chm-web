@@ -222,6 +222,8 @@ const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
   document.addEventListener('click',function(e){if(e.target!==siteq&&!sres.contains(e.target))sres.style.display='none';});
   function recentRender(list){var box=document.getElementById('recentDocs');var arr=list&&list.length?list:window.__docs||[];
     if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
+    arr=arr.filter(function(d){return d.visibility!=='private';});
+    if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
     box.innerHTML=arr.slice(0,6).map(function(d){var priv=d.visibility==='private';
       return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
       '<span style="flex:1;min-width:0"><b style="display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+escS(d.name||d.id)+'</b>'+
