@@ -116,6 +116,7 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 <script>
 (function(){
 var escU=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+var escS=escU;
 var theme=(function(){try{return localStorage.getItem('chm-theme')||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}catch(e){return 'light';}})();
 document.documentElement.dataset.theme=theme;
 var tb=document.getElementById('themeBtn');
