@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "description": "CHM → 可浏览/搜索静态网站（免费·非营利） / M1: CHM 解包 + 静态预览",
-  "bin": { "chm-web": "bin/cli.js" },
+  "bin": {
+    "chm-web": "bin/cli.js"
+  },
   "scripts": {
     "convert": "node bin/cli.js convert",
     "serve": "node bin/cli.js serve",
     "export-site": "node bin/cli.js export-site docs site-export.zip",
-    "test": "node test-serve.js && node test-hhc.js && node test-fulltext.js && node test-fixlinks.js && node test-site.js && node test-zip.js && node test-export-docs.js && node test-auth.js && node test-quota.js && node test-xss.js && node test-search-api.js && node test-atomic.js"
+    "test": "node test-serve.js && node test-hhc.js && node test-fulltext.js && node test-fixlinks.js && node test-site.js && node test-zip.js && node test-export-docs.js && node test-auth.js && node test-quota.js && node test-xss.js && node test-search-api.js && node test-atomic.js && node test-db.js"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  }
 }

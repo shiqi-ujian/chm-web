@@ -4,17 +4,21 @@
 # Railway 会自动检测并据此构建，无需手动配置（见 README「用 Railway 上线」）。
 FROM node:20-slim
 
-# 安装 7-Zip：新版 Debian 官方包 `7zip` 提供 7zz；p7zip-full 提供 7z（老式备选）。
+# 安装 7-Zip（新版 Debian 官方包 `7zip` 提供 7zz；p7zip-full 提供 7z 老式备选）
+# + better-sqlite3（native 模块）所需编译工具链。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends 7zip p7zip-full \
+    && apt-get install -y --no-install-recommends 7zip p7zip-full build-essential python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# 先装依赖（含 native better-sqlite3，便于利用构建缓存）
+COPY package.json /app/package.json
+RUN npm install
+
 # 代码
 COPY src /app/src
 COPY bin /app/bin
-COPY package.json /app/package.json
 
 # 初始站点内容（欢迎页 + d/ 下的阅读文档产物）。
 # 生产环境运行时通常用 Volume 覆盖 /app/docs 持久化；这里提供默认值以便开箱即用。
