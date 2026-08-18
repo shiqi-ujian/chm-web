@@ -271,6 +271,8 @@ function openPage(url){
 function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
 document.getElementById('menu-btn').addEventListener('click', function(){ sidebar.classList.add('open'); mask.classList.add('on'); });
 if (mask) mask.addEventListener('click', closeDrawer);
+var homeBtn = document.getElementById('home-btn');
+if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = '../..'; });
 var prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
 if (prevBtn && nextBtn){
   prevBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
@@ -576,6 +578,7 @@ function shell({ title, home, tocJson }) {
   <main id="main">
     <header id="topbar">
       <button class="tb-btn" id="menu-btn" title="目录" aria-label="打开目录" type="button">☰</button>
+      <button class="tb-btn" id="home-btn" title="返回主页" aria-label="返回主页" type="button">🏠</button>
       <span id="crumb"></span>
       <button class="tb-btn" id="prev-btn" title="上一页" type="button">↑</button>
       <button class="tb-btn" id="next-btn" title="下一页" type="button">↓</button>
@@ -657,6 +660,30 @@ function build({ outDir, hhcFile, hhkFile, title }) {
   else {
     const first = tree.find((n) => n.href);
     if (first && first.href) homeHref = relPath(dir, first.href);
+  }
+  // 兜底：若算出的首页是外部协议(CHM 内部 / 绝对 URL)或对应文件不存在，
+  // 回退到文档内真实存在的内容首页。注意 index.html 是本阅读壳本身（不能当首页，
+  // 否则 iframe 套娃）；故只挑真实内容页。
+  {
+    let candidate = path.resolve(dir, homeHref);
+    const isExternal = /^(?:[a-z]+:|mk:@)/i.test(homeHref) || /^([a-zA-Z]:[\\/]|\/)/.test(homeHref);
+    if (isExternal || !fs.existsSync(candidate)) {
+      // 候选真实首页（升序优先级；排除我们生成的壳文件）
+      const findReal = (fns) => {
+        for (const f of fns) {
+          const p = path.join(dir, f);
+          if (fs.existsSync(p) && fs.statSync(p).isFile() && !shellFile(f)) return f;
+        }
+        return null;
+      };
+      const shellFile = (f) => /^(index\.html?|__chm_nav\.html|keywords\.json|search-index\.json)$/i.test(f);
+      const real = findReal(['index.htm', 'start.htm', 'start.html', 'main.htm', 'default.htm', 'PyWin32.html', 'win32_overview.html', 'overviews.html', 'Contents.html', 'Home.html'])
+        || (() => { try {
+            const rootFiles = fs.readdirSync(dir).filter((f) => /\.html?$/i.test(f) && !shellFile(f) && fs.statSync(path.join(dir, f)).isFile());
+            return rootFiles.length ? rootFiles[0] : null;
+          } catch { return null; } })();
+      if (real) homeHref = path.relative(dir, path.join(dir, real)).replace(/\\/g, '/');
+    }
   }
 
   const navHtml = renderTree(tree, dir);

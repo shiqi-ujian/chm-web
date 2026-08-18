@@ -90,6 +90,13 @@ function parseHhcFile(file, baseDir) {
   const dir = path.resolve(baseDir || path.dirname(file)).replace(/\\/g, '/');
   const resolve = (href) => {
     if (!href) return null;
+    // CHM 内部链接：mk:@MSITStore:<file>::/<path> 或 <file>::/<path>
+    // 去掉协议与主机部分，只保留文档内相对路径 /path（可与文档真实文件对齐）
+    if (/^mk:@|::\//i.test(href)) {
+      let p = href.replace(/^.*?::\//i, '').replace(/\\/g, '/');
+      p = decodeURIComponent(p.replace(/^\/+/, ''));
+      if (p) return p.replace(/\//g, path.sep);
+    }
     if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
     const url = new URL(href.replace(/\\/g, '/'), 'file://' + dir + '/');
     return decodeURIComponent(url.pathname).replace(/^\//, '').replace(/\//g, path.sep);

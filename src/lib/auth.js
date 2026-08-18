@@ -134,6 +134,17 @@ function share(docId, username, { reset = false } = {}) {
   return { shareToken: meta.shareToken, sharePath: '/s/' + meta.shareToken };
 }
 
+/** 仅 owner 可删除文档元数据；返回是否删除了 meta 记录 */
+function deleteMeta(docId, username) {
+  const m = readMeta();
+  const meta = m[docId];
+  if (!meta) throw new AuthError('文档不存在', 404);
+  if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以删除', 403);
+  delete m[docId];
+  writeJson(META_FILE, m);
+  return true;
+}
+
 /** 某人/某分享 token 是否可读该文档 */
 function canRead(docId, { username = null, shareToken = null } = {}) {
   const meta = getMeta(docId);
@@ -160,5 +171,5 @@ function privateDir(docId) { return path.join(dataDir, PRIVATE_DIR, docId); }
 module.exports = {
   init, AuthError,
   register, login, logout, userByToken,
-  ensureMeta, getMeta, setVisibility, share, canRead, docIdByShareToken, privateDir,
+  ensureMeta, getMeta, setVisibility, share, deleteMeta, canRead, docIdByShareToken, privateDir,
 };

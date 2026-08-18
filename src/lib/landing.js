@@ -503,7 +503,7 @@ const LANDING_HTML = String.raw`<!doctype html><html lang="zh"><head><meta chars
       if(j && j.docs) renderDocs(j.docs);
     }).catch(function(){ /* 无后端时保持静态注入 */ });
   }
-  (function initDocs(){ renderDocs(null); refreshDocs(); loadMe(); })();
+  (function initDocs(){ renderDocs(null); refreshDocs(); loadMe(); updateUploadGate(); })();
 
   // 批量上传 UI：支持多选 / 拖拽多个 .chm
   function addFiles(list){

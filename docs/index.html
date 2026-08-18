@@ -385,7 +385,7 @@
   var selectedDocs = {};   // id -> true，用于“导出选中”
   function renderDocs(list){
     var box=document.getElementById('docsList');
-    var arr = (list && list.length) ? list : (typeof [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]!=='undefined'?[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]:[]); /* [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}] injected at build */
+    var arr = (list && list.length) ? list : (typeof [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"},{"name":"pywin32_cn","href":"d/pywin32_cn-d07252/","id":"pywin32_cn-d07252"},{"name":"7zip_cn","href":"d/7zip_cn-b62601/","id":"7zip_cn-b62601"}]!=='undefined'?[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"},{"name":"pywin32_cn","href":"d/pywin32_cn-d07252/","id":"pywin32_cn-d07252"},{"name":"7zip_cn","href":"d/7zip_cn-b62601/","id":"7zip_cn-b62601"}]:[]); /* [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"},{"name":"pywin32_cn","href":"d/pywin32_cn-d07252/","id":"pywin32_cn-d07252"},{"name":"7zip_cn","href":"d/7zip_cn-b62601/","id":"7zip_cn-b62601"}] injected at build */
     if(!arr.length){ box.innerHTML='<div class="doc-row"><span style="color:var(--mut)">还没有文档，上传第一个吧。</span></div>';
       updateExportSelBtn(); return; }
     box.innerHTML=arr.map(function(d){
@@ -490,7 +490,7 @@
       if(j && j.docs) renderDocs(j.docs);
     }).catch(function(){ /* 无后端时保持静态注入 */ });
   }
-  (function initDocs(){ renderDocs(null); refreshDocs(); loadMe(); })();
+  (function initDocs(){ renderDocs(null); refreshDocs(); loadMe(); updateUploadGate(); })();
 
   // 批量上传 UI：支持多选 / 拖拽多个 .chm
   function addFiles(list){

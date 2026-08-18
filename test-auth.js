@@ -73,6 +73,15 @@ function get(p, token) {
     r.end();
   });
 }
+function del(p, headers) {
+  return new Promise((resolve) => {
+    const r = http.request({ host: 'localhost', port: PORT, path: p, method: 'DELETE', headers: headers || {} }, (x) => {
+      let b = []; x.on('data', (c) => b.push(c)); x.on('end', () => resolve({ st: x.statusCode, body: JSON.parse(Buffer.concat(b).toString() || '{}') }));
+    });
+    r.on('error', (e) => resolve({ st: 0, body: { err: e.message } }));
+    r.end();
+  });
+}
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -142,6 +151,16 @@ async function main() {
   const myList = await json('GET', '/api/docs', null, { 'X-User-Token': tok });
   const mine = myList.body.docs.find((d) => d.id === idB);
   ok('owner /api/docs lists private with tag', !!mine && mine.visibility === 'private' && mine.owner === 'alice', JSON.stringify(mine || {}));
+
+  // ---- 删除（仅 owner 可删，放 /api/docs 过滤之后，避免删掉后影响 listing 用例）----
+  const delAnon = await del('/api/doc/' + idB, null);
+  ok('anon delete 403', delAnon.st === 403, String(delAnon.st));
+  const delOther = await del('/api/doc/' + idB, { 'X-User-Token': l2.body.token });
+  ok('non-owner delete 403', delOther.st === 403, String(delOther.st));
+  const delOwner = await del('/api/doc/' + idB, { 'X-User-Token': tok });
+  ok('owner delete 200', delOwner.st === 200, JSON.stringify(delOwner.body));
+  ok('after delete: /p/ gone (not 200)', (await get('/p/' + idB + '/', tok)) !== 200);
+  ok('after delete: entity gone', !fs.existsSync(path.join(DATA, 'private', idB)));
 
   // ---- 登出 ----
   const out = await json('POST', '/api/logout', null, { 'X-User-Token': tok });

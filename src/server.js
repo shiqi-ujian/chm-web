@@ -370,6 +370,23 @@ const server = http.createServer((req, res) => {
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
     const id = decodeURIComponent(urlPath.split('/')[3]);
     handleJson(req, res, (b) => auth.share(id, currentUser(req), { reset: !!(b && b.reset) }));
+  } else if (req.method === 'DELETE' && /^\/api\/doc\/[^/]+$/.test(urlPath)) {
+    // 删除文档：仅 owner 可删。删除公开区 docs/d/<id> 与私有区 data/private/<id> 实体 + meta
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    const u = currentUser(req);
+    try {
+      auth.deleteMeta(id, u);
+      let removed = [];
+      const pub = path.join(SITE_ROOT, 'd', id);
+      if (fs.existsSync(pub)) { fs.rmSync(pub, { recursive: true, force: true }); removed.push('d/' + id); }
+      const priv = auth.privateDir(id);
+      if (fs.existsSync(priv)) { fs.rmSync(priv, { recursive: true, force: true }); removed.push('private/' + id); }
+      rebuildSite();
+      sendJSON(res, 200, { ok: true, id, removed });
+    } catch (e) {
+      if (e instanceof auth.AuthError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
+      else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
+    }
   } else if (req.method === 'GET' && urlPath.startsWith('/s/')) {
     handleShare(req, res, urlPath);
   } else if (req.method === 'GET' && urlPath.startsWith('/p/')) {

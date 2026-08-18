@@ -95,6 +95,7 @@ mark.wz-hl.cur{outline:2px solid var(--accent)}
   <main id="main">
     <header id="topbar">
       <button class="tb-btn" id="menu-btn" title="目录" aria-label="打开目录" type="button">☰</button>
+      <button class="tb-btn" id="home-btn" title="返回主页" aria-label="返回主页" type="button">🏠</button>
       <span id="crumb"></span>
       <button class="tb-btn" id="prev-btn" title="上一页" type="button">↑</button>
       <button class="tb-btn" id="next-btn" title="下一页" type="button">↓</button>
@@ -246,6 +247,8 @@ function openPage(url){
 function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
 document.getElementById('menu-btn').addEventListener('click', function(){ sidebar.classList.add('open'); mask.classList.add('on'); });
 if (mask) mask.addEventListener('click', closeDrawer);
+var homeBtn = document.getElementById('home-btn');
+if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = '../..'; });
 var prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
 if (prevBtn && nextBtn){
   prevBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
