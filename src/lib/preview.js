@@ -315,8 +315,8 @@ function highlightIn(doc, terms){
     var text = node.nodeValue || '', lower = text.toLowerCase();
     var hits = [];
     terms.forEach(function(t){
-      var from = 0, at;
-      while ((at = lower.indexOf(t, from)) !== -1){ hits.push([at, t.length]); from = at + t.length; }
+      var tl = t.toLowerCase(), from = 0, at;
+      while ((at = lower.indexOf(tl, from)) !== -1){ hits.push([at, t.length]); from = at + t.length; }
     });
     if (!hits.length) return;
     hits.sort(function(a,b){ return a[0]-b[0]; });
