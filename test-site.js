@@ -52,6 +52,23 @@ setTimeout(async () => {
     const z = await get('/site-export.zip');
     ok('GET /site-export.zip 200', z.st === 200 && z.body && z.body.length > 5000);
     ok('zip starts with PK', z.body && z.body.slice(0, 2).toString('latin1') === 'PK');
+
+    // every generated page's inline <script> must be syntactically valid JS
+    // (regression: a missing paren in one page killed the whole page script)
+    const pages = ['index.html', 'browse.html', 'upload.html', 'mine.html', 'terms.html', 'privacy.html', 'disclaimer.html', 'report.html', 'admin.html'];
+    for (const p of pages) {
+      const page = await get('/' + p);
+      const m = /<script>([\s\S]*?)<\/script>/.exec(page.body);
+      let syntaxOk = false;
+      if (m && m[1] && m[1].trim()) {
+        syntaxOk = await new Promise((res) => {
+          const chk = spawn(process.execPath, ['--check', '-'], { stdio: ['pipe', 'ignore', 'ignore'] });
+          chk.stdin.end(m[1]);
+          chk.on('close', (c) => res(c === 0));
+        });
+      }
+      ok('script syntax OK on ' + p, !!m && syntaxOk);
+    }
   } finally {
     srv.kill();
     console.log(pass ? 'SITE_TEST_PASS' : 'SITE_TEST_FAIL');
