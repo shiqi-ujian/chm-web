@@ -297,9 +297,17 @@ ${pageScript}
 
 /** 页面骨架：nav + hero + 正文 + foot + 模态 + 公共脚本 + 页面脚本 */
 function page(title, heroSmall, heroInner, body, pageScript, navActive) {
+  const desc = pageDesc(navActive, title);
   return `<!doctype html><html lang="zh" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta name="keywords" content="CHM,CHM网页,CHM在线阅读,CHM转换,文档分享,全文检索,批量导出">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CHM 网页">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta name="twitter:card" content="summary">
 <style>${CSS}</style>
 </head><body>
 ${NAV}
@@ -312,6 +320,19 @@ ${MODAL}
 ${SHARED_JS(pageScript).split('__NAV_ACTIVE__').join(esc(navActive || 'home'))}
 </script>
 </body></html>`;
+}
+
+/** 按页面生成简短的 description，提升搜索引擎/社交分享预览体验。 */
+function pageDesc(navActive, title) {
+  const t = String(title || '');
+  if (t.indexOf('用户协议') !== -1) return 'CHM 网页用户协议：使用本平台前请阅读并同意服务条款。';
+  if (t.indexOf('隐私') !== -1) return 'CHM 网页隐私政策：我们只收集提供转换与账号服务所必需的信息，不出售个人数据。';
+  if (t.indexOf('免责') !== -1) return 'CHM 网页免责声明：平台为自动化转换工具，内容由上传者负责。';
+  if (t.indexOf('侵权举报') !== -1) return '如认为本站内容侵犯您的权益，请通过举报页提交材料，我们将尽快处理。';
+  if (navActive === 'browse') return '浏览 CHM 网页上公开的文档，标题/标签/作者快速筛选，随时在线翻阅。';
+  if (navActive === 'upload') return '上传 CHM 文档，自动转换为手机/电脑均可浏览、搜索的在线页面，可批量导出。';
+  if (navActive === 'mine') return '管理你的 CHM 文档：重命名、标签、作者、可见性、批量导出与删除。';
+  return '免费将 CHM 文档转换为可浏览、可搜索的网页，支持批量上传、私有分享与静态站点导出。';
 }
 
 /* ============ 合规页面 / 举报页 ============ */
