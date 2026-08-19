@@ -148,6 +148,13 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
       <b>📦 已用容量</b>：<span id="usageText">--</span>
       <div style="font-size:13px;color:var(--mut);margin-top:2px">配额由服务器端控制，删除文档会实时释放。</div>
     </div>
+    <div id="batchBar" style="display:none;margin-bottom:14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);align-items:center;gap:10px;flex-wrap:wrap">
+      <span>已选 <b id="selCount">0</b> 篇</span>
+      <button class="btn ghost sm" id="batchExport" type="button">⬇ 导出选中</button>
+      <button class="btn ghost sm" id="batchVis" type="button">设为公开</button>
+      <button class="btn danger sm" id="batchDel" type="button">批量删除</button>
+      <button class="btn ghost sm" id="batchClear" type="button">取消选择</button>
+    </div>
     <div id="mineList"></div>
   </div>
   <div class="card" id="pwCard" style="max-width:820px;margin:28px auto 0;display:none">
@@ -299,6 +306,9 @@ loadMe();
   var box=document.getElementById('mineList');
   function escS2(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   var usageCard=document.getElementById('usageCard'),usageText=document.getElementById('usageText');
+  var batchBar=document.getElementById('batchBar'),selCount=document.getElementById('selCount');
+  var selected={};
+  function updateBatchBar(){if(!batchBar)return;var n=Object.keys(selected).length;if(selCount)selCount.textContent=n;batchBar.style.display=n?'flex':'none';}
   function fmtSize(b){b=+b||0;if(b>=1048576)return (b/1048576).toFixed(1)+' MB';if(b>=1024)return (b/1024).toFixed(1)+' KB';return b+' B';}
   function loadUsage(){if(!window.currentUser||!window.fetch||!usageCard)return;fetch('/api/usage',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
     if(j&&j.usage&&usageCard){usageCard.style.display='';usageText.textContent=(j.usage.docs||0)+' 篇 / '+fmtSize(j.usage.bytes||0);}}
@@ -313,6 +323,20 @@ loadMe();
   function shareLink(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'}).then(function(r){return r.json();}).then(function(j){
       if(j.sharePath){var url=location.origin+location.pathname.replace(/\/[^\/]*$/,'/')+j.sharePath;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已复制');});}else{alert('分享链接：'+url);}}});}
   function del(id){if(!confirm('删除该文档？不可恢复。'))return;fetch('/api/doc/'+encodeURIComponent(id),{method:'DELETE',headers:userHeaders()}).then(function(){load();});}
+  function batchExport(){var ids=Object.keys(selected).filter(function(id){return selected[id];});if(!ids.length){alert('请先勾选文档');return;}
+    fetch('/api/export-docs',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({ids:ids,title:'选中导出'})}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+      if(x.st===200&&x.j&&x.j.zip){var blob=new Blob([Uint8Array.from(atob(x.j.zip),function(c){return c.charCodeAt(0);})],{type:'application/zip'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='chm-web-docs-'+Date.now()+'.zip';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);document.body.removeChild(a);},200);}
+      else alert((x.j&&x.j.error)||'导出失败');}).catch(function(e){alert('网络错误：'+e.message);});}
+  function batchVis(vis){var ids=Object.keys(selected).filter(function(id){return selected[id];});if(!ids.length)return;var done=0;
+    ids.forEach(function(id){fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:vis})}).then(function(){done++;if(done===ids.length){selected={};load();}}).catch(function(){});});}
+  function batchDel(){var ids=Object.keys(selected).filter(function(id){return selected[id];});if(!ids.length)return;
+    if(!confirm('确认删除选中的 '+ids.length+' 篇文档？不可恢复。'))return;
+    var done=0;ids.forEach(function(id){fetch('/api/doc/'+encodeURIComponent(id),{method:'DELETE',headers:userHeaders()}).then(function(){done++;if(done===ids.length){selected={};load();}}).catch(function(){});});}
+  function clearSelection(){selected={};updateBatchBar();load();}
+  function bindBatch(){if(!batchBar)return;var be=document.getElementById('batchExport');if(be)be.addEventListener('click',batchExport);
+    var bd=document.getElementById('batchDel');if(bd)bd.addEventListener('click',batchDel);
+    var bc=document.getElementById('batchClear');if(bc)bc.addEventListener('click',clearSelection);
+    var bv=document.getElementById('batchVis');if(bv)bv.addEventListener('click',function(){batchVis('public');});}
   var filterTag='';
   function render(arr){arr=arr||[];
     if(!window.currentUser){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">请先登录，才能查看和管理你的上传文档。</div>';if(usageCard)usageCard.style.display='none';return;}
@@ -323,7 +347,9 @@ loadMe();
     var filterHtml=tagSet.length?('<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"><button class="btn ghost sm" data-tag="" style="'+(filterTag===''?'border-color:var(--acc);color:var(--acc)':'')+'">全部</button>'+
       tagSet.map(function(t){return '<button class="btn ghost sm" data-tag="'+escS2(t)+'" style="'+(filterTag===t?'border-color:var(--acc);color:var(--acc)':'')+'">#'+escS2(t)+'</button>';}).join('')+'</div>'):'';
     box.innerHTML=filterHtml + arr.map(function(d){
-      return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
+      var checked=(selected[d.id]?' checked':'');
+      return '<div class="card row-card" style="flex-wrap:wrap"><label style="display:flex;align-items:flex-start;cursor:pointer;padding-right:4px"><input type="checkbox" class="row-check" data-id="'+escS2(d.id)+'"'+checked+'></label>'+
+      '<span style="font-size:24px">📘</span>'+
       '<span style="flex:1;min-width:0"><b style="display:block">'+escS2(d.name||d.id)+'</b>'+
       (d.author?'<div style="font-size:13px;color:var(--mut)">作者：'+escS2(d.author)+'</div>':'')+
       '<span class="tag '+(d.visibility==='private'?'priv':'pub')+'">'+(d.visibility==='private'?'私密':'公开')+'</span>'+
@@ -335,6 +361,7 @@ loadMe();
         '<button class="btn ghost sm" data-vis="'+escS2(d.id)+'">'+(d.visibility==='private'?'设为公开':'设为私密')+'</button>'+
         '<button class="btn ghost sm" data-share="'+escS2(d.id)+'">复制分享链接</button>'+
         '<button class="btn danger sm" data-del="'+escS2(d.id)+'">删除</button></span></div>';}).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.row-check'),function(b){b.addEventListener('click',function(){if(b.checked)selected[b.getAttribute('data-id')]=true;else delete selected[b.getAttribute('data-id')];updateBatchBar();});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-edit]'),function(b){b.addEventListener('click',function(){editMeta(b.getAttribute('data-edit'),b.getAttribute('data-name'),(b.getAttribute('data-tags')||'').split(',').filter(Boolean),b.getAttribute('data-author'));});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(){filterTag=b.getAttribute('data-tag');load();});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-vis]'),function(b){b.addEventListener('click',function(){toggleVis(b.getAttribute('data-vis'),b);});});
@@ -343,6 +370,7 @@ loadMe();
   }
   function load(){render(mineOnly(window.__docs));
     fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(mineOnly(j.docs));}).catch(function(){});}
+  bindBatch();
   // ---- 修改密码（仅登录后可见）----
   var pwCard=document.getElementById('pwCard'),cpGo=document.getElementById('cpGo');
   function showPw(on){if(pwCard)pwCard.style.display=on?'':'none';}
