@@ -1,0 +1,17 @@
+{
+  "_说明": "复制为 config.json 后填写（config.json 不入库）。formResultUrl 为腾讯文档收集表「结果/表格」页地址；profileDir 为共享登录 profile（多个项目共用，登录一次即可）；extractMode 见 collect-docs.mjs --help。",
+  "formResultUrl": "https://docs.qq.com/form/page/PASTE_CHMWEB_FORM_RESULT_URL_HERE",
+  "extractMode": "auto",
+  "fieldMap": {
+    "reporter": "昵称",
+    "page": "页面/功能",
+    "title": "问题标题",
+    "description": "问题描述",
+    "expected": "期望行为",
+    "reproduce": "复现步骤"
+  },
+  "loginUrl": "https://docs.qq.com",
+  "profileDir": "E:\\yingren\\_feedback-shared\\docs-profile",
+  "pollIntervalSec": 1800,
+  "maxProbeDepth": 6
+}

@@ -20,3 +20,15 @@ docs/_index.json
 部署与环境备份_勿上传git.txt
 # 阿里云服务器 SSH 私钥（严禁入库/外传）
 *.pem
+
+# 问题收集工作区（群友反馈内容，绝不能进公开仓库）
+问题收集/
+
+# 腾讯文档收集表读取桥：本地配置（含表单链接）、登录 profile、运行状态
+tools/feedback-bridge/config.json
+tools/feedback-bridge/docs-profile/
+tools/feedback-bridge/feedback-state.json
+tools/feedback-bridge/_shots/
+tools/feedback-bridge/_dbg-*.mjs
+tools/feedback-bridge/_test-*.mjs
+tools/feedback-bridge/_dl/
