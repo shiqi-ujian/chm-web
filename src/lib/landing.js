@@ -599,7 +599,13 @@ const UPLOAD = page('上传 · CHM 网页', true, `
 const MINE = page('我的文档 · CHM 网页', true, `
   <div class="eyebrow">我的文档</div><h1>我的文档</h1>
   <div class="sub">管理你的私有 / 公开文档：改可见性、复制分享链接、删除。</div>`, `
-  <div style="max-width:820px;margin:28px auto 0" id="mineList"></div>
+  <div style="max-width:820px;margin:28px auto 0">
+    <div class="card" style="padding:16px 20px;margin-bottom:16px;display:none" id="usageCard">
+      <b>📦 已用容量</b>：<span id="usageText">--</span>
+      <div style="font-size:13px;color:var(--mut);margin-top:2px">配额由服务器端控制，删除文档会实时释放。</div>
+    </div>
+    <div id="mineList"></div>
+  </div>
   <div class="card" id="pwCard" style="max-width:820px;margin:28px auto 0;display:none">
     <div class="eyebrow">账号</div>
     <h2 style="font-size:17px;margin:0 0 4px">修改密码</h2>
@@ -614,6 +620,14 @@ const MINE = page('我的文档 · CHM 网页', true, `
   </div>`, `
   var box=document.getElementById('mineList');
   function escS2(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  var usageCard=document.getElementById('usageCard'),usageText=document.getElementById('usageText');
+  function fmtSize(b){b=+b||0;if(b>=1048576)return (b/1048576).toFixed(1)+' MB';if(b>=1024)return (b/1024).toFixed(1)+' KB';return b+' B';}
+  function loadUsage(){if(!window.currentUser||!window.fetch||!usageCard)return;fetch('/api/usage',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
+    if(j&&j.usage&&usageCard){usageCard.style.display='';usageText.textContent=(j.usage.docs||0)+' 篇 / '+fmtSize(j.usage.bytes||0);}}
+    .catch(function(){});}
+  function editMeta(id,name,tags,author){var nn=prompt('重命名文档',name||'');if(nn==null)return;var na=prompt('作者（可留空）',author||'');if(na==null)return;var nt=prompt('标签（用逗号分隔，最多 10 个）',(tags||[]).join(', '));if(nt==null)return;
+    fetch('/api/doc/'+encodeURIComponent(id)+'/meta',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({name:nn.trim(),author:na.trim(),tags:String(nt).split(/[,，;\s]+/).filter(function(t){return t.trim();})})})
+      .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){if(x.st===200)load();else alert((x.j&&x.j.error)||'保存失败');}).catch(function(e){alert('网络错误：'+e.message);});}
   // 「我的文档」只展示当前登录用户自己上传的文档，绝不列公共区/他人/匿名种子文档。
   function mineOnly(list){return (list||[]).filter(function(d){return window.currentUser&&d.owner===window.currentUser;});}
   function toggleVis(id,btn){var target=btn.textContent.indexOf('公开')!==-1?'public':'private';
@@ -621,19 +635,30 @@ const MINE = page('我的文档 · CHM 网页', true, `
   function shareLink(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'}).then(function(r){return r.json();}).then(function(j){
       if(j.sharePath){var url=location.origin+location.pathname.replace(/\\/[^\\/]*$/,'/')+j.sharePath;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已复制');});}else{alert('分享链接：'+url);}}});}
   function del(id){if(!confirm('删除该文档？不可恢复。'))return;fetch('/api/doc/'+encodeURIComponent(id),{method:'DELETE',headers:userHeaders()}).then(function(){load();});}
+  var filterTag='';
   function render(arr){arr=arr||[];
-    if(!window.currentUser){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">请先登录，才能查看和管理你的上传文档。</div>';return;}
-    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">你还没有上传文档，去「上传」页传一个 .chm 吧。</div>';return;}
-    box.innerHTML=arr.map(function(d){
+    if(!window.currentUser){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">请先登录，才能查看和管理你的上传文档。</div>';if(usageCard)usageCard.style.display='none';return;}
+    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">你还没有上传文档，去「上传」页传一个 .chm 吧。</div>';if(usageCard)usageCard.style.display='none';return;}
+    if(filterTag)arr=arr.filter(function(d){return (d.tags||[]).indexOf(filterTag)!==-1;});
+    var tagSet=[];
+    arr.forEach(function(d){(d.tags||[]).forEach(function(t){if(tagSet.indexOf(t)===-1)tagSet.push(t);});});
+    var filterHtml=tagSet.length?('<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"><button class="btn ghost sm" data-tag="" style="'+(filterTag===''?'border-color:var(--acc);color:var(--acc)':'')+'">全部</button>'+
+      tagSet.map(function(t){return '<button class="btn ghost sm" data-tag="'+escS2(t)+'" style="'+(filterTag===t?'border-color:var(--acc);color:var(--acc)':'')+'">#'+escS2(t)+'</button>';}).join('')+'</div>'):'';
+    box.innerHTML=filterHtml + arr.map(function(d){
       return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
       '<span style="flex:1;min-width:0"><b style="display:block">'+escS2(d.name||d.id)+'</b>'+
+      (d.author?'<div style="font-size:13px;color:var(--mut)">作者：'+escS2(d.author)+'</div>':'')+
       '<span class="tag '+(d.visibility==='private'?'priv':'pub')+'">'+(d.visibility==='private'?'私密':'公开')+'</span>'+
-      '<span class="tag">我的</span></span>'+
+      (d.tags||[]).map(function(t){return '<span class="tag" data-tag="'+escS2(t)+'" style="cursor:pointer">#'+escS2(t)+'</span>';}).join('')+
+      '</span>'+
       '<a href="'+escS2(d.href||(d.visibility==='private'?'p/':'d/')+d.id+'/')+'" class="btn ghost sm">打开</a>'+
       '<span style="flex:100%;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">'+
+        '<button class="btn ghost sm" data-edit="'+escS2(d.id)+'" data-name="'+escS2(d.name||d.id)+'" data-author="'+escS2(d.author||'')+'" data-tags="'+escS2((d.tags||[]).join(','))+'">编辑信息</button>'+
         '<button class="btn ghost sm" data-vis="'+escS2(d.id)+'">'+(d.visibility==='private'?'设为公开':'设为私密')+'</button>'+
         '<button class="btn ghost sm" data-share="'+escS2(d.id)+'">复制分享链接</button>'+
         '<button class="btn danger sm" data-del="'+escS2(d.id)+'">删除</button></span></div>';}).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-edit]'),function(b){b.addEventListener('click',function(){editMeta(b.getAttribute('data-edit'),b.getAttribute('data-name'),(b.getAttribute('data-tags')||'').split(',').filter(Boolean),b.getAttribute('data-author'));});});
+    Array.prototype.forEach.call(box.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(){filterTag=b.getAttribute('data-tag');load();});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-vis]'),function(b){b.addEventListener('click',function(){toggleVis(b.getAttribute('data-vis'),b);});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-share]'),function(b){b.addEventListener('click',function(){shareLink(b.getAttribute('data-share'));});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-del]'),function(b){b.addEventListener('click',function(){del(b.getAttribute('data-del'));});});
@@ -656,8 +681,8 @@ const MINE = page('我的文档 · CHM 网页', true, `
         else{er.style.color='';er.textContent=(x.j&&x.j.error)||'修改失败';}})
       .catch(function(e){if(cpGo)cpGo.disabled=false;er.style.color='';er.textContent='网络错误：'+e.message;});}
   if(cpGo)cpGo.addEventListener('click',changePw);
-  load();showPw(!!window.currentUser);
-  window.__onAuth=function(){load();showPw(!!window.currentUser);};`, 'mine');
+  load();loadUsage();showPw(!!window.currentUser);
+  window.__onAuth=function(){load();loadUsage();showPw(!!window.currentUser);};`, 'mine');
 
 module.exports = { build, buildSiteIndex, WELCOME, BROWSE, UPLOAD, MINE, TERMS, PRIVACY, DISCLAIMER, REPORT, ADMIN, LANDING_HTML: WELCOME };
 

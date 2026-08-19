@@ -37,6 +37,7 @@ jobs:
           node test-search-api.js
           node test-atomic.js
           node test-db.js
+          node test-doc-meta.js
           node test-charset.js
           node test-auth-v2.js
 

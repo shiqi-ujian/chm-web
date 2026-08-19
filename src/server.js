@@ -317,7 +317,8 @@ function listDocs(username) {
       if (meta && meta.visibility === 'private') continue; // 防御：私有不进公开静态区
       out.push({
         id: n, name: (meta && meta.name) || n, visibility: 'public', owner: (meta && meta.owner) || null,
-        href: 'd/' + n + '/', url: '/d/' + n + '/', updated: fs.statSync(p).mtimeMs,
+        href: 'd/' + n + '/', url: '/d/' + n + '/', updated: (meta && meta.updatedAt) || fs.statSync(p).mtimeMs,
+        tags: (meta && meta.tags) || [], author: (meta && meta.author) || '',
       });
     }
   }
@@ -332,7 +333,8 @@ function listDocs(username) {
         if (!meta || meta.visibility !== 'private' || meta.owner !== username) continue;
         out.push({
           id: n, name: meta.name || n, visibility: 'private', owner: username,
-          href: 'p/' + n + '/', url: '/p/' + n + '/', updated: fs.statSync(p).mtimeMs,
+          href: 'p/' + n + '/', url: '/p/' + n + '/', updated: (meta && meta.updatedAt) || fs.statSync(p).mtimeMs,
+          tags: (meta && meta.tags) || [], author: (meta && meta.author) || '',
         });
       }
     }
@@ -637,6 +639,14 @@ function route(req, res) {
       migrateDoc(id, meta.visibility);   // 公开⇄私有实体迁移
       rebuildSite();                     // 重建欢迎页/索引
       return { id, visibility: meta.visibility };
+    });
+  } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/meta$/.test(urlPath)) {
+    // 文档管理：重命名 / 标签 / 作者（仅 owner）
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    handleJson(req, res, (b) => {
+      const meta = auth.updateMeta(id, currentUser(req), b || {});
+      rebuildSite(); // 名称会出现在欢迎页/索引，重建保证一致
+      return { id, meta };
     });
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
     const id = decodeURIComponent(urlPath.split('/')[3]);

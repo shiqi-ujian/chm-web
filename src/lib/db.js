@@ -70,7 +70,10 @@ function open(dir) {
       name        TEXT,
       visibility  TEXT NOT NULL DEFAULT 'public',
       share_token TEXT,
-      created_at  INTEGER NOT NULL
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER,
+      tags        TEXT DEFAULT '[]',
+      author      TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_meta_owner ON meta(owner);
     CREATE INDEX IF NOT EXISTS idx_meta_visibility ON meta(visibility);
@@ -111,6 +114,11 @@ function open(dir) {
   ensureColumn('users', 'terms_accepted_at', 'INTEGER');
   ensureColumn('users', 'updated_at', 'INTEGER');
 
+  // 老库升级：meta 增加文档管理字段（幂等）
+  ensureColumn('meta', 'updated_at', 'INTEGER');
+  ensureColumn('meta', 'tags', "TEXT DEFAULT '[]'");
+  ensureColumn('meta', 'author', 'TEXT');
+
   migrateFromJsonOnce();
   return db;
 }
@@ -131,7 +139,7 @@ function migrateFromJsonOnce() {
 
   const insertUser = db.prepare('INSERT OR IGNORE INTO users (username, salt, hash, created_at) VALUES (?,?,?,?)');
   const insertSession = db.prepare('INSERT OR IGNORE INTO sessions (token, username, created_at) VALUES (?,?,?)');
-  const insertMeta = db.prepare('INSERT OR IGNORE INTO meta (doc_id, owner, name, visibility, share_token, created_at) VALUES (?,?,?,?,?,?)');
+  const insertMeta = db.prepare('INSERT OR IGNORE INTO meta (doc_id, owner, name, visibility, share_token, created_at, updated_at) VALUES (?,?,?,?,?,?,?)');
 
   db.transaction(() => {
     if (!hasUsers) {
@@ -152,7 +160,7 @@ function migrateFromJsonOnce() {
         insertMeta.run(
           id, m.owner || null, m.name || id,
           m.visibility === 'private' ? 'private' : 'public',
-          m.shareToken || null, Number(m.createdAt) || 0
+          m.shareToken || null, Number(m.createdAt) || 0, Number(m.updatedAt) || Number(m.createdAt) || 0
         );
       }
     }

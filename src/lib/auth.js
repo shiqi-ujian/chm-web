@@ -265,6 +265,8 @@ function setReportStatus(reportId, status) {
 
 function rowToMeta(r) {
   if (!r) return null;
+  let tags = [];
+  try { const p = JSON.parse(r.tags || '[]'); tags = Array.isArray(p) ? p.map((t) => String(t).trim().replace(/,/g, '').slice(0, 20)).filter(Boolean) : []; } catch (_) {}
   return {
     id: r.doc_id,
     owner: r.owner,
@@ -272,6 +274,9 @@ function rowToMeta(r) {
     visibility: r.visibility,
     shareToken: r.share_token,
     createdAt: r.created_at,
+    updatedAt: r.updated_at || r.created_at || null,
+    tags: tags.slice(0, 10),
+    author: r.author || '',
   };
 }
 
@@ -281,12 +286,13 @@ function getMeta(docId) {
 }
 
 /** 上传/建站时登记文档元数据（已存在则不覆盖） */
-function ensureMeta(docId, { owner = null, name = '', visibility = 'public' } = {}) {
+function ensureMeta(docId, { owner = null, name = '', visibility = 'public', author = '' } = {}) {
   const existing = getMeta(docId);
   if (existing) return existing;
   const vis = visibility === 'private' ? 'private' : 'public';
-  dbm.db.prepare('INSERT INTO meta (doc_id, owner, name, visibility, share_token, created_at) VALUES (?,?,?,?,?,?)')
-    .run(docId, owner || null, name || docId, vis, null, Date.now());
+  const now = Date.now();
+  dbm.db.prepare('INSERT INTO meta (doc_id, owner, name, visibility, share_token, created_at, updated_at, tags, author) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(docId, owner || null, name || docId, vis, null, now, now, '[]', (author || '').trim().slice(0, 100) || null);
   return getMeta(docId);
 }
 
@@ -296,7 +302,44 @@ function setVisibility(docId, visibility, username) {
   if (!meta) throw new AuthError('文档不存在', 404);
   if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以修改可见性', 403);
   const vis = visibility === 'private' ? 'private' : 'public';
-  dbm.db.prepare('UPDATE meta SET visibility = ? WHERE doc_id = ?').run(vis, docId);
+  dbm.db.prepare('UPDATE meta SET visibility = ?, updated_at = ? WHERE doc_id = ?').run(vis, Date.now(), docId);
+  return getMeta(docId);
+}
+
+/** 仅 owner 可更新文档信息（重命名 / 标签 / 作者）；返回最新 meta */
+function updateMeta(docId, username, patch = {}) {
+  const meta = getMeta(docId);
+  if (!meta) throw new AuthError('文档不存在', 404);
+  if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以编辑', 403);
+
+  const sets = ['updated_at = ?'];
+  const args = [Date.now()];
+
+  if (patch.name !== undefined) {
+    const name = String(patch.name || '').trim().slice(0, 120);
+    if (!name) throw new AuthError('文档名称不能为空', 400);
+    sets.push('name = ?'); args.push(name);
+  }
+  if (patch.author !== undefined) {
+    const author = String(patch.author || '').trim().slice(0, 100);
+    sets.push('author = ?'); args.push(author || null);
+  }
+  if (patch.tags !== undefined) {
+    let tags = [];
+    if (Array.isArray(patch.tags)) {
+      tags = patch.tags.map((t) => String(t == null ? '' : t).trim().replace(/,/g, '').slice(0, 20)).filter(Boolean);
+    } else if (patch.tags && typeof patch.tags === 'string') {
+      tags = String(patch.tags).split(/[,，;\s]+/).map((t) => t.trim().replace(/,/g, '').slice(0, 20)).filter(Boolean);
+    }
+    // 去重（保持顺序）
+    tags = tags.filter((t, i, arr) => arr.indexOf(t) === i);
+    tags = tags.slice(0, 10);
+    sets.push('tags = ?'); args.push(JSON.stringify(tags));
+  }
+
+  if (sets.length <= 1) throw new AuthError('没有需要更新的内容', 400);
+  args.push(docId);
+  dbm.db.prepare('UPDATE meta SET ' + sets.join(', ') + ' WHERE doc_id = ?').run(...args);
   return getMeta(docId);
 }
 
@@ -359,6 +402,6 @@ module.exports = {
   register, login, logout, changePassword, userByToken,
   verifyEmailCode, requestEmailVerification, forgotPassword, resetPassword, getUser,
   createReport, listReports, setReportStatus,
-  ensureMeta, getMeta, setVisibility, share, deleteMeta, canRead, docIdByShareToken, privateDir,
+  ensureMeta, getMeta, setVisibility, updateMeta, share, deleteMeta, canRead, docIdByShareToken, privateDir,
   readAllMeta,
 };
