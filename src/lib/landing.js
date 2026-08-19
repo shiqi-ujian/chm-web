@@ -51,19 +51,19 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 [data-theme="dark"] .header{background:rgba(13,21,36,.82)}
 .header .logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;color:var(--ink);white-space:nowrap}
 .header .logo .dot{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,#7c3aed,#c084fc)}
-.header nav{display:flex;gap:4px;margin-left:8px}
-.header nav a{padding:7px 13px;border-radius:10px;font-size:14px;color:var(--mut);font-weight:600}
+.header nav{display:flex;align-items:center;gap:4px;margin-left:8px}
+.header nav a{padding:7px 13px;border-radius:10px;font-size:14px;color:var(--mut);font-weight:600;white-space:nowrap}
 .header nav a:hover{background:var(--hover);color:var(--ink);text-decoration:none}
 .header nav a.on{background:var(--acc-soft);color:var(--acc)}
 .header .spacer{flex:1}.header .who{font-size:13px;color:var(--mut);white-space:nowrap}
 .auth-link{border:1px solid var(--line);background:var(--card);color:var(--acc);border-radius:999px;
-  padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer}
+  padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
 .auth-link:hover{background:var(--acc-soft);border-color:var(--acc);text-decoration:none}
 .theme-btn{border:1px solid var(--line);background:var(--card);border-radius:999px;width:34px;height:34px;
-  cursor:pointer;font-size:15px;display:grid;place-items:center}
+  cursor:pointer;font-size:15px;display:grid;place-items:center;flex:0 0 auto}
 /* 移动端汉堡菜单 */
 .menu-btn{display:none;border:1px solid var(--line);background:var(--card);border-radius:999px;width:36px;height:36px;
-  cursor:pointer;font-size:16px;place-items:center}
+  cursor:pointer;font-size:16px;place-items:center;flex:0 0 auto}
 .nav-drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:199}
 .nav-drawer{position:fixed;top:0;bottom:0;left:0;width:min(78vw,300px);background:var(--card);z-index:200;
   transform:translateX(-100%);transition:transform .22s ease;padding:20px;box-shadow:2px 0 18px rgba(0,0,0,.18)}
@@ -71,10 +71,28 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .nav-drawer a{display:block;padding:12px 14px;border-radius:12px;font-size:15px;font-weight:600;color:var(--ink)}
 .nav-drawer a.on{background:var(--acc-soft);color:var(--acc)}
 .nav-drawer .close{position:absolute;top:14px;right:14px;border:0;background:var(--hover);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:14px}
-@media(max-width:760px){
-  .header nav{display:none}
-  .menu-btn{display:grid}
-  .header .who{display:none}
+/* 手机导航：窄屏时把"首页/浏览/上传/我的"改成 4 个等宽按钮组，
+   避免 logo + 长按钮 + 图标把四个链接挤成一条竖条。 */
+@media(max-width:860px){
+  .header{height:auto;min-height:60px;flex-wrap:wrap;gap:6px 12px;padding:8px clamp(12px,4vw,24px)}
+  .header .logo{margin-right:auto}
+  .header nav{order:10;flex:1 1 100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:6px;margin:2px 0 0}
+  .header nav a{padding:8px 2px;border-radius:10px;font-size:13.5px;text-align:center}
+  .header .spacer{display:none}
+  .header .who{margin-left:auto}
+  .theme-btn{width:32px;height:32px;font-size:14px}
+  .auth-link{padding:6px 12px;font-size:12.5px}
+}
+@media(max-width:560px){
+  .header .logo span.txt{display:none}
+  .header nav{gap:4px}
+  .header nav a{font-size:12.5px;padding:7px 2px}
+  .auth-link{font-size:12px;padding:6px 10px}
+}
+@media(max-width:380px){
+  .header{position:static}
+  .auth-link{max-width:96px;overflow:hidden;text-overflow:ellipsis}
 }
 .hero{background:linear-gradient(160deg,#7c3aed 0%,#9f5bd5 45%,#c084fc 100%);color:#fff;
   padding:clamp(36px,7vw,64px) 16px;text-align:center}
