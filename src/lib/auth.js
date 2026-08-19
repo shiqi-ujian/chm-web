@@ -207,15 +207,6 @@ async function forgotPassword(usernameOrEmail) {
   return { ok: true };
 }
 
-async function sendResetEmail(email, code) {
-  const resetUrl = (process.env.PUBLIC_BASE_URL || '') + '/reset-password?token=' + code;
-  await mailer.sendMail({
-    to: email,
-    subject: 'CHM 网页 · 重置密码',
-    text: '请点击链接重置密码（1 小时内有效）：\n' + resetUrl + '\n\n如果这不是你的操作，请忽略。',
-  });
-}
-
 function resetPassword(code, newPassword) {
   const h = hashToken(String(code || '').trim());
   const row = dbm.db.prepare('SELECT * FROM users WHERE password_reset_token = ?').get(h);
