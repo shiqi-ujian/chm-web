@@ -1,7 +1,7 @@
-# chm-web 后端（B 形态）—— 供 Railway 直接使用的镜像。
+# chm-web 后端（B 形态）—— 阿里云生产使用的镜像。
 # 与 deploy/Dockerfile 等价，但把已有的 docs/（已生成的阅读产物 + 欢迎页）
 # 一并打进镜像，作为「初始站点内容」——容器首次启动就能浏览现有文档。
-# Railway 会自动检测并据此构建，无需手动配置（见 README「用 Railway 上线」）。
+# 生产部署：push → GitHub → 阿里云自动拉取/触发构建部署（见 README「生产部署」）。
 FROM node:22-slim
 
 # 安装 7-Zip（新版 Debian 官方包 `7zip` 提供 7zz；p7zip-full 提供 7z 老式备选）
@@ -27,9 +27,9 @@ COPY docs /app/docs
 # 为空会从 /app/seed-docs 复制回来（见 src/server.js ensureSeed）。
 COPY docs /app/seed-docs
 
-# 站点/数据目录放卷。Railway 一个服务只能挂一个 Volume，所以把站点内容与数据
-# 都放进同一个卷 /app/data 下：CHM_SITE=/app/data/site、CHM_DATA=/app/data/data。
-# 挂载时把 Volume mount 到 /app/data 即可（重启不丢上传/账号/私密文档）。
+# 站点/数据目录放持久卷。当前生产用 /var/chm-web/data 宿主机目录挂到容器 /app/data：
+# CHM_SITE=/app/data/site、CHM_DATA=/app/data/data。
+# 挂载后重启不丢上传/账号/私密文档。
 ENV CHM_SITE=/app/data/site \
     CHM_DATA=/app/data/data \
     HOST=0.0.0.0 \

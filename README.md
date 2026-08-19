@@ -62,52 +62,86 @@
 
 ### M4 — 批量 + 私有部署
 - [x] 站点级导出：整站打 zip（含 `manifest.json` 清单），欢迎页「导出整站 zip ⬇」按钮直达，CLI `export-site` / 后端 `GET /site-export.zip` 均可
-- [x] 支持一个 / 多个 CHM 批量上传（多选 / 拖拽 + 逐个上传汇总进度）
+- [x] 支持一个 / 多个 CHM 批量上传（多选 / 拖拽 + 逐个上传汇总）
 - [x] 批量 / 选中导出为 zip / 静态站点（勾选若干文档 → 「导出选中 zip」→ `GET /api/export-docs` → CLI `export-docs`）
-- **验收**：选中多个 CHM，一次转换后整包导出为 zip / 静态站点 ✅（`deploy/` 提供 Docker / systemd / Caddy 部署物，`docs/` 里 import `docs/index.html`）
+- **验收**：选中多个 CHM，一次转换后整包导出为 zip / 静态站点 ✅
+
+### M5 — 阿里云自建部署（生产上线）✅ 已完成
+- [x] **迁移完成**：生产环境已从 Railway 迁到自有**阿里云服务器**，线上闭环已搭好。
+- [x] **部署方式**：`push 到 main → GitHub → 阿里云自动拉取部署`（链路已用临时验证文件实测通过）。
+- [x] **运维资产**：`.deploy-tools/` 提供 SSH 助手、Docker 部署脚本、systemd 服务、每日备份等脚本；`Dockerfile` 可直接构建生产镜像。
+- [x] **持久化**：站点与数据统一放在持久卷，`CHM_SITE` 与 `CHM_DATA` 分离，重启不丢上传 / 账号 / 私密文档。
 
 ---
 
-## 用 Railway 上线（面向 0 基础）🚀
+## 生产部署（阿里云）🚀
 
-> 这一步是让「**真后端闭环**」（用户上传 .chm → 服务器解包转换 → 在线浏览 / 导出）跑起来，
-> 不再局限于看仓库里已生成好的那几个文档。Railway 会帮你把 Nginx、证书、公网网址全搞定，
-> **你不用碰命令行服务器**。
+> 当前线上真实部署已经是**阿里云服务器**。生产访问地址：`<你的域名/IP>` 或 `<服务器公网地址>`（按需替换，不写入仓库）。
+> 历史 Railway 部署只作早期验证用途，已下线 / 不再作为生产说明。
 
-### 1. Railway 是什么（大白话）
-你过去上传一个 `.chm`，需要一台"有人值班、挂了还能自动拉起"的程序服务器帮它解包。传统上你得自己买服务器并折腾装环境；**Railway 替你干了这些**——你把本项目的 GitHub 仓库接上去（或直接传代码），它自动装好 Node + 7-Zip、起服务、给你一个 `https://你的项目.up.railway.app` 链接，访问这个链接就是你的网站。
+### 发布流程（日常工作流）
 
-> **注意**：Railway 是**按用量计费**（有少量免费额度，跑起来量大会超），不是永久免费。个人起步验证闭环足够，量大后考虑迁到自有服务器。
+```bash
+# 本地改动提交后直接推送
+git add -A
+git commit -m "feat: ..."
+git push origin main
+```
 
-### 2. 前置：代码已经在本地跑通 + 已提交到 GitHub
-先把当前工作区提交并推送到你的 GitHub 仓库（`chm-web`）。Railway 直接从这个仓库拉代码。
+推送成功后，服务器侧（阿里云）会自动拉取代码 / 触发部署。  
+> 提交信息保持 `feat:` / `fix:` / `docs:` / `chore:` 前缀。
 
-### 3. 注册并连接仓库
-1. 注册 Railway（用 GitHub 账号一键登录最省事）。
-2. 新建项目 `New Project` → `Deploy from GitHub repo`，选 `shiqi-ujian/chm-web`（或你自己的那个）。
-3. Railway 会读到仓库根目录的 [Dockerfile](Dockerfile)，**自动开始构建**，不用点别的。
+### 服务器目录约定（来自 .deploy-tools/）
 
-### 4. 第一次构建可能会替 REPLACE 的变量（不填也能先跑起来）
-> **不要一上来就填，先不填任何变量直接 Deploy**，能起来再回来加锁 —— 见第 6 步。
+| 项目 | 路径 / 值 |
+|---|---|
+| 应用目录 | `/root/app`（阿里云实际部署目录） |
+| 数据卷 / 数据根 | `/var/chm-web/data` |
+| 站点内容 | `/var/chm-web/data/site`（欢迎页 + 公开文档） |
+| 数据区 | `/var/chm-web/data/data`（账号 / 元数据 / 私密文档） |
+| 运行方式 | Docker 容器 `chm-web` 或 systemd（以服务器实际配置为准） |
+| 镜像 | `chm-web:latest` |
+| 对外端口 | `3000`（按实际反向代理调整） |
 
-在项目的 `Variables` 面板里，全填你线下随机生成的长字符串：
-- `UPLOAD_TOKEN`：上传钥匙（防别人乱传）
-- `EXPORT_TOKEN`：导出钥匙（防别人拉走文档）
-生成方式：终端 `openssl rand -hex 16`（Windows 用 Git Bash 一样有）。
+> 这些值以服务器真实配置为准；如果阿里云上已调整路径，请同步更新 `.deploy-tools/` 中的脚本。
 
-### 5. 让 Railway 用持久盘保存文档
-上传后文档会写进 `/app/docs`。若要重启不丢，给项目加一个 **Volume**（挂到 `/app/docs`），并把 `CHM_SITE=/app/docs`、`CHM_DATA=/app/data` 设好。
+### 运维命令
 
-### 6. 打开
-构建完成会有 `Deployments → View Deploy` 或 `Settings → Networking` 里的域名，点开即你的欢迎页。上传一个 `.chm` 试试真闭环。
+```bash
+cd .deploy-tools
+bash deploy.sh status    # 查看容器/服务状态（Docker 方式）
+bash deploy.sh logs       # 查看日志
+bash deploy.sh restart     # 重启
+bash deploy.sh stop        # 停止
+# 若服务器用 systemd：sudo systemctl status/restart chm-web
+```
 
-### 7. 上线后务必做的一步：开「访问令牌」
-前端知道了怎么办：欢迎页重建时会把 `EXPORT_TOKEN` 注入页面，浏览器上传 / 导出会自动带 `X-Auth-Token`，用户无感。**不开 token 的话，公网任何一个人都能偷偷传文件、能拉走你所有文档。**
+不用 Docker、直接用 systemd 时，参考 [deploy/chm-web.service](deploy/chm-web.service) 安装服务；`.deploy-tools/chm-web.service` 是面向 `/root/app` 的阿里云 systemd 示例。
 
-### 8. 本地复现用的一样的东西
-- `Dockerfile`（根目录）：Railway 默认检测它；本地也能 `docker build -t chm-web . && docker run -p 8080:8080 chm-web` 预览。
-- `deploy/Dockerfile`、`deploy/README.md`、`deploy/chm-web.service`：Caddy / systemd 非 Docker 部署示例（备用 / 自托管时用）。
-- 更简单：没设 `EXPORT_TOKEN` / `UPLOAD_TOKEN` 时服务器保持「不锁」，本地起服务照常，兼容你现在看的静态 A 形态。
+### 重要提醒：访问令牌
+
+生产环境必须设置 `UPLOAD_TOKEN` / `EXPORT_TOKEN`（服务器环境变量或 systemd 环境）：
+- `UPLOAD_TOKEN` → 上传接口校验（`POST /api/upload`）
+- `EXPORT_TOKEN` → 导出接口校验（`/site-export.zip`、`/api/export-docs`）
+- 密钥只放服务器环境 / 本机 gitignore 文件，**绝不写入页面源码或提交仓库**。
+
+---
+
+## 用 Docker 构建生产镜像（可选，本地复现）
+
+根目录 `Dockerfile` 即生产镜像（Node 22 + 7-Zip + better-sqlite3）：
+
+```bash
+docker build -t chm-web .
+docker run -d --name chm-web \
+  -p 8080:8080 \
+  -e UPLOAD_TOKEN=xxx \
+  -e EXPORT_TOKEN=xxx \
+  -v chm-data:/app/data \
+  chm-web
+```
+
+更简版：不设置 `UPLOAD_TOKEN` / `EXPORT_TOKEN` 时后端保持“不锁”，适合本地调试。
 
 ---
 
@@ -144,7 +178,7 @@ chm-web/
 │  ├─ rebuild-docs.js     # 重建 docs/d 下所有文档的壳 + 索引
 │  ├─ rebuild-landing.js  # 重建欢迎页（应用 landing.js 改动）
 │  └─ rebuild-shells.js   # 重建所有文档阅读壳 index.html
-├─ .deploy-tools/   # 服务器运维脚本（SSH 部署等，本机用）
+├─ .deploy-tools/   # 阿里云运维脚本（deploy/backup/systemd/ssh）
 ├─ src/
 │  ├─ cli.js        # convert / extract / scan / serve / fix-charsets 命令
 │  └─ lib/
@@ -170,7 +204,7 @@ chm-web/
 
 ## 环境要求
 
-- **Node.js** ≥ 16（推荐最新 LTS；转换用 `node bin/cli.js`）
+- **Node.js** ≥ 22（生产与 CI 均用 Node 22；native 依赖 `better-sqlite3` v13 需要 Node ≥ 22）
 - **7-Zip** 命令行版。解析顺序（见 `src/lib/chm.js`）：
   1. 环境变量 `SEVENZ`（最高优先，可指向任意路径）
   2. PATH 里的 `7z` / `7za`（跨平台，**部署 Linux 服务器时推荐**，`apt install p7zip-full` 后即走 PATH）
@@ -219,9 +253,10 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
   - 稳定性：**原子写**（临时文件+rename+重试，防崩溃损坏）、会话 30 天过期清理、账号/上传/导出**限流 + 每用户/全局配额**、并发上传槽位（**异步 7z 解包 + 超时 + 失败自动清理临时文件**）。
   - 安全：修复阅读壳/欢迎页**存储型 XSS**（搜索结果一律转义再高亮）；**移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**，改为已登录会话由服务端校验。
   - 检索：凡是有后端时欢迎页搜索自动走**服务端 `/api/search`**（在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳），纯静态/离线 zip 仍回退到本地 `site-index.json` 客户端索引。
-  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db` 并全绿；`npm test` 覆盖全部 13 项。
+  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db` 并全绿；`npm test` 覆盖全部 14 项（含 `test-charset`）。
   - **SQLite 化（better-sqlite3，WAL）**：`users/sessions/meta` 与配额 `user_usage` 迁移到 SQLite，一次性 JSON→迁移并备份 `.bak.<ts>`；检索灌入 FTS5 虚拟表。
   - **字符集归一化**：解包后所有 html/css/hhc/hhk 按实际字符集转 UTF-8 并重写为合法 `<meta charset="utf-8">`（`charset.js#normalizeCharsets`），服务端对 html 按文件实际编码下发 charset 头（`sniffFileCharset`），修复 GBK 中文 CHM 整页乱码；`fix-charsets` 命令可修复存量文档。
+- [x] **M5：阿里云自建部署**：生产环境已完成从 Railway 到阿里云的迁移，`push → GitHub → 阿里云自动拉取`链路已验证，`.deploy-tools` 运维脚本与持久化方案已就绪。
 
 ## 后续优化方向（P1→P2，按需推进）
 

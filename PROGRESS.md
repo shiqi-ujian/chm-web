@@ -21,15 +21,14 @@
 | M2 | 双端可浏览 + 可见性权限 | ✅ 完成（浏览/手机抽屉 + **真实上传闭环 + 账号体系 + 可见性**：注册/登录/会话、公开免登录 / 私密仅 owner+分享链接、文档归属"我的"、可见性切换实体迁移、公开/私密标签） |
 | M3 | 全库检索 | ✅ 完成（**目录树 + 关键字 + 单文档全文 + 欢迎页跨文档统搜**，纯静态可托管） |
 | M4 | 批量 + 私有部署导出 | ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
-- [x] **M4：批量 + 私有部署导出** ✅ 完成（**前端批量上传 + 整站单包导出 + 选中多篇导出独立裸站 zip**：前端勾选「导出选中 zip」→ 后端 `GET /api/export-docs?ids=` → CLI `export-docs`；manifest.json；每包自带专属欢迎页 + 只含选中文档的 site-index.json） |
-| 公网部署 | 接正式后端（Railway） | ✅ 已上线：`https://chm-web-production-16f9.up.railway.app`（项目 `profound-vitality` / 环境 `production`）。已接 `HOST` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌 + 持久盘 Volume `/app/data`（`/app/data/site` 站点 + `/app/data/data` 账号/元数据/私密文档）。访问密钥只在 Railway Variables + 本机 `data/deploy-tokens.txt`（gitignore），不入库 |
-| **P1·健壮与安全**（M5） | **稳定性 + 公共服务护栏** | **✅ 已完成一批**：原子写（临时文件+rename+重试，防崩溃损坏）、会话 30 天惰性过期清理、账号/上传/导出接口限流（滑动窗口）、每用户文档数/字节配额 + 全局存储上限、并发上传槽位（异步 7z 解包 + 超时 + 失败自动清理临时文件）、修复阅读壳/欢迎页**存储型 XSS**（搜索结果一律转义再高亮）、**移除烘焙进页面的 UPLOAD/EXPORT_TOKEN 明文**（改为已登录用户会话服务端校验）、新增服务端检索 `/api/search`（保留客户端静态回退）。新增 `test-quota / test-xss / test-search-api / test-atomic` 并接入 CI |
+| 公网部署 | 迁至阿里云自建生产 | ✅ 已完成：生产环境从 Railway 迁移到阿里云服务器，`push → GitHub → 阿里云自动拉取部署`链路已验证。由 `HOST`/`PORT` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN` 访问令牌 + 持久数据目录（`CHM_SITE` / `CHM_DATA`，站点与数据分离）。访问密钥只放阿里云服务器环境变量 + 本机 `data/deploy-tokens.txt`（gitignore），不入库 |
+| **P1·健壮与安全**（M5） | **稳定性 + 公共服务护栏** | **✅ 已完成一批**：原子写（临时文件+rename+重试，防崩溃损坏）、会话 30 天惰性过期清理、账号/上传/导出接口限流（滑动窗口）、每用户文档数/字节配额 + 全局存储上限、并发上传槽位（异步 7z 解包 + 超时 + 失败自动清理临时文件）、修复阅读壳/欢迎页**存储型 XSS**（搜索结果一律转义再高亮）、**移除烘焙进页面的 UPLOAD/EXPORT_TOKEN 明文**（改为已登录用户会话服务端校验）、新增服务端检索 `/api/search`（保留客户端静态回退）。新增 `test-quota / test-xss / test-search-api / test-atomic` 并接入 CI。SQLite 化 + FTS5 + 字符集归一化也已完成，`npm test` 14 项全绿 |
 
 ---
 
 ## 三、已实现 / 当前可用
 
-- `bin/cli.js` + `src/cli.js`：`convert / extract / scan / serve` 命令。
+- `bin/cli.js` + `src/cli.js`：`convert / extract / scan / serve / export-site / export-docs / fix-charsets` 命令。
 - `src/lib/chm.js`：7-Zip 解包 + 文件扫描（html/hhc/hhk 计数）。
 - `src/lib/hhc.js`：解析 `.hhc` 目录树（嵌套 <UL>/<OBJECT>）→ 目录树。
 - `src/lib/hhk.js`：解析 `.hhk` 关键字 → 扁平关键字列表（供检索）。
@@ -40,12 +39,12 @@
 - `src/lib/sanitize.js`：复制文档产物时剔除 CHM 内部 `#`/`$` 元数据文件。
 - `src/lib/translations.js`：目录节点名中英对照（示例做了 7-Zip 手册）。
 - `src/lib/upload.js`：上传→转换→存盘→更新"我的文档"索引 的完整管线（`processUpload`，支持公开/私密落盘）。
-- `src/lib/auth.js`：M2 账号体系 + 可见性（注册/登录/会话 scrypt 哈希；文档元数据 meta.json；私有/公开/分享链接 ACL；私有实体 `data/private/`）。
+- `src/lib/auth.js`：M2 账号体系 + 可见性（注册/登录/会话 scrypt 哈希；文档元数据；私有/公开/分享链接 ACL；私有实体 `data/private/`，存储已 SQLite 化）。
 - `src/server.js`：真实后端（静态托管 + 账号 API + `POST /api/upload` + `GET /api/docs`(按可见性过滤) + 私有文档 `/p/` 服务 + 分享 `/s/` 跳转 + 批量导出/整站导出接口）。
 - `scripts/autosync.ps1` + `autosync_run.vbs`：计划任务「拉取+推送」自动同步（**不做自动提交**），失败留到下一轮。
-- GitHub Pages 已启用，仓库 `chm-web`（公开），文档放 `docs/` 目录。
+- Git 已开启 GitHub Actions CI：每次 push 到 main 自动跑 14 项测试；阿里云生产由 `push → GitHub → 自动拉取`链路发布。
 
-**线上**：https://shiqi-ujian.github.io/chm-web/ （欢迎页 → 我的文档 → 打开 7-Zip 手册）。
+**线上**：生产为**阿里云服务器**（地址占位，不写入仓库）；GitHub Pages `https://shiqi-ujian.github.io/chm-web/` 仍作为静态阅读层示例/公开页使用。
 
 ---
 
@@ -83,7 +82,7 @@
 ### 7. 新工作区本机环境修复（2026-08-17）
 - 安装 7-Zip 26.02（`winget install 7zip.7zip`），验证 `7z.exe` + 自带 `7-zip.chm` 样本。
 - git 本地身份配置为 `qiujian.shi <qiujian.shi@ui-surgical.com>`（此前本地+全局均未配置，提交会失败）。
-- remote 从 `YinJinDao/shiqi-ujian-chm-web.git` 改到 **`shiqi-ujian/chm-web.git`**（线上 GitHub Pages 实际源仓库），rebase 对齐到 `61afc9a`（M3 搜索 / M4 导出 / Railway 部署全量并入）。
+- remote 从 `YinJinDao/shiqi-ujian-chm-web.git` 改到 **`shiqi-ujian/chm-web.git`**（线上 GitHub Pages 实际源仓库），rebase 对齐到 `61afc9a`（M3 搜索 / M4 导出 / Railway 历史部署全量并入）。
 - 顺带确认：`.tmp_7-zip` 标题泄漏、欢迎页清单缺 `id`、e2e/vbs 硬编码路径等问题在远程 `68fb5d5` 已修复，本地无需重复。
 - e2e 可用 `CHM_SITE`/`CHM_DATA` 环境变量指向临时目录运行，避免污染 `docs/` 与仓库工作区。
 
@@ -108,11 +107,17 @@
 - 新增命令 `node bin/cli.js fix-charsets <dir>`：对已转换的存量文档目录原地修复乱码。
 - 自测：`test-charset.js` 新增 normalizeCharsets 回归项；`npm test` 14 项全绿；用 `DND.26.08.06.chm` 实测：6919 个 html 全部转 UTF-8、无 U+FFFD、全部带合法 `<meta charset="utf-8">`，Credits.htm 浏览器渲染正常。
 
+### 10. 阿里云迁移完成（2026-08-19）
+- **生产环境从 Railway 迁移到阿里云服务器**，线上已搭好。
+- 部署方式改为 **push 到 main → GitHub → 阿里云自动拉取/触发部署**；提交 `bc5b021`/`dad1d28` 已验证自动部署链路（含临时验证文件移除）。
+- `c6f65dc` 归档运维资产到 `.deploy-tools/`：`deploy.sh`（阿里云 Docker 部署）、`backup.sh`（每日备份，保留 14 份）、`chm-web.service`（systemd 示例）、`ssh-run.js`（SSH 助手）。
+- 网页文档同步为阿里云生产现状（README / HANDOFF / PROGRESS / PLAN）。
+
 ---
 
 ## 五、仍待办 / 下一步
 
-- [x] **公网真实部署上线**：`https://chm-web-production-16f9.up.railway.app` 已登录/上传/账号/可见性闭环验证可用（Railway + Volume `/app/data` + `UPLOAD_TOKEN`/`EXPORT_TOKEN`）。
+- [x] **公网真实部署上线（阿里云迁移）**：生产环境已从 Railway 迁至阿里云服务器，`push → GitHub → 阿里云自动拉取`链路已验证；登录/上传/账号/可见性闭环在阿里云环境可正常使用。
 - [x] **P1 稳健/安全批处理**：原子写、会话清理、限流/配额、并发上传槽位+超时清理、阅读壳 XSS 修复、移除页面烘焙密钥、服务端检索 `/api/search`（新测试 test-quota/xss/search-api/atomic 全绿）。
 - [ ] **转换完成整批自动打包下载**（M4 可选增强）：目前是「逐个转换入库 → 勾选导出」；可再加「一次批量上传即直接打包整批下载」。
 
@@ -130,21 +135,26 @@ src/lib/
   hhk.js        .hhk 关键字解析
   
   landing.js    欢迎页(index.html) + 全站聚合检索 site-index.json（不再烘焙令牌；搜索优先 /api/search，失败回退本地）
-  
-  
   zip.js        零依赖 zip 打包器（STORE + DEFLATE）
   site-export.js  整站导出（含 manifest.json）：exportSite()/collectFiles()/exportDocs()/aggregateSiteIndex()
+  
   upload.js      上传→转换→存盘→索引（异步解包+超时；cleanupTmp 清理残留）
   
   convert.js    convert() + buildSite()
   serve.js      零依赖静态服务器
   sanitize.js   剔除 CHM 内部 #/$ 元数据
   translations.js  目录名中英对照
+  auth.js       账号/会话/可见性（SQLite users/sessions/meta）
+  db.js         SQLite(better-sqlite3, WAL) + JSON→SQLite 一次性迁移
+  quota.js      限流/配额（user_usage 持久化）
+  search.js     服务端检索（SQLite FTS5）
   
 scripts/
   autosync.ps1      自动同步(拉取+推送，不自动提交)
   autosync_run.vbs  隐藏启动 autosync.ps1
- docs/          站点/发布产物（GitHub Pages 根）
+
+.deploy-tools/  阿里云运维：deploy.sh / backup.sh / chm-web.service / ssh-run.js
+docs/          站点/发布产物（GitHub Pages 静态层 / 阿里云初始内容）
 ```
 
 

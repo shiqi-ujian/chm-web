@@ -153,7 +153,7 @@ if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
     document.getElementById('authGo').textContent=reg?'注册':'登录';
     document.getElementById('authSwitch').textContent=reg?'去登录':'去注册';});
   modal.addEventListener('click',function(e){if(e.target===modal)window.__closeAuth();});}
-var DOCS=(typeof [{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}]!=='undefined'&&[{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}])?[{"id":"7-zip","name":"7-zip","href":"d/7-zip/"},{"id":"7-zip-e624e0","name":"7-zip-e624e0","href":"d/7-zip-e624e0/"}]:[];
+var DOCS=(typeof [{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]!=='undefined'&&[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}])?[{"name":"7-zip","href":"d/7-zip/","id":"7-zip"},{"name":"7-zip-e624e0","href":"d/7-zip-e624e0/","id":"7-zip-e624e0"}]:[];
 window.__docs=DOCS;window.__setDocs=function(d){window.__docs=d;};
 window.__onAuth=window.__onAuth||function(){};
 loadMe();
@@ -179,6 +179,8 @@ loadMe();
   siteq.addEventListener('input',function(){var v=siteq.value.trim();if(!v){sres.style.display='none';return;}if(api)apiFn(v);else local(v);});
   document.addEventListener('click',function(e){if(e.target!==siteq&&!sres.contains(e.target))sres.style.display='none';});
   function recentRender(list){var box=document.getElementById('recentDocs');var arr=list&&list.length?list:window.__docs||[];
+    if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
+    arr=arr.filter(function(d){return d.visibility!=='private';});
     if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
     box.innerHTML=arr.slice(0,6).map(function(d){var priv=d.visibility==='private';
       return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+

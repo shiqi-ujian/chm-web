@@ -18,12 +18,12 @@
 
 | 模块 | 选型 | 理由 |
 |------|------|------|
-| 运行环境 | `Node.js + TypeScript`(或纯 JS) | 无框架依赖、起静态服务方便 |
+| 运行环境 | `Node.js`（纯 JS，无框架依赖） | 后端服务 + 转换脚本；生产 Node ≥ 22 |
 | CHM 解包 | `7z` / `mspack` / `chmlib`(解析 ITSF + LZX) | 现成开源、免造轮子 |
 | 解包产物 | 静态 HTML + `.hhc` 目录树 + `.hhk` 关键字 | 7-zip 直接解出 |
 | 双端体验 | 移动端/桌面端均用**响应式 HTML**，不引传统 CHM 浏览器 | 移动端只做“可读可搜”，桌面端再做“批量/部署” |
 | 可见性 | 私密/公开/指定链接可见 → 登录态 + 邀请链接 | 简单 ACL |
-| 全文检索 | 先做目录检索，再加 `lunr.js` / `FlexSearch` | 静态站也可以搜 |
+| 全文检索 | 在线走 `SQLite FTS5` 服务端检索；离线/静态走 `site-index.json` | 后端 + 静态阅读层均可用 |
 | 批量私有部署 | **导出产物 → 打 zip / jekyll 静态站** | **后期核心价值点** |
 
 ## 三、里程碑（MVP 是最下层）
@@ -50,7 +50,7 @@
 ### M4 — 批量 + 私有部署（真正的“付费线”）✅ 已完成
 - 支持**一个/多个** CHM 批量上传（多选/拖拽 + 逐个上传进度）
 - “打包下载 / 导出为站点” = zip/静态站点：整站导出（`/site-export.zip` / CLI `export-site`）+ 选中多篇导出独立裸站 zip（`/api/export-docs` / CLI `export-docs`，含 `manifest.json`）
-- 部署物：根 `Dockerfile`（Railway 直用）+ `deploy/`（Docker / systemd / Caddy 示例）
+- 部署物：根 `Dockerfile`（阿里云生产镜像）+ `deploy/`（Docker / systemd / Caddy 示例）
 - 验收：选中多个 CHM，一次转换后能整包导出为 zip/静态站点 ✅
 
 ### M5 — 健壮与安全（P1 公共服务护栏）✅ 已完成
@@ -61,9 +61,17 @@
   
   - **移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**（此前后台源码可 `view-source` 拿到密钥致防护失效）。现改为：公网下上传/导出要求「请求带有效 token 或 已登录会话（同源 cookie）」，由服务端校验；未配置 token 时保持不锁（本地/离线兼容）。欢迎页不再注入任何密钥。
   - **检索**：新增服务端 `/api/search`（`src/lib/search.js`：在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳）；欢迎页在线时优先走 API，纯静态/离线 zip 回退本地 `site-index.json`。
-  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db`，`npm test` 跑全 13 项。
-  - **存储层（better-sqlite3，WAL，`src/lib/db.js`）**：`users/sessions/meta` 与配额 `user_usage` 从 JSON+原子写迁移到 SQLite；首次打开自动一次性迁移并备份 `.bak.<ts>`（可回滚）；检索灌入 FTS5 虚拟表。**注意**：`better-sqlite3` 是 native 依赖，已给 CI/Railway/Docker/systemd 补编译工具链 + `npm install`。
-**部署注意（M5）**：以上环境变量均为可选；除非在 Railway 变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。部署令牌仍只放 Railway Variables + 本机 gitignore 文件，**不要写入页面源码**。
+  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db`，`npm test` 跑全 14 项（含 `test-charset`）。
+  - **存储层（better-sqlite3，WAL，`src/lib/db.js`）**：`users/sessions/meta` 与配额 `user_usage` 从 JSON+原子写迁移到 SQLite；首次打开自动一次性迁移并备份 `.bak.<ts>`（可回滚）；检索灌入 FTS5 虚拟表。**注意**：`better-sqlite3` 是 native 依赖，阿里云生产镜像 / CI / systemd 部署需包含编译工具链 + `npm install`。
+
+### M6 — 阿里云生产迁移 ✅ 已完成
+- **生产环境已从 Railway 迁移到阿里云服务器，线上已搭好。**
+- **部署方式**：`push 到 main → GitHub → 阿里云自动拉取 / 触发部署`，链路已验证。
+- **运维脚本**：`.deploy-tools/` 包含 `deploy.sh`（阿里云部署）、`backup.sh`（每日备份保留 14 份）、`chm-web.service`（systemd 示例）、`ssh-run.js`（SSH 助手）。
+- **持久化**：数据在 `/var/chm-web/data`（站点 `site/` + 数据 `data/`），重启不丢上传/账号/私密文档。
+- **线上入口**：`<你的域名/IP>` 或 `<服务器公网地址>`（敏感信息不入库，README/HANDOFF 均用占位符）。
+
+**部署注意（M5/M6）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
 
 ---
 
@@ -125,13 +133,14 @@
    git config user.name "qiujian.shi"
    git config user.email "qiujian.shi@ui-surgical.com"
    ```
-3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`；跑 13 项含 SQLite `test-db`）。本地快速验证也可：
+3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`；跑 14 项含 SQLite `test-db` 与 `test-charset`）。本地快速验证也可：
    `node test-serve.js docs/d/7-zip` 等（见 `.github/workflows/test.yml` 里的命令序列）。
-4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 13 项测试，红了先看 CI 报错再提交。
-5. **上线部署**：
-   - 平时：push 到 main → Railway 自动部署（约 1-2 分钟）。
-   - GitHub 异常/webhook 失效时：装 Railway CLI（`npm i -g @railway/cli`）→ `railway login`（浏览器授权）→ `railway redeploy --from-source -y`。
-6. **敏感信息**：部署令牌 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 只在本机 `data/deploy-tokens.txt`（gitignored）和 Railway 变量里；新机器如需手动部署，从 Railway 项目 Variables 里复制（勿提交进仓库）。
+4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 14 项测试，红了先看 CI 报错再提交。
+5. **上线部署（阿里云）**：
+   - 平时：push 到 main → GitHub → 阿里云自动拉取部署（链路已验证）。
+   - 若服务器侧中断：SSH 到阿里云后到 `/root/app`（以实际部署目录为准）执行 `git pull && npm install && bash .deploy-tools/deploy.sh restart`，或按服务器实际的 systemd/Docker 配置重启。
+   - 运维命令见 `.deploy-tools/`（`deploy.sh status/logs/restart`、`backup.sh`、`ssh-run.js`）。
+6. **敏感信息**：部署令牌 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 只放在**阿里云服务器环境变量/systemd 环境**与本机 `data/deploy-tokens.txt`（gitignored）；新机器如需手动部署，从服务器上已配置的环境变量复制（勿提交进仓库）。
 7. **提交纪律**：保持单 `main` 直推（单人项目）；提交信息用 `feat:/fix:/docs:/deploy:` 前缀；`data/`、`out/`、`logs/`、`.dsh-vision-toolkit/` 永不提交。
 
 ---
