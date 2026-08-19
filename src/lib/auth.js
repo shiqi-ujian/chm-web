@@ -243,7 +243,22 @@ function listReports({ status } = {}) {
   const rows = status
     ? dbm.db.prepare('SELECT * FROM reports WHERE status = ? ORDER BY created_at DESC').all(status)
     : dbm.db.prepare('SELECT * FROM reports ORDER BY created_at DESC').all();
-  return rows.map((r) => ({ id: r.id, docId: r.doc_id, url: r.url, reason: r.reason, contact: r.contact, status: r.status, createdAt: r.created_at }));
+  return rows.map((r) => ({
+    id: r.id, docId: r.doc_id, url: r.url, reason: r.reason, contact: r.contact,
+    status: r.status, createdAt: r.created_at, ip: r.created_ip,
+  }));
+}
+
+/** 管理端更新举报状态（pending/processing/resolved/rejected） */
+function setReportStatus(reportId, status) {
+  const valid = ['pending', 'processing', 'resolved', 'rejected'];
+  const next = String(status || '').trim();
+  if (!valid.includes(next)) throw new AuthError('无效的举报状态', 400);
+  const r = dbm.db.prepare(
+    'UPDATE reports SET status = ? WHERE id = ?'
+  ).run(next, Number(reportId) || 0);
+  if (r.changes === 0) throw new AuthError('举报不存在', 404);
+  return { ok: true, id: Number(reportId), status: next };
 }
 
 /* ---------------- 文档元数据 / 可见性 ---------------- */
@@ -343,7 +358,7 @@ module.exports = {
   init, AuthError,
   register, login, logout, changePassword, userByToken,
   verifyEmailCode, requestEmailVerification, forgotPassword, resetPassword, getUser,
-  createReport, listReports,
+  createReport, listReports, setReportStatus,
   ensureMeta, getMeta, setVisibility, share, deleteMeta, canRead, docIdByShareToken, privateDir,
   readAllMeta,
 };

@@ -26,6 +26,7 @@ function get(p) {
 
 setTimeout(async () => {
   try {
+    // landing/site-index smoke tests
     const home = await get('/');
     ok('GET / landing 200', home.st === 200);
     ok('landing has search box', home.body.includes('id="siteq"'));
@@ -41,6 +42,10 @@ setTimeout(async () => {
     ok('GET /d/7-zip/ shell 200', doc.st === 200 && doc.body.includes('frame'));
     const didx = await get('/d/7-zip/search-index.json');
     ok('GET doc search-index 200', didx.st === 200);
+
+    // admin page is generated and includes the admin UI
+    const admin = await get('/admin.html');
+    ok('GET /admin.html 200', admin.st === 200 && admin.body.includes('ADMIN_TOKEN') && admin.body.includes('admGo'));
 
     // site export endpoint serves a real zip
     const z = await get('/site-export.zip');

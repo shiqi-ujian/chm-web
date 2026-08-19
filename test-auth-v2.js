@@ -90,6 +90,16 @@ async function main() {
   const badRep = await json('POST', '/api/report', { url: '/d/x' });
   ok('report without reason 400', badRep.st === 400, String(badRep.st));
 
+  // 管理端状态流转
+  const setProcessing = await json('PATCH', '/admin/reports/' + rep.body.id, { status: 'processing' }, { 'X-Admin-Token': 'admin-secret-test' });
+  ok('admin can mark report processing', setProcessing.st === 200 && setProcessing.body.status === 'processing', JSON.stringify(setProcessing.body));
+  const resolveRep = await json('PATCH', '/admin/reports/' + rep.body.id, { status: 'resolved' }, { 'X-Admin-Token': 'admin-secret-test' });
+  ok('admin can resolve report', resolveRep.st === 200 && resolveRep.body.status === 'resolved', JSON.stringify(resolveRep.body));
+  const badStatus = await json('PATCH', '/admin/reports/' + rep.body.id, { status: 'fake' }, { 'X-Admin-Token': 'admin-secret-test' });
+  ok('admin invalid status 400', badStatus.st === 400, String(badStatus.st));
+  const statusDenied = await json('PATCH', '/admin/reports/' + rep.body.id, { status: 'resolved' }, {});
+  ok('admin status without token 401', statusDenied.st === 401, String(statusDenied.st));
+
   // 管理端
   const repList = await json('GET', '/admin/reports', null, { 'X-Admin-Token': 'admin-secret-test' });
   ok('admin reports list', repList.st === 200 && Array.isArray(repList.body.reports) && repList.body.reports.length >= 1, JSON.stringify(repList.body));

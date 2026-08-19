@@ -10,6 +10,9 @@ Environment=CHM_DATA=/var/chm-web/data/data
 Environment=CHM_SEED=/root/app/docs
 Environment=HOST=0.0.0.0
 Environment=PORT=8080
+# 生产建议：在 /etc/systemd/system/chm-web.env 中填写以下变量，再以
+# `EnvironmentFile=-/etc/systemd/system/chm-web.env` 方式引入（避免明文写在服务文件/仓库中）。
+# UPLOAD_TOKEN / EXPORT_TOKEN / ADMIN_TOKEN / PUBLIC_BASE_URL / SMTP_* / RATE_* / MAX_*
 ExecStart=/usr/local/bin/node src/server.js
 Restart=always
 RestartSec=3

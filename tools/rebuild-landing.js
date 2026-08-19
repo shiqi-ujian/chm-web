@@ -3,14 +3,14 @@
 // 用法: node rebuild-landing.js
 const fs = require('fs');
 const path = require('path');
-const landing = require('./src/lib/landing');
+const landing = require('../src/lib/landing');
 
 const SITE = path.resolve(process.env.CHM_SITE || 'docs');
 
 // auth 依赖 better-sqlite3；本地无原生模块时降级为「全部按公开文档」重建。
 let auth = null;
 try {
-  auth = require('./src/lib/auth');
+  auth = require('../src/lib/auth');
   auth.init(path.resolve(process.env.CHM_DATA || 'data'));
 } catch (e) {
   console.warn('[rebuild-landing] sqlite 不可用（' + (e && e.message) + '），按全部公开重建');

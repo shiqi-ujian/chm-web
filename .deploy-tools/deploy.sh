@@ -20,6 +20,23 @@ start() {
     -e CHM_DATA=/app/data/data \
     -e HOST=0.0.0.0 \
     -e PORT=8080 \
+    -e UPLOAD_TOKEN="$UPLOAD_TOKEN" \
+    -e EXPORT_TOKEN="$EXPORT_TOKEN" \
+    -e ADMIN_TOKEN="$ADMIN_TOKEN" \
+    -e PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
+    -e SMTP_HOST="$SMTP_HOST" \
+    -e SMTP_PORT="$SMTP_PORT" \
+    -e SMTP_USER="$SMTP_USER" \
+    -e SMTP_PASS="$SMTP_PASS" \
+    -e SMTP_FROM="$SMTP_FROM" \
+    -e SMTP_SECURE="$SMTP_SECURE" \
+    -e RATE_AUTH_MAX="$RATE_AUTH_MAX" \
+    -e RATE_UPLOAD_MAX="$RATE_UPLOAD_MAX" \
+    -e RATE_EXPORT_MAX="$RATE_EXPORT_MAX" \
+    -e RATE_SEARCH_MAX="$RATE_SEARCH_MAX" \
+    -e MAX_GLOBAL_BYTES="$MAX_GLOBAL_BYTES" \
+    -e MAX_USER_DOCS="$MAX_USER_DOCS" \
+    -e MAX_USER_BYTES="$MAX_USER_BYTES" \
     -v "$DATA_DIR:/app/data" \
     "$IMAGE"
   echo "started: http://<ip>:$PORT"

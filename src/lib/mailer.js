@@ -100,8 +100,9 @@ function smtpSend({ to, subject, text }) {
           await send('RCPT TO:<' + to + '>');
           await send('DATA');
           const body = 'Subject: ' + subject + '\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n' + text;
-          await send(body.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..').replace(/\r\n\.\r\n$/, '\r\n.\r\n'));
-          await send('.');
+          // DATA 正文：CRLF 归一化 + SMTP 行首点填充 + 尾部结束标记点。
+          // 不能写成 body + '\r\n.\r\n' 再让下一行 send('.')——那样点终止符不在正确行位。
+          await send(body.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..') + '\r\n.');
           await send('QUIT');
         }
       });

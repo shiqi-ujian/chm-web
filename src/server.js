@@ -9,6 +9,7 @@ const { processUpload, UploadError, cleanupTmp } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs } = require('./lib/site-export');
 const auth = require('./lib/auth');
+const dbm = require('./lib/db');
 const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf } = require('./lib/quota');
 const LibSearch = require('./lib/search');
 const { sniffFileCharset } = require('./lib/charset');
@@ -577,6 +578,10 @@ function route(req, res) {
     if (!adminAuthorized(req)) { sendJSON(res, 401, { ok: false, error: '需要管理员令牌' }); return; }
     const st = u.searchParams.get('status') || '';
     sendJSON(res, 200, { ok: true, reports: auth.listReports({ status: st || undefined }) });
+  } else if (req.method === 'PATCH' && /^\/admin\/reports\/[^/]+$/.test(urlPath)) {
+    if (!adminAuthorized(req)) { sendJSON(res, 401, { ok: false, error: '需要管理员令牌' }); return; }
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    handleJson(req, res, (b) => auth.setReportStatus(id, b && b.status));
   } else if (req.method === 'POST' && urlPath === '/admin/remove-doc') {
     if (!adminAuthorized(req)) { sendJSON(res, 401, { ok: false, error: '需要管理员令牌' }); return; }
     handleJson(req, res, (b) => {

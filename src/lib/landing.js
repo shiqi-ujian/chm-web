@@ -93,6 +93,11 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .legal p,.legal li{font-size:15px;line-height:1.8;color:var(--ink)}
 .report-form{max-width:560px;margin:0 auto}
 .report-form .card{padding:24px}
+.admin-form .card, .admin-box{padding:24px}
+.admin-form .card{margin-bottom:14px}
+.admin-box{max-width:760px;margin:28px auto}
+.admin-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.admin-actions button{flex:1;min-width:90px}
 .modal{position:fixed;inset:0;background:rgba(15,23,42,.4);display:none;align-items:center;justify-content:center;z-index:300}
 .modal.on{display:flex}
 .modal .box{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);
@@ -131,6 +136,7 @@ const NAV = `
   <a href="terms.html">用户协议</a>
   <a href="privacy.html">隐私政策</a>
   <a href="disclaimer.html">免责声明</a>
+  <a href="admin.html">管理后台</a>
 </aside>`;
 
 const MODAL = `
@@ -344,7 +350,64 @@ const REPORT = page('侵权举报 · CHM 网页', true, `
       .catch(function(e){msg.innerHTML='<span class="err">网络错误：'+e.message+'</span>';});
   });`, 'report');
 
-/* ============ 四个页面 ============ */
+const ADMIN = page('管理后台 · CHM 网页', true, `
+  <div class="eyebrow">管理后台</div><h1>举报处理 / 文档下架</h1>
+  <div class="sub">使用 ADMIN_TOKEN 登录后台，处理侵权举报。</div>`, `
+  <div class="admin-box">
+    <div class="card admin-form">
+      <label class="field">管理员令牌</label>
+      <input class="in" id="admToken" type="password" autocomplete="current-password" placeholder="请输入 ADMIN_TOKEN">
+      <div class="message" id="admMsg"></div>
+      <div style="text-align:center"><button class="btn" id="admGo">加载举报</button></div>
+      <div style="text-align:center;margin-top:8px"><a href="report.html">查看公开举报页</a></div>
+    </div>
+    <div id="admPanel" style="display:none"></div>
+  </div>`, `
+  var admBox=document.getElementById('admPanel'),admMsg=document.getElementById('admMsg');
+  function escA(x){return escS(x).replace(/'/g,'&#39;');}
+  function admHeaders(extra){var h={};if(window.__admToken){h['X-Admin-Token']=window.__admToken;}var csrf=csrfHeader();if(csrf)h['X-CSRF-Token']=csrf;if(extra)Object.assign(h,extra);return h;}
+  function admJson(method,url,body){return fetch(url,{method:method,headers:Object.assign({'Content-Type':'application/json'},admHeaders()),body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});});}
+  function statusText(s){return {pending:'待处理',processing:'处理中',resolved:'已解决',rejected:'已驳回'}[s]||s||'';}
+  function renderReports(reports){
+    if(!reports||!reports.length){admBox.innerHTML='<div class="card" style="padding:24px;text-align:center;color:var(--mut)">暂无举报</div>';return;}
+    admBox.innerHTML='<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'+
+      '<button class="btn sm" data-status="">全部</button>'+
+      '<button class="btn ghost sm" data-status="pending">待处理</button>'+
+      '<button class="btn ghost sm" data-status="processing">处理中</button>'+
+      '<button class="btn ghost sm" data-status="resolved">已解决</button>'+
+      '<button class="btn ghost sm" data-status="rejected">已驳回</button></div>'+
+      reports.map(function(r){
+        var href=r.url||r.docId?('/d/'+(r.docId||'').replace(/^\\/d\\//,'')+'/'):'';
+        return '<div class="card" style="padding:18px;margin-bottom:12px">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>#'+escA(r.id)+'</b>'+
+        '<span class="tag '+(r.status==='pending'?'':'')+'" style="color:var(--mut)">'+escA(statusText(r.status))+'</span></div>'+
+        '<div style="font-size:13px;color:var(--mut);margin:6px 0">'+(r.docId?'文档 ID：<b>'+escA(r.docId)+'</b><br>':'')+
+        (r.url?'地址：'+escA(r.url)+'<br>':'')+(r.contact?'联系：'+escA(r.contact)+'<br>':'')+
+        (r.ip?'来源：'+escA(r.ip)+'<br>':'')+'时间：'+(new Date(r.createdAt).toLocaleString()) +'</div>'+
+        '<div style="font-size:14px;white-space:pre-wrap;word-break:break-word">'+escA(r.reason)+'</div>'+
+        '<div class="admin-actions">'+
+        '<button class="btn sm" data-st="processing" data-id="'+escA(r.id)+'">标记处理中</button>'+
+        '<button class="btn sm" data-st="resolved" data-id="'+escA(r.id)+'">标记已解决</button>'+
+        '<button class="btn ghost sm" data-st="rejected" data-id="'+escA(r.id)+'">驳回</button>'+
+        (href?'<a href="'+escA(href)+'" class="btn ghost sm">打开文档</a>':'')+
+        (href?'<button class="btn danger sm" data-del="'+escA(r.id)+'" data-href="'+escA(href)+'">下架文档</button>':'')+
+        '</div></div>';
+      }).join('');
+    Array.prototype.forEach.call(admBox.querySelectorAll('[data-st]'),function(b){b.addEventListener('click',function(){admSet(b.getAttribute('data-id'),b.getAttribute('data-st'));});});
+    Array.prototype.forEach.call(admBox.querySelectorAll('[data-del]'),function(b){b.addEventListener('click',function(){admDelDoc(b.getAttribute('data-id'),b.getAttribute('data-href'));});});
+    Array.prototype.forEach.call(admBox.querySelectorAll('button[data-status]'),function(b){b.addEventListener('click',function(){load(b.getAttribute('data-status'));});});
+  }
+  function load(st){var st=st||'';admMsg.innerHTML='';return fetch('/admin/reports'+(st?'?status='+encodeURIComponent(st):''),{headers:admHeaders()}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){if(x.st===200){admBox.style.display='';render(x.j.reports||[]);}else{admMsg.innerHTML='<span class="err">'+(x.j&&x.j.error||'加载失败')+'</span>';}}).catch(function(e){admMsg.innerHTML='<span class="err">网络错误：'+e.message+'</span>';});}
+  function admSet(id,st){fetch('/admin/reports/'+encodeURIComponent(id),{method:'PATCH',headers:Object.assign({'Content-Type':'application/json'},admHeaders()),body:JSON.stringify({status:st})}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){if(x.st===200)load();else{alert((x.j&&x.j.error)||'更新失败');}}).catch(function(e){alert('网络错误：'+e.message);});}
+  function admDelDoc(id,href){if(!confirm('确认下架该文档？此操作会删除文档实体，不可恢复。'))return;fetch('/admin/remove-doc',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},admHeaders()),body:JSON.stringify({docId:(href||'').replace(/^\\/d\\//,'').replace(/\\/$/,'')})}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){alert((x.j&&(x.j.ok?'已下架':'失败：'+x.j.error))||'下架失败');if(x.st===200)load();}).catch(function(e){alert('网络错误：'+e.message);});}
+  document.getElementById('admGo').addEventListener('click',function(){
+    var t=document.getElementById('admToken').value.trim();if(!t){admMsg.innerHTML='<span class="err">请输入管理员令牌</span>';return;}
+    window.__admToken=t;load();
+  });
+  document.getElementById('admToken').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('admGo').click();});
+  window.__onAuth=function(){};`, 'admin');
+
+/* ============ 页面 ============ */
 
 const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
   <div class="eyebrow">CHM 网页</div>
@@ -565,7 +628,7 @@ const MINE = page('我的文档 · CHM 网页', true, `
   load();showPw(!!window.currentUser);
   window.__onAuth=function(){load();showPw(!!window.currentUser);};`, 'mine');
 
-module.exports = { build, buildSiteIndex, WELCOME, BROWSE, UPLOAD, MINE, TERMS, PRIVACY, DISCLAIMER, REPORT, LANDING_HTML: WELCOME };
+module.exports = { build, buildSiteIndex, WELCOME, BROWSE, UPLOAD, MINE, TERMS, PRIVACY, DISCLAIMER, REPORT, ADMIN, LANDING_HTML: WELCOME };
 
 /**
  * 生成站点四个子页到 outDir（index/browse/upload/mine.html）+ 合规页（terms/privacy/disclaimer/report.html）。
@@ -588,6 +651,7 @@ function build({ outDir, docs }) {
   write('privacy.html', PRIVACY);
   write('disclaimer.html', DISCLAIMER);
   write('report.html', REPORT);
+  write('admin.html', ADMIN);
 
   // 全站聚合检索索引（欢迎页/浏览页共用）
   fs.writeFileSync(path.join(dir, 'site-index.json'),

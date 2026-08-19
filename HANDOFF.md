@@ -61,7 +61,7 @@
   
   - **移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**（此前后台源码可 `view-source` 拿到密钥致防护失效）。现改为：公网下上传/导出要求「请求带有效 token 或 已登录会话（同源 cookie）」，由服务端校验；未配置 token 时保持不锁（本地/离线兼容）。欢迎页不再注入任何密钥。
   - **检索**：新增服务端 `/api/search`（`src/lib/search.js`：在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳）；欢迎页在线时优先走 API，纯静态/离线 zip 回退本地 `site-index.json`。
-  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db`，`npm test` 跑全 14 项（含 `test-charset`）。
+  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db / test-auth-v2`，`npm test` 跑全 15 项（含 `test-charset`）。
   - **存储层（better-sqlite3，WAL，`src/lib/db.js`）**：`users/sessions/meta` 与配额 `user_usage` 从 JSON+原子写迁移到 SQLite；首次打开自动一次性迁移并备份 `.bak.<ts>`（可回滚）；检索灌入 FTS5 虚拟表。**注意**：`better-sqlite3` 是 native 依赖，阿里云生产镜像 / CI / systemd 部署需包含编译工具链 + `npm install`。
 
 ### M6 — 阿里云生产迁移 ✅ 已完成
@@ -71,7 +71,15 @@
 - **持久化**：数据在 `/var/chm-web/data`（站点 `site/` + 数据 `data/`），重启不丢上传/账号/私密文档。
 - **线上入口**：`<你的域名/IP>` 或 `<服务器公网地址>`（敏感信息不入库，README/HANDOFF 均用占位符）。
 
-**部署注意（M5/M6）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
+### M7 — 登录加固 + 移动端 + 合规 ✅ 已完成
+- **登录体系**：注册必须邮箱 + 同意条款；邮箱验证链接；忘记/重置密码；连续 5 次失败锁 10 分钟；修改密码吊销其它会话；CSRF 防护。
+- **前端/移动端**：窄屏汉堡菜单抽屉、上传权利勾选、移动端触控与阅读壳适配。
+- **合规**：新增 `terms.html` / `privacy.html` / `disclaimer.html` / `report.html`；举报入库；管理端 `admin.html` + `PATCH /admin/reports/<id>` 状态流转 + `POST /admin/remove-doc` 下架。
+- **邮件**：零依赖 SMTP 客户端（`SMTP_*` 配置，缺省写 `logs/mailer.log`）。
+- 自测：`test-auth-v2.js` 覆盖注册/验证/锁定/重置/举报/管理状态流转；`npm test` 15 项全绿。
+
+
+- **部署注意（M5/M6）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。**生产建议配置**：`UPLOAD_TOKEN`、`EXPORT_TOKEN`、`ADMIN_TOKEN`、`PUBLIC_BASE_URL` 与 `SMTP_*`。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
 
 ---
 
@@ -133,9 +141,9 @@
    git config user.name "qiujian.shi"
    git config user.email "qiujian.shi@ui-surgical.com"
    ```
-3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`；跑 14 项含 SQLite `test-db` 与 `test-charset`）。本地快速验证也可：
+3. **自测**：`npm test`（本机 Windows 自动用 7-Zip 自带 chm；CI 用 `samples/7-zip.chm`；跑 15 项含 SQLite `test-db`、`test-charset` 与 `test-auth-v2`）。本地快速验证也可：
    `node test-serve.js docs/d/7-zip` 等（见 `.github/workflows/test.yml` 里的命令序列）。
-4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 14 项测试，红了先看 CI 报错再提交。
+4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 15 项测试，红了先看 CI 报错再提交。
 5. **上线部署（阿里云）**：
    - 平时：push 到 main → GitHub → 阿里云自动拉取部署（链路已验证）。
    - 若服务器侧中断：SSH 到阿里云后到 `/root/app`（以实际部署目录为准）执行 `git pull && npm install && bash .deploy-tools/deploy.sh restart`，或按服务器实际的 systemd/Docker 配置重启。

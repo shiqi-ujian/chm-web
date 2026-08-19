@@ -91,6 +91,20 @@ git push origin main
 推送成功后，服务器侧（阿里云）会自动拉取代码 / 触发部署。  
 > 提交信息保持 `feat:` / `fix:` / `docs:` / `chore:` 前缀。
 
+### 生产必需/推荐环境变量
+
+| 变量 | 必需/推荐 | 说明 |
+|---|---|---|
+| `UPLOAD_TOKEN` | 生产推荐 | 上传接口访问令牌 |
+| `EXPORT_TOKEN` | 生产推荐 | 导出接口访问令牌 |
+| `ADMIN_TOKEN` | 推荐 | 管理后台/举报下架接口令牌 |
+| `PUBLIC_BASE_URL` | 推荐 | 邮件里验证/重置链接的完整公网前缀 |
+| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`/`SMTP_SECURE` | 推荐 | 真实发信；未配置时回退 `logs/mailer.log` |
+| `RATE_AUTH_MAX`/`RATE_UPLOAD_MAX`/`RATE_EXPORT_MAX`/`RATE_SEARCH_MAX` | 可选 | 接口限流阈值 |
+| `MAX_GLOBAL_BYTES`/`MAX_USER_DOCS`/`MAX_USER_BYTES` | 可选 | 存储配额 |
+
+> 生产环境**不要设 `NO_CSRF=1`**；本地/测试才关闭 CSRF。
+
 ### 服务器目录约定（来自 .deploy-tools/）
 
 | 项目 | 路径 / 值 |
@@ -120,10 +134,11 @@ bash deploy.sh stop        # 停止
 
 ### 重要提醒：访问令牌
 
-生产环境必须设置 `UPLOAD_TOKEN` / `EXPORT_TOKEN`（服务器环境变量或 systemd 环境）：
+生产环境必须设置 `UPLOAD_TOKEN` / `EXPORT_TOKEN` / `ADMIN_TOKEN`（服务器环境变量或 systemd 环境）：
 - `UPLOAD_TOKEN` → 上传接口校验（`POST /api/upload`）
 - `EXPORT_TOKEN` → 导出接口校验（`/site-export.zip`、`/api/export-docs`）
-- 密钥只放服务器环境 / 本机 gitignore 文件，**绝不写入页面源码或提交仓库**。
+- `ADMIN_TOKEN` → 管理后台 / 举报处理 / 文档下架接口校验（`/admin/*`）
+- 密钥只放服务器环境 / 本机 gitignore 文件，绝不写入页面源码或提交仓库。
 
 ---
 
@@ -253,10 +268,11 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
   - 稳定性：**原子写**（临时文件+rename+重试，防崩溃损坏）、会话 30 天过期清理、账号/上传/导出**限流 + 每用户/全局配额**、并发上传槽位（**异步 7z 解包 + 超时 + 失败自动清理临时文件**）。
   - 安全：修复阅读壳/欢迎页**存储型 XSS**（搜索结果一律转义再高亮）；**移除烘焙进页面的 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 明文**，改为已登录会话由服务端校验。
   - 检索：凡是有后端时欢迎页搜索自动走**服务端 `/api/search`**（在线走 **SQLite FTS5** 相关性排序+高亮+分页；文档多时更稳），纯静态/离线 zip 仍回退到本地 `site-index.json` 客户端索引。
-  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db` 并全绿；`npm test` 覆盖全部 14 项（含 `test-charset`）。
+  - 新增 `test-quota / test-xss / test-search-api / test-atomic / test-db / test-auth-v2` 并全绿；`npm test` 覆盖全部 15 项（含 `test-charset`）。
   - **SQLite 化（better-sqlite3，WAL）**：`users/sessions/meta` 与配额 `user_usage` 迁移到 SQLite，一次性 JSON→迁移并备份 `.bak.<ts>`；检索灌入 FTS5 虚拟表。
   - **字符集归一化**：解包后所有 html/css/hhc/hhk 按实际字符集转 UTF-8 并重写为合法 `<meta charset="utf-8">`（`charset.js#normalizeCharsets`），服务端对 html 按文件实际编码下发 charset 头（`sniffFileCharset`），修复 GBK 中文 CHM 整页乱码；`fix-charsets` 命令可修复存量文档。
 - [x] **M5：阿里云自建部署**：生产环境已完成从 Railway 到阿里云的迁移，`push → GitHub → 阿里云自动拉取`链路已验证，`.deploy-tools` 运维脚本与持久化方案已就绪。
+- [x] **M6：登录加固 + 移动端 + 合规**：注册强制邮箱与同意条款、邮箱验证、忘记/重置密码、登录失败锁定、CSRF 防护、移动端汉堡菜单与上传勾选、terms/privacy/disclaimer 合规页、举报与管理员下架接口；新增 `admin.html` 管理页；`npm test` 15 项全绿。
 
 ## 后续优化方向（P1→P2，按需推进）
 
