@@ -78,6 +78,7 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
   .header .logo{margin-right:auto}
   .header nav{order:10;flex:1 1 100%;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
     gap:6px;margin:2px 0 0}
+  .header nav a.fb-link{display:none}
   .header nav a{padding:8px 2px;border-radius:10px;font-size:13.5px;text-align:center}
   .header .spacer{display:none}
   .header .who{margin-left:auto}
@@ -143,6 +144,7 @@ const NAV = `
     <a href="browse.html" data-nav="browse">浏览文档</a>
     <a href="upload.html" data-nav="upload">上传</a>
     <a href="mine.html" data-nav="mine">我的文档</a>
+    <a class="fb-link" href="https://docs.qq.com/form/page/DWkh0VFdOb2tFVFJV" target="_blank" rel="noopener" title="发现问题？提交反馈">📝 问题反馈</a>
   </nav>
   <span class="spacer"></span>
   <span class="who" id="who"></span>
@@ -156,6 +158,7 @@ const NAV = `
   <a href="browse.html" data-nav="browse">浏览文档</a>
   <a href="upload.html" data-nav="upload">上传</a>
   <a href="mine.html" data-nav="mine">我的文档</a>
+  <a href="https://docs.qq.com/form/page/DWkh0VFdOb2tFVFJV" target="_blank" rel="noopener">📝 问题反馈</a>
   <a href="terms.html">用户协议</a>
   <a href="privacy.html">隐私政策</a>
   <a href="disclaimer.html">免责声明</a>
@@ -319,7 +322,7 @@ ${NAV}
 <div class="hero${heroSmall ? ' small' : ''}">${heroInner}</div>
 <div class="wrap">${body}</div>
 <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示<br>
-  <a href="terms.html">用户协议</a> · <a href="privacy.html">隐私政策</a> · <a href="disclaimer.html">免责声明</a> · <a href="report.html">侵权举报</a></div>
+  <a href="terms.html">用户协议</a> · <a href="privacy.html">隐私政策</a> · <a href="disclaimer.html">免责声明</a> · <a href="report.html">侵权举报</a> · <a href="https://docs.qq.com/form/page/DWkh0VFdOb2tFVFJV" target="_blank" rel="noopener">📝 问题反馈</a></div>
 ${MODAL}
 <script>
 ${SHARED_JS(pageScript).split('__NAV_ACTIVE__').join(esc(navActive || 'home'))}
