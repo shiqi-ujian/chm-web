@@ -1,6 +1,6 @@
 'use strict';
 // db.js — SQLite 存储层（better-sqlite3，WAL 模式）。
-// 只管理「状态元数据」：users / sessions / meta（文档元数据）/ user_usage（配额）/ search_fts（检索）。
+// 只管理「状态元数据」：users / sessions / meta（文档元数据）/ user_usage（配额）/ reports（举报）/ search_fts（检索）。
 // 文档实体文件仍走文件系统（docs/d 公开、data/private 私有）——那是静态产物，不该进库。
 // 打开时做一次性 JSON → SQLite 迁移（首次，DB 空且旧 JSON 存在时），并把旧 JSON 改名 .bak.<ts> 备份。
 const fs = require('fs');
@@ -17,6 +17,17 @@ let db = null;
 let dataDir = '';
 
 /** 打开/初始化数据库（幂等）。JSON 遗留仅迁移一次。 */
+function ensureColumn(table, column, ddl) {
+  try {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    }
+  } catch (e) {
+    console.error('[db] ensureColumn failed', table, column, e);
+  }
+}
+
 function open(dir) {
   if (db) return db;
   dataDir = path.resolve(dir);
@@ -32,8 +43,21 @@ function open(dir) {
       username   TEXT PRIMARY KEY,
       salt       TEXT NOT NULL,
       hash       TEXT NOT NULL,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      email      TEXT,
+      email_verified INTEGER NOT NULL DEFAULT 0,
+      verification_code TEXT,
+      verification_expires INTEGER,
+      password_reset_token TEXT,
+      password_reset_expires INTEGER,
+      failed_attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until INTEGER NOT NULL DEFAULT 0,
+      last_login_at INTEGER,
+      created_ip TEXT,
+      terms_accepted_at INTEGER,
+      updated_at INTEGER
     );
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE TABLE IF NOT EXISTS sessions (
       token      TEXT PRIMARY KEY,
       username   TEXT NOT NULL,
@@ -56,11 +80,36 @@ function open(dir) {
       docs     INTEGER NOT NULL DEFAULT 0,
       bytes    INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS reports (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      doc_id     TEXT,
+      url        TEXT,
+      reason     TEXT,
+      contact    TEXT,
+      status     TEXT NOT NULL DEFAULT 'pending',
+      created_ip TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
     CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
       doc, title, body,
       tokenize = 'unicode61'
     );
   `);
+
+  // 老库升级：为 users 补列（幂等）
+  ensureColumn('users', 'email', 'TEXT');
+  ensureColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'verification_code', 'TEXT');
+  ensureColumn('users', 'verification_expires', 'INTEGER');
+  ensureColumn('users', 'password_reset_token', 'TEXT');
+  ensureColumn('users', 'password_reset_expires', 'INTEGER');
+  ensureColumn('users', 'failed_attempts', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'locked_until', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'last_login_at', 'INTEGER');
+  ensureColumn('users', 'created_ip', 'TEXT');
+  ensureColumn('users', 'terms_accepted_at', 'INTEGER');
+  ensureColumn('users', 'updated_at', 'INTEGER');
 
   migrateFromJsonOnce();
   return db;

@@ -15,6 +15,7 @@ const ok = (n, c, x) => { console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (x ? ' [
 
 // ---- 1) 全链路 SQLite 存取 ----
 auth.init(tmp);
+process.env.ALLOW_LEGACY_REGISTER = '1'; // 兼容旧测试签名：不强制 email/acceptTerms
 const reg = auth.register({ username: 'alice', password: 'secret1' });
 ok('register ok', reg.ok);
 const l = auth.login({ username: 'alice', password: 'secret1' });

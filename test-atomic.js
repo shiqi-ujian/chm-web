@@ -13,6 +13,7 @@ const ok = (n, c, x) => { console.log((c ? 'OK  ' : 'FAIL') + ' ' + n + (x ? ' [
 
 // 1) 注册+登录
 auth.init(tmp);
+process.env.ALLOW_LEGACY_REGISTER = '1';
 const r1 = auth.register({ username: 'userA', password: 'secret1' });
 ok('register ok', r1.ok, '');
 const l1 = auth.login({ username: 'userA', password: 'secret1' });

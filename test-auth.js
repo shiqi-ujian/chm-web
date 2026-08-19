@@ -26,7 +26,7 @@ if (!CHM || !fs.existsSync(CHM)) {
 
 const srv = spawn(process.execPath, [path.join(root, 'src', 'server.js')], {
   cwd: root,
-  env: { ...process.env, PORT: String(PORT), CHM_SITE: SITE, CHM_DATA: DATA },
+  env: { ...process.env, PORT: String(PORT), CHM_SITE: SITE, CHM_DATA: DATA, ALLOW_LEGACY_REGISTER: '1', NO_CSRF: '1' },
   stdio: 'pipe',
 });
 let log = '';
@@ -46,11 +46,12 @@ function json(method, p, body, headers = {}) {
     r.end();
   });
 }
-function upload(token, visibility, filename) {
+function upload(token, visibility, filename, acceptTerms) {
   return new Promise((resolve) => {
     const bd = '----auth' + Date.now() + Math.random().toString(36).slice(2);
     const buf = fs.readFileSync(CHM);
-    const head = Buffer.from('--' + bd + '\r\nContent-Disposition: form-data; name="visibility"\r\n\r\n' + visibility +
+    const head = Buffer.from('--' + bd + '\r\nContent-Disposition: form-data; name="acceptTerms"\r\n\r\n' + (acceptTerms === false ? 'false' : 'true') +
+      '\r\n--' + bd + '\r\nContent-Disposition: form-data; name="visibility"\r\n\r\n' + visibility +
       '\r\n--' + bd + '\r\nContent-Disposition: form-data; name="file"; filename="' + (filename || 'doc.chm') + '"\r\nContent-Type: application/octet-stream\r\n\r\n');
     const tail = Buffer.from('\r\n--' + bd + '--\r\n');
     const body = Buffer.concat([head, buf, tail]);

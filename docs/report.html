@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>上传 · CHM 网页</title>
+<title>侵权举报 · CHM 网页</title>
 <style>
 :root{--acc:#7c3aed;--acc-dark:#6d28d9;--acc-soft:#f3e8ff;--bg:#f6f7fb;--card:#fff;
   --ink:#1e293b;--mut:#64748b;--line:#e2e8f0;--hover:#f1f5f9;--ok:#1a7f37;--err:#cf222e;
@@ -116,40 +116,17 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
   <a href="disclaimer.html">免责声明</a>
 </aside>
 <div class="hero small">
-  <div class="eyebrow">上传</div><h1>上传 .chm</h1>
-  <div class="sub">登录后可上传，转换后立即可浏览。</div></div>
+  <div class="eyebrow">合规</div><h1>侵权举报 / 权利人投诉</h1></div>
 <div class="wrap">
-  <div id="uploadGate" style="max-width:680px;margin:30px auto;text-align:center"><div class="card" style="padding:30px">
-    🔒 上传需要先登录。<br><br><button class="btn" id="gateLogin">去登录 / 注册</button></div></div>
-  <div id="uploadWork" style="max-width:680px;margin:30px auto;display:none">
-    <div class="card" style="padding:24px">
-      <div id="drop" tabindex="0" style="border:2px dashed #b6c2d0;border-radius:14px;padding:40px 20px;text-align:center;cursor:pointer">
-        <div style="font-size:20px;font-weight:700">点击选择 .chm，或拖进来</div>
-        <div style="color:var(--mut);font-size:13px;margin-top:6px">支持 .chm 格式 · 可多选</div>
-        <input type="file" id="file" accept=".chm" multiple style="display:none">
-      </div>
-      <div style="margin-top:14px;display:flex;gap:16px;justify-content:center;font-size:13.5px;color:var(--mut)">
-        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="vis" value="public" checked> 公开（所有人可看）</label>
-        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="vis" value="private"> 私密（仅自己 + 分享链接）</label>
-      </div>
-      <div id="filePick" style="margin-top:14px;font-size:14px;color:var(--mut)"></div>
-      <div id="progWrap" style="display:none;margin-top:14px">
-        <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);margin-bottom:6px">
-          <span id="progLabel">上传中…</span><span id="progPct">0%</span></div>
-        <div style="height:10px;border-radius:999px;background:var(--hover);overflow:hidden">
-          <div id="progBar" style="height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7c3aed,#c084fc);transition:width .15s ease"></div>
-        </div>
-      </div>
-      <div class="message" id="msg"></div>
-      <div style="text-align:center"><button class="btn" id="go" disabled>转换文档</button></div>
+  <div class="report-form">
+    <div class="card">
+      <p style="color:var(--mut)">如您认为本站内容侵犯了您的合法权益，请填写以下信息，我们将在核实后处理（通常 1-3 个工作日）。</p>
+      <label class="field">文档 ID 或 URL（必填）</label><input class="in" id="repUrl" placeholder="例如 /d/xxxxx/">
+      <label class="field">举报原因（必填）</label><textarea class="in" id="repReason" rows="4" style="resize:vertical"></textarea>
+      <label class="field">联系邮箱（选填）</label><input class="in" id="repContact" type="email">
+      <div class="message" id="repMsg"></div>
+      <div style="text-align:center"><button class="btn" id="repGo">提交举报</button></div>
     </div>
-    <div class="card" style="margin-top:18px;padding:20px;font-size:13.5px;color:var(--mut)">
-      <b>批量说明</b>：可一次选择多个 .chm，逐个转换并汇总进度；转换后到「我的文档」里管理可见性与分享。
-    </div>
-    <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--mut);cursor:pointer">
-      <input type="checkbox" id="uploadAgree">
-      <span>我已确认拥有该 CHM 文档的合法权利/已获授权，且不会违反第三方著作权。详见 <a href="disclaimer.html">免责声明</a>。</span>
-    </label>
   </div></div>
 <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示<br>
   <a href="terms.html">用户协议</a> · <a href="privacy.html">隐私政策</a> · <a href="disclaimer.html">免责声明</a> · <a href="report.html">侵权举报</a></div>
@@ -191,7 +168,7 @@ document.documentElement.dataset.theme=theme;
 var tb=document.getElementById('themeBtn');
 if(tb){tb.textContent=theme==='dark'?'☀️':'🌙';tb.addEventListener('click',function(){var n=document.documentElement.dataset.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme=n;try{localStorage.setItem('chm-theme',n);}catch(e){}tb.textContent=n==='dark'?'☀️':'🌙';});}
-(function(){var nav=document.querySelector('[data-nav="upload"]');if(nav)nav.classList.add('on');
+(function(){var nav=document.querySelector('[data-nav="report"]');if(nav)nav.classList.add('on');
   var mn=document.getElementById('menuBtn'),dr=document.getElementById('navDrawer'),bk=document.getElementById('navBackdrop');
   function openNav(){if(dr)dr.classList.add('open');if(bk)bk.style.display='block';}
   function closeNav(){if(dr)dr.classList.remove('open');if(bk)bk.style.display='none';}
@@ -285,47 +262,16 @@ window.__docs=DOCS;window.__setDocs=function(d){window.__docs=d;};
 window.__onAuth=window.__onAuth||function(){};
 loadMe();
 
-  var gate=document.getElementById('uploadGate'),work=document.getElementById('uploadWork');
-  document.getElementById('gateLogin').addEventListener('click',function(){window.__openAuth();});
-  function updateGate(){if(window.currentUser){work.style.display='';gate.style.display='none';}else{work.style.display='none';gate.style.display='';}}
-  window.__onAuth=updateGate;loadMe();updateGate();
-  var file=document.getElementById('file'),drop=document.getElementById('drop'),go=document.getElementById('go'),msg=document.getElementById('msg');
-  var all=[],seq=0,ok=[],fail=[];
-  function sel(){var pk=document.getElementById('filePick');pk.innerHTML=all.map(function(f,i){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px">'+
-    '<b>'+escS(f.name)+'</b><button type="button" data-i="'+i+'" class="rm" style="border:0;background:var(--hover);border-radius:50%;width:22px;height:22px;cursor:pointer">✕</button></div>';}).join('');
-    Array.prototype.forEach.call(pk.querySelectorAll('.rm'),function(b){b.addEventListener('click',function(){all.splice(+b.getAttribute('data-i'),1);sel();});});
-    go.textContent=all.length>1?('转换 '+all.length+' 个文档'):'转换文档';go.disabled=!(all.length>0);}
-  function addFiles(list){list=list||[];Array.prototype.forEach.call(list,function(f){if(/.chm$/i.test(f.name||''))all.push(f);else msg.innerHTML='<span class="err">跳过非 .chm：'+escS(f.name)+'</span>';});sel();}
-  function vis(){var r=document.querySelector('input[name=vis]:checked');return (r&&r.value==='private')?'private':'public';}
-  var progWrap=document.getElementById('progWrap'),progBar=document.getElementById('progBar'),progPct=document.getElementById('progPct'),progLabel=document.getElementById('progLabel');
-  function setProg(p,label){if(!progWrap)return;progWrap.style.display='';progBar.style.width=Math.max(0,Math.min(100,p))+'%';progPct.textContent=Math.round(p)+'%';if(label)progLabel.textContent=label;}
-  function hideProg(){if(progWrap)progWrap.style.display='none';}
-  function doUpload(f,cb,onProg){var fd=new FormData();fd.append('file',f);fd.append('visibility',vis());
-    fd.append('acceptTerms', (document.getElementById('uploadAgree')||{}).checked ? 'true':'false');
-    var xhr=new XMLHttpRequest();
-    xhr.open('POST','/api/upload');
-    var tok=USER_TOKEN;if(tok)xhr.setRequestHeader('X-User-Token',tok);
-    xhr.upload.onprogress=function(e){if(e.lengthComputable&&onProg)onProg(e.loaded/e.total*100);};
-    xhr.onloadstart=function(){if(onProg)onProg(0);};
-    xhr.onload=function(){if(onProg)onProg(100,'正在转换（解包 + 生成阅读页）…');var j={};try{j=JSON.parse(xhr.responseText);}catch(e){}
-      if(xhr.status===200&&j.ok)ok.push(j.name||f.name);else fail.push(f.name);cb();};
-    xhr.onerror=function(){fail.push(f.name);cb();};
-    xhr.send(fd);}
-  function runBatch(){var files=all.slice();if(!files.length){msg.innerHTML='<span class="err">先选择 .chm 文件</span>';return;}
-    var ag=document.getElementById('uploadAgree');if(!ag||!ag.checked){msg.innerHTML='<span class="err">请先勾选确认拥有合法权利/授权</span>';return;}
-    var mySeq=++seq;go.disabled=true;ok=[];fail=[];
-    function finish(){go.disabled=false;all=[];sel();hideProg();
-      msg.innerHTML=fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>');}
-    (function loop(i){if(i>=files.length)return finish();var f=files[i];
-      go.textContent='转换中 '+i+'/'+files.length;
-      setProg(0,(files.length>1?('第 '+(i+1)+'/'+files.length+' 个 · '):'')+escS(f.name)+' — 上传中…');
-      doUpload(f,function(){if(seq!==mySeq)return;loop(i+1);},function(p){setProg(p,'正在上传 '+escS(f.name)+'…');});})(0);}
-  drop.addEventListener('click',function(){file.click();});
-  drop.addEventListener('dragover',function(e){e.preventDefault();drop.style.borderColor='var(--acc)';});
-  drop.addEventListener('dragleave',function(){drop.style.borderColor='#b6c2d0';});
-  drop.addEventListener('drop',function(e){e.preventDefault();addFiles(e.dataTransfer&&e.dataTransfer.files);drop.style.borderColor='#b6c2d0';});
-  file.addEventListener('change',function(){addFiles(file.files);file.value='';});
-  go.addEventListener('click',runBatch);
+  document.getElementById('repGo').addEventListener('click',function(){
+    var url=document.getElementById('repUrl').value.trim(),reason=document.getElementById('repReason').value.trim(),contact=document.getElementById('repContact').value.trim();
+    var msg=document.getElementById('repMsg');
+    if(!url||!reason){msg.innerHTML='<span class="err">请填写文档地址和举报原因</span>';return;}
+    fetch('/api/report',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({url:url,docId:url.replace(/^\/d\//,'').replace(/\/$/,''),reason:reason,contact:contact})})
+      .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+        if(x.st===200){msg.innerHTML='<span class="ok">举报已提交，我们将尽快处理。</span>';document.getElementById('repUrl').value='';document.getElementById('repReason').value='';document.getElementById('repContact').value='';}
+        else msg.innerHTML='<span class="err">'+(x.j&&x.j.error||'提交失败')+'</span>';})
+      .catch(function(e){msg.innerHTML='<span class="err">网络错误：'+e.message+'</span>';});
+  });
 })();
 </script>
 </body></html>

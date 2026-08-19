@@ -10,7 +10,7 @@
     "convert": "node bin/cli.js convert",
     "serve": "node bin/cli.js serve",
     "export-site": "node bin/cli.js export-site docs site-export.zip",
-    "test": "node test-serve.js && node test-hhc.js && node test-fulltext.js && node test-fixlinks.js && node test-site.js && node test-zip.js && node test-export-docs.js && node test-auth.js && node test-quota.js && node test-xss.js && node test-search-api.js && node test-atomic.js && node test-db.js && node test-charset.js"
+    "test": "node test-serve.js && node test-hhc.js && node test-fulltext.js && node test-fixlinks.js && node test-site.js && node test-zip.js && node test-export-docs.js && node test-auth.js && node test-quota.js && node test-xss.js && node test-search-api.js && node test-atomic.js && node test-db.js && node test-charset.js && node test-auth-v2.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

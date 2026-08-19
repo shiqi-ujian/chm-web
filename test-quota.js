@@ -18,7 +18,8 @@ const SITE = path.join(tmpRoot, 'site'); const DATA = path.join(tmpRoot, 'data')
 const srv = spawn(process.execPath, [path.join(root, 'src', 'server.js')], {
   cwd: root,
   env: { ...process.env, PORT: '18084', CHM_SITE: SITE, CHM_DATA: DATA,
-         MAX_USER_DOCS: '2', MAX_USER_BYTES: String(10 * 1024 * 1024) },
+         MAX_USER_DOCS: '2', MAX_USER_BYTES: String(10 * 1024 * 1024),
+         ALLOW_LEGACY_REGISTER: '1', NO_CSRF: '1' },
   stdio: 'pipe',
 });
 let pass = true;
@@ -37,7 +38,8 @@ function upload(token, filename) {
   return new Promise((resolve) => {
     const bd = '----qd' + Date.now() + Math.random().toString(36).slice(2);
     const buf = fs.readFileSync(CHM);
-    const head = Buffer.from('--' + bd + '\r\nContent-Disposition: form-data; name="visibility"\r\n\r\npublic\r\n--' + bd +
+    const head = Buffer.from('--' + bd + '\r\nContent-Disposition: form-data; name="acceptTerms"\r\n\r\ntrue\r\n--' + bd +
+      '\r\nContent-Disposition: form-data; name="visibility"\r\n\r\npublic\r\n--' + bd +
       '\r\nContent-Disposition: form-data; name="file"; filename="' + (filename || 'd.chm') + '"\r\nContent-Type: application/octet-stream\r\n\r\n');
     const tail = Buffer.from('\r\n--' + bd + '--\r\n');
     const body = Buffer.concat([head, buf, tail]);

@@ -23,11 +23,12 @@ initQuota(DATA_DIR, {
   MAX_USER_BYTES: process.env.MAX_USER_BYTES,
 });
 
-// —— 接口限流（滑动窗口，进程内存态）：防止账号/上传被暴力刷爆。
+// —— 接口限流（滑动窗口，进程内存态）：防止账号/上传/导出/搜索被暴力刷爆。
 const rateLimits = {
   auth: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_AUTH_MAX) || 30 }),
   upload: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_UPLOAD_MAX) || 20 }),
   export: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_EXPORT_MAX) || 30 }),
+  search: new SlidingWindow({ windowMs: 60 * 1000, max: Number(process.env.RATE_SEARCH_MAX) || 120 }),
 };
 function limited(limiter, key, res) {
   if (!limiter.allow(key)) { sendJSON(res, 429, { ok: false, error: '请求过于频繁，请稍后再试' }); return true; }
@@ -69,6 +70,13 @@ function authorized(req, token) {
   if (!got || got.length !== token.length) return false;
   // 常量时间比较，避免时序侧信道
   return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(token));
+}
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+function adminAuthorized(req) {
+  if (!ADMIN_TOKEN) return false;
+  const got = (req.headers['x-admin-token'] || '').trim();
+  if (!got || got.length !== ADMIN_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(ADMIN_TOKEN));
 }
 function deny(req, res) {
   sendJSON(res, 401, { ok: false, error: '需要有效的访问令牌' });
@@ -149,6 +157,29 @@ function parseCookies(req) {
   return out;
 }
 
+// —— CSRF 防护（轻量）——
+// 写操作要求自定义头 X-CSRF，值为 server 下发到页面的随机 token（存 cookie）。
+// 前端所有写请求统一带 X-CSRF；本地/未登录测试若未启用 CSRF 环境变量，则不强校验。
+const CSRF_SECRET = process.env.CSRF_SECRET || '';
+function csrfTokenFor(req) {
+  const cookies = parseCookies(req);
+  const existing = cookies.chm_csrf;
+  if (existing && existing.length >= 16) return existing;
+  return crypto.randomBytes(16).toString('hex');
+}
+function enforceCsrf(req, res) {
+  if (process.env.NO_CSRF === '1') return true; // 本地调试/测试可关
+  const cookies = parseCookies(req);
+  const cookieTok = cookies.chm_csrf || '';
+  const headerTok = req.headers['x-csrf-token'] || '';
+  if (!cookieTok || !headerTok || cookieTok.length !== headerTok.length) return false;
+  // 常量时间比较
+  return crypto.timingSafeEqual(Buffer.from(cookieTok), Buffer.from(headerTok));
+}
+function setCsrfCookie(res, token) {
+  setCookie(res, 'chm_csrf', token, { httpOnly: false, maxAge: 60 * 60 * 24 * 7, sameSite: 'Lax' });
+}
+
 /** 当前登录用户：优先 X-User-Token 头，其次 chm_user cookie */
 function currentUser(req) {
   const t = (req.headers['x-user-token'] || '').trim() || parseCookies(req).chm_user;
@@ -162,6 +193,12 @@ function setCookie(res, name, value, opts = {}) {
   if (opts.sameSite) parts.push('SameSite=' + opts.sameSite);
   if (opts.secure) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+/** 当前登录用户信息（含邮箱/验证状态）；未登录返回 null */
+function currentUserInfo(req) {
+  const u = currentUser(req);
+  return u ? auth.getUser(u) : null;
 }
 
 /** JSON API 统一包装：解析 body → 执行 → 回 JSON；AuthError/UploadError 映射状态码 */
@@ -234,6 +271,8 @@ async function handleUpload(req, res) {
   const username = currentUser(req);
   if (!username) { sendJSON(res, 401, { ok: false, error: '请先登录后再上传' }); return; }
   const visibility = (form.fields.visibility || 'public').trim() === 'private' ? 'private' : 'public';
+  const uploadAccept = (form.fields.acceptTerms || 'false').trim();
+  if (uploadAccept !== 'true') { sendJSON(res, 403, { ok: false, error: '请先勾选确认拥有合法权利/授权' }); return; }
 
   // 配额：校验前先锁定在内存使用量（文档数 + 字节），超限 429/413/507。
   let quotaRegistered = false;
@@ -474,6 +513,14 @@ function route(req, res) {
   try { u = new URL(req.url, 'http://x'); } catch (_) { u = null; }
   if (!u) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Bad Request'); return; }
   const urlPath = u.pathname;
+  // 写操作统一 CSRF 防护（本地测试/旧客户端可 NO_CSRF=1 关闭）
+  if (req.method !== 'GET' && req.method !== 'HEAD' && process.env.NO_CSRF !== '1' && !enforceCsrf(req, res)) {
+    sendJSON(res, 403, { ok: false, error: 'CSRF 校验失败，请刷新页面重试' }); return;
+  }
+  // 给所有页面响应种 CSRF cookie（简化，前端读 cookie 后放头）
+  if (req.method === 'GET' && urlPath !== '/api/' && !parseCookies(req).chm_csrf) {
+    setCsrfCookie(res, csrfTokenFor(req));
+  }
   if (req.method === 'POST' && urlPath === '/api/register') {
     if (limited(rateLimits.auth, 'auth:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
     handleJson(req, res, (b) => auth.register(b));
@@ -496,19 +543,54 @@ function route(req, res) {
       return auth.changePassword(currentUser(req), b.oldPassword, b.newPassword, tok);
     });
   } else if (req.method === 'GET' && urlPath === '/api/me') {
-    sendJSON(res, 200, { user: currentUser(req) });
+    sendJSON(res, 200, { user: currentUser(req), info: currentUserInfo(req) });
   } else if (req.method === 'GET' && urlPath === '/api/docs') {
     sendJSON(res, 200, { docs: listDocs(currentUser(req)) });
   } else if (req.method === 'GET' && urlPath === '/api/usage') {
     const u = currentUser(req);
     sendJSON(res, 200, u ? { usage: usageOf(u), username: u } : { usage: null, username: null });
   } else if (req.method === 'GET' && urlPath === '/api/search') {
+    // 搜索限流：避免公开接口被高频抓取/滥用
+    if (limited(rateLimits.search, 'search:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
     // B1 服务端检索：分页 + 高亮片段；文档一多时比前端整包拉索引更稳。
-    // 复用 route() 顶部已解析的 u（避免重复解析与重声明）
     const q = (u.searchParams.get('q') || '').trim();
     const limit = Math.min(Number(u.searchParams.get('limit')) || 10, 50);
     const offset = Math.max(Number(u.searchParams.get('offset')) || 0, 0);
     sendJSON(res, 200, LibSearch.search(SITE_ROOT, q, { limit, offset }));
+  } else if (req.method === 'GET' && urlPath === '/api/verify-email') {
+    handleJson(req, res, () => auth.verifyEmailCode(u.searchParams.get('token') || ''));
+  } else if (req.method === 'POST' && urlPath === '/api/verify-email') {
+    handleJson(req, res, (b) => auth.verifyEmailCode(b && b.token));
+  } else if (req.method === 'POST' && urlPath === '/api/resend-verification') {
+    handleJson(req, res, () => auth.requestEmailVerification(currentUser(req)));
+  } else if (req.method === 'POST' && urlPath === '/api/forgot-password') {
+    handleJson(req, res, (b) => auth.forgotPassword(b && b.usernameOrEmail));
+  } else if (req.method === 'POST' && urlPath === '/api/reset-password') {
+    handleJson(req, res, (b) => auth.resetPassword(b && b.token, b && b.newPassword));
+  } else if (req.method === 'POST' && urlPath === '/api/report') {
+    handleJson(req, res, (b) => auth.createReport({
+      docId: b && b.docId, url: b && b.url, reason: b && b.reason, contact: b && b.contact,
+      ip: (req.socket && req.socket.remoteAddress) || null,
+    }));
+  } else if (req.method === 'GET' && urlPath.startsWith('/admin/reports')) {
+    // 管理端：ADMIN_TOKEN 校验
+    if (!adminAuthorized(req)) { sendJSON(res, 401, { ok: false, error: '需要管理员令牌' }); return; }
+    const st = u.searchParams.get('status') || '';
+    sendJSON(res, 200, { ok: true, reports: auth.listReports({ status: st || undefined }) });
+  } else if (req.method === 'POST' && urlPath === '/admin/remove-doc') {
+    if (!adminAuthorized(req)) { sendJSON(res, 401, { ok: false, error: '需要管理员令牌' }); return; }
+    handleJson(req, res, (b) => {
+      const id = String(b && b.docId || '').trim();
+      if (!id) throw new auth.AuthError('缺少 docId', 400);
+      const meta = auth.getMeta(id);
+      if (meta && meta.owner) releaseQuota(meta.owner, removeDocFiles(id).size);
+      const { removed, size } = removeDocFiles(id);
+      if (meta && meta.owner) releaseQuota(meta.owner, size);
+      // 管理员下架：不经过 owner 校验，直接删除元数据
+      try { dbm.db.prepare('DELETE FROM meta WHERE doc_id=?').run(id); } catch (_) {}
+      rebuildSite();
+      return { id, removed };
+    });
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/visibility$/.test(urlPath)) {
     const id = decodeURIComponent(urlPath.split('/')[3]);
     handleJson(req, res, (b) => {
