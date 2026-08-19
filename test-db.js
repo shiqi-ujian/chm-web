@@ -57,7 +57,29 @@ auth.init(tmp2);
 ok('reopen idempotent (user still 1)', dbm.db.prepare('SELECT COUNT(*) c FROM users').get().c === 1, '');
 ok('reopen: imported session still there', dbm.db.prepare('SELECT 1 FROM sessions WHERE token=?').get('tok1') !== undefined, '');
 ok('reopen: imported meta still there', auth.getMeta('m1') !== null, '');
+dbm.close();
+
+// ---- 3) 旧库缺列升级（回归：线上崩溃根因）----
+// 构造只有旧 4 列的 users 表（无 email 等新列），open 必须成功补列、建索引、保留数据
+const tmp3 = fs.mkdtempSync(path.join(os.tmpdir(), 'chmweb-db-old-'));
+const Database = require('better-sqlite3');
+const old = new Database(path.join(tmp3, 'app.db'));
+old.exec(`
+  CREATE TABLE users (username TEXT PRIMARY KEY, salt TEXT NOT NULL, hash TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE sessions (token TEXT PRIMARY KEY, username TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE meta (doc_id TEXT PRIMARY KEY, owner TEXT, name TEXT, visibility TEXT NOT NULL DEFAULT 'public', share_token TEXT, created_at INTEGER NOT NULL);
+`);
+old.exec(`INSERT INTO users VALUES ('legacy','s','h',1)`);
+old.close();
+
+auth.init(tmp3); // 不应抛异常（旧库升级必须幂等成功）
+const cols3 = dbm.db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+ok('old-schema upgrade: email column added', cols3.includes('email'), cols3.join(','));
+ok('old-schema upgrade: email_verified column added', cols3.includes('email_verified'), '');
+ok('old-schema upgrade: email index created', dbm.db.prepare(`SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_users_email'`).get() !== undefined, '');
+ok('old-schema upgrade: data preserved', dbm.db.prepare('SELECT COUNT(*) c FROM users').get().c === 1, '');
+dbm.close();
 
 console.log(pass ? 'DB_TEST_PASS' : 'DB_TEST_FAIL');
-try { fs.rmSync(tmp, { recursive: true, force: true }); fs.rmSync(tmp2, { recursive: true, force: true }); } catch (_) {}
+try { fs.rmSync(tmp, { recursive: true, force: true }); fs.rmSync(tmp2, { recursive: true, force: true }); fs.rmSync(tmp3, { recursive: true, force: true }); } catch (_) {}
 process.exit(pass ? 0 : 1);
