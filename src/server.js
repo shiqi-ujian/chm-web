@@ -7,7 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { processUpload, UploadError, cleanupTmp } = require('./lib/upload');
 const landing = require('./lib/landing');
-const { exportSite, exportDocs } = require('./lib/site-export');
+const { exportSite, exportDocs, exportDocDirs } = require('./lib/site-export');
 const auth = require('./lib/auth');
 const dbm = require('./lib/db');
 const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf } = require('./lib/quota');
@@ -459,6 +459,40 @@ function handleExportDocs(req, res) {
     else { deny(req, res); return; }
   }
   const u = new URL(req.url, 'http://x');
+  // 新：支持 POST JSON { ids }，用于上传完直接打包（公开 + 自己的私有文档都可导出）
+  if (req.method === 'POST') {
+    handleJson(req, res, async (b) => {
+      const ids = Array.isArray(b && b.ids) ? b.ids.map(String).filter(Boolean) : [];
+      const user = currentUser(req);
+      const dirs = [];
+      for (const id of ids) {
+        const meta = auth.getMeta(id);
+        const pub = path.join(SITE_ROOT, 'd', id);
+        if (fs.existsSync(pub) && fs.statSync(pub).isDirectory()) {
+          dirs.push({ dir: pub, rel: 'd/' + String(id).replace(/\\/g, '/').replace(/^\/+/, ''), name: (meta && meta.name) || id });
+          continue;
+        }
+        const priv = auth.privateDir(id);
+        if (fs.existsSync(priv) && fs.statSync(priv).isDirectory()) {
+          // 私有文档：登录用户须为 owner；若走服务方 EXPORT_TOKEN 也放行
+          if (!(user && meta && meta.owner === user) && !authorized(req, EXPORT_TOKEN)) {
+            throw new auth.AuthError('无权导出私有文档：' + id, 403);
+          }
+          dirs.push({ dir: priv, rel: 'p/' + String(id).replace(/\\/g, '/').replace(/^\/+/, ''), name: (meta && meta.name) || id });
+        }
+      }
+      if (!dirs.length) throw new auth.AuthError('没有可导出的文档', 404);
+      const r = exportDocDirs({
+        siteRoot: SITE_ROOT,
+        dataDir: DATA_DIR,
+        dirs,
+        title: (b && b.title) || (dirs.length > 1 ? '批量上传导出' : '单篇上传导出'),
+      });
+      // handleJson 会把返回对象 JSON 序列化；zip 转 base64 交给前端下载
+      return { zip: r.zip.toString('base64'), manifest: r.manifest, count: dirs.length };
+    });
+    return;
+  }
   const ids = (u.searchParams.get('ids') || '')
     .split(',')
     .map((s) => s.trim())
@@ -632,6 +666,8 @@ function route(req, res) {
   } else if (req.method === 'GET' && urlPath === '/site-export.zip') {
     handleSiteExport(req, res);
   } else if (req.method === 'GET' && urlPath === '/api/export-docs') {
+    handleExportDocs(req, res);
+  } else if (req.method === 'POST' && urlPath === '/api/export-docs') {
     handleExportDocs(req, res);
   } else {
     serveStatic(req, res);

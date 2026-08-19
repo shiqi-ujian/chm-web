@@ -37,6 +37,8 @@ jobs:
           node test-search-api.js
           node test-atomic.js
           node test-db.js
+          node test-charset.js
+          node test-auth-v2.js
 
       # 全站导出冒烟（生成 site-export.zip 验证打包链路）
       - name: Export smoke

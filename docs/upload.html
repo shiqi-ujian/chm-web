@@ -164,11 +164,15 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
           <div id="progBar" style="height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#7c3aed,#c084fc);transition:width .15s ease"></div>
         </div>
       </div>
+      <div id="batchDone" style="display:none;margin-top:14px;text-align:center">
+        <button class="btn" id="packZip" type="button">⬇ 把刚上传的这篇打包成 zip 下载</button>
+        <div style="font-size:13px;color:var(--mut);margin-top:6px">公开文档直接生成独立静态站点；私密文档也会一并打包。</div>
+      </div>
       <div class="message" id="msg"></div>
       <div style="text-align:center"><button class="btn" id="go" disabled>转换文档</button></div>
     </div>
     <div class="card" style="margin-top:18px;padding:20px;font-size:13.5px;color:var(--mut)">
-      <b>批量说明</b>：可一次选择多个 .chm，逐个转换并汇总进度；转换后到「我的文档」里管理可见性与分享。
+      <b>批量说明</b>：可一次选择多个 .chm，逐个转换并汇总进度；转换完成后可直接把整批打包成 zip 下载，也可到「我的文档」里管理可见性与分享。
     </div>
     <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--mut);cursor:pointer">
       <input type="checkbox" id="uploadAgree">
@@ -314,7 +318,15 @@ loadMe();
   function updateGate(){if(window.currentUser){work.style.display='';gate.style.display='none';}else{work.style.display='none';gate.style.display='';}}
   window.__onAuth=updateGate;loadMe();updateGate();
   var file=document.getElementById('file'),drop=document.getElementById('drop'),go=document.getElementById('go'),msg=document.getElementById('msg');
-  var all=[],seq=0,ok=[],fail=[];
+  var all=[],seq=0,ok=[],fail=[],okId=[];
+  var batchDone=document.getElementById('batchDone'),packBtn=document.getElementById('packZip');
+  function packZip(){if(!okId.length)return;var ids=okId.slice();if(packBtn)packBtn.disabled=true;
+    fetch('/api/export-docs',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({ids:ids,title:ids.length>1?'批量上传导出':'单篇上传导出'})}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+      if(packBtn)packBtn.disabled=false;
+      if(x.st===200&&x.j&&x.j.zip){var blob=new Blob([Uint8Array.from(atob(x.j.zip),function(c){return c.charCodeAt(0);})],{type:'application/zip'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='chm-web-docs-'+Date.now()+'.zip';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);document.body.removeChild(a);},200);msg.innerHTML='<span class="ok">打包完成，已开始下载。</span>';}
+      else{msg.innerHTML='<span class="err">打包失败：'+(x.j&&x.j.error||'未知错误')+'</span>';}
+    }).catch(function(e){if(packBtn)packBtn.disabled=false;msg.innerHTML='<span class="err">网络错误：'+e.message+'</span>';});}
+  if(packBtn)packBtn.addEventListener('click',packZip);
   function sel(){var pk=document.getElementById('filePick');pk.innerHTML=all.map(function(f,i){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px">'+
     '<b>'+escS(f.name)+'</b><button type="button" data-i="'+i+'" class="rm" style="border:0;background:var(--hover);border-radius:50%;width:22px;height:22px;cursor:pointer">✕</button></div>';}).join('');
     Array.prototype.forEach.call(pk.querySelectorAll('.rm'),function(b){b.addEventListener('click',function(){all.splice(+b.getAttribute('data-i'),1);sel();});});
@@ -324,6 +336,7 @@ loadMe();
   var progWrap=document.getElementById('progWrap'),progBar=document.getElementById('progBar'),progPct=document.getElementById('progPct'),progLabel=document.getElementById('progLabel');
   function setProg(p,label){if(!progWrap)return;progWrap.style.display='';progBar.style.width=Math.max(0,Math.min(100,p))+'%';progPct.textContent=Math.round(p)+'%';if(label)progLabel.textContent=label;}
   function hideProg(){if(progWrap)progWrap.style.display='none';}
+  var isDone=false;
   function doUpload(f,cb,onProg){var fd=new FormData();fd.append('file',f);fd.append('visibility',vis());
     fd.append('acceptTerms', (document.getElementById('uploadAgree')||{}).checked ? 'true':'false');
     var xhr=new XMLHttpRequest();
@@ -333,13 +346,13 @@ loadMe();
     xhr.upload.onprogress=function(e){if(e.lengthComputable&&onProg)onProg(e.loaded/e.total*100);};
     xhr.onloadstart=function(){if(onProg)onProg(0);};
     xhr.onload=function(){if(onProg)onProg(100,'正在转换（解包 + 生成阅读页）…');var j={};try{j=JSON.parse(xhr.responseText);}catch(e){}
-      if(xhr.status===200&&j.ok)ok.push(j.name||f.name);else fail.push(f.name);cb();};
-    xhr.onerror=function(){fail.push(f.name);cb();};
+      if(xhr.status===200&&j.ok){ok.push(j.name||f.name);if(j.id)okId.push(j.id);}else fail.push(f.name);cb();};
     xhr.send(fd);}
   function runBatch(){var files=all.slice();if(!files.length){msg.innerHTML='<span class="err">先选择 .chm 文件</span>';return;}
     var ag=document.getElementById('uploadAgree');if(!ag||!ag.checked){msg.innerHTML='<span class="err">请先勾选确认拥有合法权利/授权</span>';return;}
-    var mySeq=++seq;go.disabled=true;ok=[];fail=[];
-    function finish(){go.disabled=false;all=[];sel();hideProg();
+    var mySeq=++seq;go.disabled=true;ok=[];fail=[];okId=[];isDone=false;if(batchDone)batchDone.style.display='none';
+    function finish(){go.disabled=false;all=[];sel();hideProg();isDone=!!ok.length;
+      if(isDone&&batchDone){batchDone.style.display='';packBtn.textContent=ok.length>1?'⬇ 把刚上传的 '+ok.length+' 篇一起打包成 zip 下载':'⬇ 把刚上传的这篇打包成 zip 下载';}
       msg.innerHTML=fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>');}
     (function loop(i){if(i>=files.length)return finish();var f=files[i];
       go.textContent='转换中 '+i+'/'+files.length;
