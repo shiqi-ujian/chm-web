@@ -323,7 +323,7 @@ loadMe();
   function updateBatchBar(){if(!batchBar)return;var n=Object.keys(selected).length;if(selCount)selCount.textContent=n;batchBar.style.display=n?'flex':'none';}
   function fmtSize(b){b=+b||0;if(b>=1048576)return (b/1048576).toFixed(1)+' MB';if(b>=1024)return (b/1024).toFixed(1)+' KB';return b+' B';}
   function loadUsage(){if(!window.currentUser||!window.fetch||!usageCard)return;fetch('/api/usage',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
-    if(j&&j.usage&&usageCard){usageCard.style.display='';usageText.textContent=(j.usage.docs||0)+' 篇 / '+fmtSize(j.usage.bytes||0);}}
+    if(j&&j.usage&&usageCard){usageCard.style.display='';usageText.textContent=(j.usage.docs||0)+' 篇 / '+fmtSize(j.usage.bytes||0);}})
     .catch(function(){});}
   function editMeta(id,name,tags,author){var nn=prompt('重命名文档',name||'');if(nn==null)return;var na=prompt('作者（可留空）',author||'');if(na==null)return;var nt=prompt('标签（用逗号分隔，最多 10 个）',(tags||[]).join(', '));if(nt==null)return;
     fetch('/api/doc/'+encodeURIComponent(id)+'/meta',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({name:nn.trim(),author:na.trim(),tags:String(nt).split(/[,，;s]+/).filter(function(t){return t.trim();})})})
