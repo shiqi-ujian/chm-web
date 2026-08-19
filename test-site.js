@@ -31,6 +31,7 @@ setTimeout(async () => {
     ok('GET / landing 200', home.st === 200);
     ok('landing has search box', home.body.includes('id="siteq"'));
     ok('landing loads site-index', home.body.includes('site-index.json'));
+    ok('landing doc grid renders', home.body.includes('doc-grid') && home.body.includes('doc-card'));
 
     const si = await get('/site-index.json');
     let siok = false;

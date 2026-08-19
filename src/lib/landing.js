@@ -125,6 +125,11 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .modal .err{color:var(--err);font-size:12.5px;margin-top:10px;min-height:16px}
 .row-card{display:flex;align-items:center;gap:14px;padding:18px;margin-bottom:12px;transition:.16s box-shadow}
 .row-card:hover{box-shadow:var(--shadow-md)}
+.doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.doc-card{display:flex;flex-direction:column;gap:8px;padding:18px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-sm);transition:.16s box-shadow,transform}
+.doc-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.doc-card .doc-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.doc-card .doc-tags{display:flex;flex-wrap:wrap;gap:6px}
 @media(max-width:640px){.header .logo span.txt{display:none}.row-card{gap:10px;padding:14px}}
 @media(max-width:480px){.modal .box{padding:20px}.btn{padding:12px 18px}}
 `;
@@ -467,8 +472,8 @@ const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
     <div class="card" style="padding:20px;text-align:center"><div style="font-size:26px">📱</div><b style="display:block;margin-top:6px">随处浏览</b><p style="font-size:13px;color:var(--mut);margin:4px 0 0">手机 / 电脑打开即读，可搜索</p></div>
   </div>
   <div style="text-align:center"><a class="btn" href="upload.html">立即上传 →</a></div>
-  <div style="max-width:680px;margin:40px auto 0">
-    <h2 style="font-size:18px;margin:0 0 14px">热门文档</h2>
+  <div style="max-width:820px;margin:40px auto 0">
+    <h2 style="font-size:18px;margin:0 0 14px">公开文档</h2>
     <div id="recentDocs"></div>
   </div>`, `
   /* 欢迎页：全站搜索 + 热门文档 */
@@ -495,11 +500,14 @@ const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
     if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
     arr=arr.filter(function(d){return d.visibility!=='private';});
     if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
-    box.innerHTML=arr.slice(0,6).map(function(d){var priv=d.visibility==='private';
-      return '<div class="card row-card" style="flex-wrap:wrap"><span style="font-size:24px">📘</span>'+
-      '<span style="flex:1;min-width:0"><b style="display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+escS(d.name||d.id)+'</b>'+
-      '<span class="tag '+(priv?'priv':'pub')+'">'+(priv?'私密':'公开')+'</span></span>'+
-      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开 →</a></div>';}).join('');}
+    box.innerHTML='<div class="doc-grid">'+arr.slice(0,6).map(function(d){
+      var tags=(d.tags||[]).map(function(t){return '<span class="tag">#'+escS(t)+'</span>';}).join('');
+      return '<div class="card doc-card"><span style="font-size:28px">📘</span>'+
+      '<b class="doc-title">'+escS(d.name||d.id)+'</b>'+
+      (d.author?'<div style="font-size:12.5px;color:var(--mut)">作者：'+escS(d.author)+'</div>':'')+
+      '<span class="tag pub">公开</span>'+
+      (tags?'<div class="doc-tags">'+tags+'</div>':'')+
+      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm" style="margin-top:auto">打开 →</a></div>';}).join('')+'</div>';}
   function recent(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs){window.__setDocs(j.docs);recentRender(j.docs);}}).catch(function(){recentRender();});}
   recent();
   window.__onAuth=function(){renderAuth();if(window.location.hash==='#mine')location.reload();};
