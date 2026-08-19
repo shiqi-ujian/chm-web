@@ -28,6 +28,15 @@ function ensureColumn(table, column, ddl) {
   }
 }
 
+/** 幂等创建索引（必须在补列之后调用，避免旧库缺列崩溃）。 */
+function ensureIndex(table, index, columns) {
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS ${index} ON ${table}(${columns})`);
+  } catch (e) {
+    console.error('[db] ensureIndex failed', table, index, e);
+  }
+}
+
 function open(dir) {
   if (db) return db;
   dataDir = path.resolve(dir);
@@ -57,7 +66,6 @@ function open(dir) {
       terms_accepted_at INTEGER,
       updated_at INTEGER
     );
-    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE TABLE IF NOT EXISTS sessions (
       token      TEXT PRIMARY KEY,
       username   TEXT NOT NULL,
@@ -113,6 +121,8 @@ function open(dir) {
   ensureColumn('users', 'created_ip', 'TEXT');
   ensureColumn('users', 'terms_accepted_at', 'INTEGER');
   ensureColumn('users', 'updated_at', 'INTEGER');
+  // 索引必须在补列之后创建，否则旧库（无 email 列）会在此崩溃
+  ensureIndex('users', 'idx_users_email', 'email');
 
   // 老库升级：meta 增加文档管理字段（幂等）
   ensureColumn('meta', 'updated_at', 'INTEGER');
