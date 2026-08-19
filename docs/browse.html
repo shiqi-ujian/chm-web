@@ -144,7 +144,8 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
   <div class="sub">所有公开文档，随时翻阅。</div></div>
 <div class="wrap">
   <div style="max-width:820px;margin:28px auto 0">
-    <input class="in" id="browseQ" placeholder="在标题中筛选…" style="margin-bottom:18px">
+    <input class="in" id="browseQ" placeholder="在标题中筛选…" style="margin-bottom:12px">
+    <div id="browseFilters" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
     <div id="browseList"></div>
   </div></div>
 <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示<br>
@@ -281,19 +282,37 @@ window.__docs=DOCS;window.__setDocs=function(d){window.__docs=d;};
 window.__onAuth=window.__onAuth||function(){};
 loadMe();
 
-  var box=document.getElementById('browseList');
+  var box=document.getElementById('browseList'),q=document.getElementById('browseQ'),filters=document.getElementById('browseFilters');
+  var fTag='',fAuthor='';
   function render(list){var arr=list&&list.length?list:window.__docs||[];
-    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">暂无文档</div>';return;}
-    box.innerHTML=arr.filter(function(d){return d.visibility!=='private';}).map(function(d){
+    arr=arr.filter(function(d){return d.visibility!=='private';});
+    if(fTag)arr=arr.filter(function(d){return (d.tags||[]).indexOf(fTag)!==-1;});
+    if(fAuthor)arr=arr.filter(function(d){return (d.author||'')===fAuthor;});
+    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">没有匹配的文档</div>';return;}
+    box.innerHTML=arr.map(function(d){
       return '<div class="card row-card"><span style="font-size:24px">📘</span>'+
       '<span style="flex:1;min-width:0"><b style="display:block;font-size:16px">'+escS(d.name||d.id)+'</b>'+
-      '<span class="tag pub">公开</span></span>'+
-      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开 →</a></div>';}).join('');}
-  function load(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(j.docs);}).catch(function(){render();});}
-  load();
-  var q=document.getElementById('browseQ');if(q)q.addEventListener('input',function(){var s=q.value.trim().toLowerCase();
-    var arr=(window.__docs||[]).filter(function(d){return (d.name||d.id||'').toLowerCase().indexOf(s)!==-1;});render(arr);});
-  window.__onAuth=function(){};
+      (d.author?'<div style="font-size:13px;color:var(--mut)">作者：'+escS(d.author)+'</div>':'')+
+      '<span class="tag pub">公开</span>'+
+      (d.tags||[]).map(function(t){return '<span class="tag" data-tag="'+escS(t)+'" style="cursor:pointer">#'+escS(t)+'</span>';}).join('')+
+      '</span>'+
+      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开 →</a></div>';}).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(){fTag=b.getAttribute('data-tag');refresh();});});
+  }
+  function renderFilters(allArr){var tagSet=[],authorSet=[];(allArr||[]).forEach(function(d){if(d.visibility==='private')return;(d.tags||[]).forEach(function(t){if(tagSet.indexOf(t)===-1)tagSet.push(t);});if(d.author&&authorSet.indexOf(d.author)===-1)authorSet.push(d.author);});
+    var h='';
+    if(tagSet.length){h+='<button class="btn ghost sm" data-tag="" style="'+(fTag===''?'border-color:var(--acc);color:var(--acc)':'')+'">全部标签</button>'+tagSet.map(function(t){return '<button class="btn ghost sm" data-tag="'+escS(t)+'" style="'+(fTag===t?'border-color:var(--acc);color:var(--acc)':'')+'">#'+escS(t)+'</button>';}).join('');}
+    if(authorSet.length){h+='<button class="btn ghost sm" data-author="" style="'+(fAuthor===''?'border-color:var(--acc);color:var(--acc)':'')+'">全部作者</button>'+authorSet.map(function(a){return '<button class="btn ghost sm" data-author="'+escS(a)+'" style="'+(fAuthor===a?'border-color:var(--acc);color:var(--acc)':'')+'">'+escS(a)+'</button>';}).join('');}
+    if(filters)filters.innerHTML=h;
+    Array.prototype.forEach.call(filters.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(){fTag=b.getAttribute('data-tag');fAuthor='';refresh();});});
+    Array.prototype.forEach.call(filters.querySelectorAll('[data-author]'),function(b){b.addEventListener('click',function(){fAuthor=b.getAttribute('data-author');fTag='';refresh();});});
+  }
+  function allArr(){return window.__docs||[];}
+  function refresh(){var s=(q&&q.value||'').trim().toLowerCase();var arr=allArr().filter(function(d){return (d.name||d.id||'').toLowerCase().indexOf(s)!==-1;});renderFilters(allArr());render(arr);}
+  function load(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs){window.__setDocs(j.docs);refresh();}}).catch(function(){refresh();});}
+  if(q)q.addEventListener('input',refresh);
+  load();refresh();
+  window.__onAuth=function(){load();};
 })();
 </script>
 </body></html>
