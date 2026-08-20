@@ -853,7 +853,7 @@ function buildFullText(docDir) {
 
 module.exports = { build, renderTree, esc, buildFullText };
 
-function build({ outDir, hhcFile, hhkFile, title, urlPrefix }) {
+function build({ outDir, hhcFile, hhkFile, title, urlPrefix, skipIndexes }) {
   const dir = path.resolve(outDir);
   let tree = [];
   if (hhcFile && fs.existsSync(hhcFile)) tree = parseHhcFile(hhcFile, dir);
@@ -898,12 +898,16 @@ function build({ outDir, hhcFile, hhkFile, title, urlPrefix }) {
 
   const navHtml = renderTree(tree, dir);
   const tocJson = toTocJson(tree, dir, 0, urlPrefix || '').nodes;
+  // keywords.json / search-index.json 与 URL 前缀无关（内部用相对路径，消费端动态加前缀）。
+  // 转私有/公开、启动修复壳时内容没变，跳过重建可避免全量扫描文档（大文档几百 MB、
+  // 几千个 HTML，buildFullText 同步扫会阻塞事件循环 → 按钮"卡死"）。
   let kw = { keywords: [] };
-  if (hhkFile && fs.existsSync(hhkFile)) kw = { keywords: parseHhk(hhkFile, dir) };
-
-  fs.writeFileSync(path.join(dir, 'keywords.json'), JSON.stringify(kw, null, 2));
-  fs.writeFileSync(path.join(dir, 'search-index.json'),
-    JSON.stringify(buildFullText(dir)));
+  if (!skipIndexes) {
+    if (hhkFile && fs.existsSync(hhkFile)) kw = { keywords: parseHhk(hhkFile, dir) };
+    fs.writeFileSync(path.join(dir, 'keywords.json'), JSON.stringify(kw, null, 2));
+    fs.writeFileSync(path.join(dir, 'search-index.json'),
+      JSON.stringify(buildFullText(dir)));
+  }
   fs.writeFileSync(path.join(dir, 'index.html'), shell({ title: title || path.basename(dir), home: homeHref, tocJson }));
   fs.writeFileSync(path.join(dir, '__chm_nav.html'),
     '<!doctype html><html><head><meta charset="utf-8"><title>目录</title>' +

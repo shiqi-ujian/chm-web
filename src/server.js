@@ -319,8 +319,8 @@ async function handleUpload(req, res) {
     const r = await withUploadSlot(() => processUpload(file.data, file.filename, {
       siteRoot: SITE_ROOT, dataDir: DATA_DIR, maxBytes: MAX_BYTES, visibility, owner: username,
     }));
-    // 更新"我的文档"索引（docs/_index.json，只含公开文档）并重建欢迎页
-    rebuildSite();
+    // 更新"我的文档"索引（docs/_index.json，只含公开文档）并重建欢迎页（异步，先返回）
+    queueRebuildSite();
     sendJSON(res, 200, { ok: true, ...r });
   } catch (e) {
     // 上传/转换失败时回收配额
@@ -411,21 +411,22 @@ function handleShare(req, res, urlPath) {
 function migrateDoc(id, visibility) {
   const priv = auth.privateDir(id);
   const pub = path.join(SITE_ROOT, 'd', id);
-  if (visibility === 'public') {
-    if (fs.existsSync(priv)) {
-      fs.mkdirSync(path.dirname(pub), { recursive: true });
-      if (fs.existsSync(pub)) fs.rmSync(pub, { recursive: true, force: true });
-      fs.cpSync(priv, pub, { recursive: true });
-      fs.rmSync(priv, { recursive: true, force: true });
+  // 优先 rename（同文件系统 O(1) 原子移动，不复制几百 MB）；跨设备才回退 cpSync+rm。
+  // 之前用 cpSync 同步复制大文档（如 285MB）会长时间阻塞事件循环 → 页面"卡死"。
+  const move = (from, to) => {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    if (fs.existsSync(to)) fs.rmSync(to, { recursive: true, force: true });
+    if (!fs.existsSync(from)) return;
+    try {
+      fs.renameSync(from, to);
+    } catch (e) {
+      if (e.code !== 'EXDEV') throw e;
+      fs.cpSync(from, to, { recursive: true });
+      fs.rmSync(from, { recursive: true, force: true });
     }
-  } else {
-    if (fs.existsSync(pub)) {
-      fs.mkdirSync(path.dirname(priv), { recursive: true });
-      if (fs.existsSync(priv)) fs.rmSync(priv, { recursive: true, force: true });
-      fs.cpSync(pub, priv, { recursive: true });
-      fs.rmSync(pub, { recursive: true, force: true });
-    }
-  }
+  };
+  if (visibility === 'public') move(priv, pub);
+  else move(pub, priv);
 }
 
 /** 重建欢迎页（公开清单）+ _index.json + 全站聚合检索索引 */
@@ -439,6 +440,17 @@ function rebuildSite() {
     // 重建后同步灌入 SQLite FTS 索引（在线检索底座）
     LibSearch.rebuild(SITE_ROOT);
   } catch (e) { console.error('site rebuild failed', e); }
+}
+
+/**
+ * 异步站点重建：用户写操作（上传/可见性/改名/删除）先返回响应，重建放到事件循环尾部。
+ * 合并多次触发（busy 期间再触发直接忽略），避免大站点下同步重建阻塞事件循环。
+ */
+let siteRebuildPending = false;
+function queueRebuildSite() {
+  if (siteRebuildPending) return;
+  siteRebuildPending = true;
+  setImmediate(() => { siteRebuildPending = false; rebuildSite(); });
 }
 
 /**
@@ -674,7 +686,7 @@ function route(req, res) {
       if (meta && meta.owner) releaseQuota(meta.owner, size);
       // 管理员下架：不经过 owner 校验，直接删除元数据
       try { dbm.db.prepare('DELETE FROM meta WHERE doc_id=?').run(id); } catch (_) {}
-      rebuildSite();
+      queueRebuildSite();
       return { id, removed };
     });
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/visibility$/.test(urlPath)) {
@@ -689,18 +701,18 @@ function route(req, res) {
         const privDir = path.join(DATA_DIR, 'private', id);
         if (fs.existsSync(privDir)) {
           try {
-            rebuildDocShell(privDir, id, meta.name || id, { visibility: 'private' });
+            rebuildDocShell(privDir, id, meta.name || id, { visibility: 'private', skipIndexes: true });
           } catch (e) { console.error('rebuild private shell after visibility change failed', id, e); }
         }
       } else {
         const pubDir = path.join(SITE_ROOT, 'd', id);
         if (fs.existsSync(pubDir)) {
           try {
-            rebuildDocShell(pubDir, id, meta.name || id, { visibility: 'public' });
+            rebuildDocShell(pubDir, id, meta.name || id, { visibility: 'public', skipIndexes: true });
           } catch (e) { console.error('rebuild public shell after visibility change failed', id, e); }
         }
       }
-      rebuildSite();                     // 重建欢迎页/索引
+      queueRebuildSite();                // 重建欢迎页/索引（异步，先返回响应）
       return { id, visibility: meta.visibility };
     });
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/meta$/.test(urlPath)) {
@@ -708,7 +720,7 @@ function route(req, res) {
     const id = decodeURIComponent(urlPath.split('/')[3]);
     handleJson(req, res, (b) => {
       const meta = auth.updateMeta(id, currentUser(req), b || {});
-      rebuildSite(); // 名称会出现在欢迎页/索引，重建保证一致
+      queueRebuildSite(); // 名称会出现在欢迎页/索引，异步重建保证一致
       return { id, meta };
     });
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
@@ -733,7 +745,7 @@ function route(req, res) {
       const { removed, size } = removeDocFiles(id);
       // 释放配额（删 1 文档 + 释放其体积）
       if (meta && meta.owner) releaseQuota(meta.owner, size);
-      rebuildSite();
+      queueRebuildSite();
       sendJSON(res, 200, { ok: true, id, removed });
     } catch (e) {
       if (e instanceof auth.AuthError) sendJSON(res, e.status || 400, { ok: false, error: e.message });

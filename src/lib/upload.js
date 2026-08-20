@@ -128,6 +128,9 @@ function rebuildDocShell(docDir, docId, title, o = {}) {
     hhkFile: hhk ? path.join(outDir, hhk) : null,
     title: title || docId,
     urlPrefix: isPrivate ? ('p/' + docId + '/') : '',
+    // 壳重建（转私有/公开、启动修复）不动索引（索引内容与前缀无关）；
+    // 首次上传（convertOne 未传 skipIndexes）才需要全量建索引
+    skipIndexes: o.skipIndexes === true,
   });
   return { docId, title: title || docId, hhc: hhc || null, hhk: hhk || null };
 }
@@ -149,7 +152,7 @@ function rebuildPrivateShells({ dataDir }) {
       const shell = path.join(dir, 'index.html');
       const content = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '';
       if (content.indexOf('/p/' + n + '/') !== -1) { skipped++; continue; }
-      rebuildDocShell(dir, n, n, { visibility: 'private' });
+      rebuildDocShell(dir, n, n, { visibility: 'private', skipIndexes: true });
       rebuilt++;
       out.push(n);
     } catch (e) {

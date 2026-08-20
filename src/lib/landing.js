@@ -745,7 +745,11 @@ const MINE = page('我的文档 · CHM 网页', true, `
   // 「我的文档」只展示当前登录用户自己上传的文档，绝不列公共区/他人/匿名种子文档。
   function mineOnly(list){return (list||[]).filter(function(d){return window.currentUser&&d.owner===window.currentUser;});}
   function toggleVis(id,btn){var target=btn.textContent.indexOf('公开')!==-1?'public':'private';
-    fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})}).then(function(){load();});}
+    var orig=btn.textContent;btn.disabled=true;btn.textContent='处理中…';
+    fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})})
+      .then(function(r){if(r.status!==200)return r.json().then(function(j){throw new Error((j&&j.error)||'操作失败');});return r.json();})
+      .then(function(){load();})
+      .catch(function(e){btn.disabled=false;btn.textContent=orig;alert('切换失败：'+e.message);});}
   function revokeShare2(id){if(!confirm('确认撤销该文档的分享链接？已有链接将立即失效。'))return;
     fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'DELETE',headers:userHeaders()}).then(function(r){return r.json();}).then(function(){load();}).catch(function(){alert('撤销失败');});}
   function manageShareFlow(id){if(window.confirm('管理分享链接？' + String.fromCharCode(10) + '确定：设置/更新有效期；取消：撤销当前分享。')){manageShare(id);}else{revokeShare2(id);}}
