@@ -108,7 +108,12 @@ function smtpSend({ to, subject, text }) {
             // 完整 RFC5322 头：QQ 等严格服务商会校验 From/Date/Message-ID（缺 From 直接 550）
             const encSubject = '=?UTF-8?B?' + Buffer.from(subject).toString('base64') + '?=';
             const msgId = '<' + Date.now() + '.' + Math.random().toString(16).slice(2) + '@' + (cfg.host || 'localhost') + '>';
-            const body = 'From: <' + cfg.from + '>\r\n'
+            // 发件显示名（SMTP_FROM_NAME，RFC2047 编码）：收件人看到「CHM 网页 <addr>」而非裸地址
+            const fromName = process.env.SMTP_FROM_NAME || '';
+            const fromHdr = fromName
+              ? 'From: =?UTF-8?B?' + Buffer.from(fromName).toString('base64') + '?= <' + cfg.from + '>\r\n'
+              : 'From: <' + cfg.from + '>\r\n';
+            const body = fromHdr
               + 'To: <' + to + '>\r\n'
               + 'Subject: ' + encSubject + '\r\n'
               + 'Date: ' + new Date().toUTCString() + '\r\n'
