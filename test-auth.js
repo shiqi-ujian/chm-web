@@ -114,6 +114,18 @@ async function main() {
   const me = await json('GET', '/api/me', null, { 'X-User-Token': tok });
   ok('me = alice', me.st === 200 && me.body.user === 'alice', JSON.stringify(me.body));
 
+  // ---- 强制邮箱验证（绑定真实邮箱的账号未验证禁止登录）----
+  const regE = await json('POST', '/api/register', { username: 'carol', email: 'carol@test.com', password: 'secret1' });
+  ok('register with email 200', regE.st === 200, String(regE.st));
+  const lgE1 = await json('POST', '/api/login', { username: 'carol', password: 'secret1' });
+  ok('unverified login 403', lgE1.st === 403 && /验证邮箱/.test(lgE1.body.error || ''), lgE1.st + ' ' + (lgE1.body.error || ''));
+  const Database = require('better-sqlite3');
+  const dbx = new Database(path.join(DATA, 'app.db'));
+  dbx.prepare("UPDATE users SET email_verified=1 WHERE username='carol'").run();
+  dbx.close();
+  const lgE2 = await json('POST', '/api/login', { username: 'carol', password: 'secret1' });
+  ok('verified login 200', lgE2.st === 200 && !!lgE2.body.token, String(lgE2.st));
+
   // ---- 上传可见性 (C档：未登录一律不可上传) ----
   const anonPriv = await upload(null, 'private');
   ok('anon upload private 401', anonPriv.st === 401, String(anonPriv.st) + ' ' + (anonPriv.body.error || ''));

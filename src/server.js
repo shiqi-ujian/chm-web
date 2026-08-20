@@ -654,7 +654,24 @@ function route(req, res) {
     }
     sendJSON(res, 200, LibSearch.search(SITE_ROOT, q, { limit, offset, username, scopeIds }));
   } else if (req.method === 'GET' && urlPath === '/api/verify-email') {
-    handleJson(req, res, () => auth.verifyEmailCode(u.searchParams.get('token') || ''));
+    // 邮件中的验证链接：成功则写入本地 token 并跳回首页（自动登录），失败显示错误页
+    let r;
+    try { r = auth.verifyEmailCode(u.searchParams.get('token') || ''); }
+    catch (e) {
+      const msg = (e && e.message) || '验证失败';
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><html lang="zh"><meta charset="utf-8"><title>邮箱验证失败</title>'
+        + '<body style="font-family:sans-serif;text-align:center;padding-top:80px">'
+        + '<h2>❌ 邮箱验证失败</h2><p>' + msg + '</p>'
+        + '<p><a href="/">返回首页</a></p></body></html>');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<!doctype html><html lang="zh"><meta charset="utf-8"><title>邮箱验证成功</title>'
+      + '<body style="font-family:sans-serif;text-align:center;padding-top:80px">'
+      + '<h2>✅ 邮箱验证成功</h2><p>正在自动登录并跳转…</p>'
+      + '<script>try{localStorage.setItem("chm_user",' + JSON.stringify(r.token || '') + ');}catch(e){}'
+      + 'setTimeout(function(){location.href="/";},800);<\/script></body></html>');
   } else if (req.method === 'POST' && urlPath === '/api/verify-email') {
     handleJson(req, res, (b) => auth.verifyEmailCode(b && b.token));
   } else if (req.method === 'POST' && urlPath === '/api/resend-verification') {

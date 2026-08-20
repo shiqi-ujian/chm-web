@@ -56,8 +56,8 @@ async function main() {
     const all = [...text.matchAll(/verify-email\?token=([0-9a-f]+)/g)];
     if (all.length) verifToken = all[all.length - 1][1];
   } catch (_) {}
-  const verify = await json('GET', '/api/verify-email?token=' + verifToken, null, {});
-  ok('verify email via link 200', verify.st === 200, String(verify.st));
+  const verify = await json('POST', '/api/verify-email', { token: verifToken });
+  ok('verify email via link 200', verify.st === 200 && !!verify.body.token, String(verify.st) + ' ' + (verify.body.error || ''));
   const login = await json('POST', '/api/login', { username: 'carol', password: 'secret1' });
   const me = await json('GET', '/api/me', null, { 'X-User-Token': login.body.token || '' });
   ok('me returns emailVerified', me.body.user && me.body.info && me.body.info.emailVerified === true, JSON.stringify(me.body));

@@ -108,6 +108,12 @@ function login({ username, password }) {
     if (locked) throw new AuthError('登录失败次数过多，请 10 分钟后再试', 423);
     throw new AuthError('用户名或密码错误', 401);
   }
+  // 强制邮箱验证：绑定真实邮箱且未验证的账号禁止登录（legacy 无邮箱账号豁免）。
+  // 注册后点击验证邮件中的链接即完成验证并自动登录。
+  const legacyNoEmail = !u.email || /@local\.invalid$/i.test(u.email);
+  if (!legacyNoEmail && !u.email_verified) {
+    throw new AuthError('请先验证邮箱再登录：点击注册邮件中的验证链接即可（未收到可联系管理员）', 403);
+  }
   dbm.db.prepare('UPDATE users SET failed_attempts = 0, locked_until = 0, last_login_at = ?, updated_at = ? WHERE username = ?')
     .run(now, now, username);
   const token = randomToken();
@@ -190,7 +196,12 @@ function verifyEmailCode(code) {
   }
   dbm.db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL, verification_expires = NULL, updated_at = ? WHERE username = ?')
     .run(Date.now(), row.username);
-  return { ok: true, username: row.username };
+  // 验证成功即建立会话（点邮件链接 = 完成验证并自动登录）
+  const token = randomToken();
+  dbm.db.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?,?,?)')
+    .run(token, row.username, Date.now());
+  try { dbm.pruneSessions(Date.now(), SESSION_TTL_MS); } catch (_) {}
+  return { ok: true, username: row.username, token };
 }
 
 async function forgotPassword(usernameOrEmail) {
