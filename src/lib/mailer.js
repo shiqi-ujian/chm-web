@@ -44,6 +44,7 @@ function smtpSend({ to, subject, text }) {
       if (err) reject(err); else resolve();
     }
     function onLine(line) {
+      if (process.env.SMTP_DEBUG) console.log('[smtp] <<', line);
       const code = parseInt(line.slice(0, 3), 10);
       if (code >= 400) { cleanup(new Error('SMTP error: ' + line)); return; }
       const fn = queue.shift();
@@ -65,6 +66,10 @@ function smtpSend({ to, subject, text }) {
         sock.write(line + '\r\n');
       });
     }
+    const send = (line) => {
+      if (process.env.SMTP_DEBUG) console.log('[smtp] >>', String(line).slice(0, 80));
+      return cmd(line);
+    };
 
     const connect = () => {
       if (cfg.secure && !upgraded) {
@@ -81,29 +86,48 @@ function smtpSend({ to, subject, text }) {
       started = true;
       // greeting will be first line, after that begin EHLO
       queue.push(async () => {
-        await send('EHLO localhost');
-        if (!cfg.secure && !upgraded) {
-          await send('STARTTLS');
-          upgraded = true;
-          started = false;
-          const old = sock;
-          old.removeAllListeners('data');
-          sock = null;
-          sock = tls.connect({ socket: old, servername: cfg.host }, onConnect);
-          sock.on('data', onData);
-          sock.on('error', (e) => cleanup(e));
-        } else {
-          await send('AUTH LOGIN');
-          await send(Buffer.from(cfg.user || '').toString('base64'));
-          await send(Buffer.from(cfg.pass || '').toString('base64'));
-          await send('MAIL FROM:<' + cfg.from + '>');
-          await send('RCPT TO:<' + to + '>');
-          await send('DATA');
-          const body = 'Subject: ' + subject + '\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n' + text;
-          // DATA 正文：CRLF 归一化 + SMTP 行首点填充 + 尾部结束标记点。
-          // 不能写成 body + '\r\n.\r\n' 再让下一行 send('.')——那样点终止符不在正确行位。
-          await send(body.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..') + '\r\n.');
-          await send('QUIT');
+        try {
+          await send('EHLO localhost');
+          if (!cfg.secure && !upgraded) {
+            await send('STARTTLS');
+            upgraded = true;
+            started = false;
+            const old = sock;
+            old.removeAllListeners('data');
+            sock = null;
+            sock = tls.connect({ socket: old, servername: cfg.host }, onConnect);
+            sock.on('data', onData);
+            sock.on('error', (e) => cleanup(e));
+          } else {
+            await send('AUTH LOGIN');
+            await send(Buffer.from(cfg.user || '').toString('base64'));
+            await send(Buffer.from(cfg.pass || '').toString('base64'));
+            await send('MAIL FROM:<' + cfg.from + '>');
+            await send('RCPT TO:<' + to + '>');
+            await send('DATA');
+            // 完整 RFC5322 头：QQ 等严格服务商会校验 From/Date/Message-ID（缺 From 直接 550）
+            const encSubject = '=?UTF-8?B?' + Buffer.from(subject).toString('base64') + '?=';
+            const msgId = '<' + Date.now() + '.' + Math.random().toString(16).slice(2) + '@' + (cfg.host || 'localhost') + '>';
+            const body = 'From: <' + cfg.from + '>\r\n'
+              + 'To: <' + to + '>\r\n'
+              + 'Subject: ' + encSubject + '\r\n'
+              + 'Date: ' + new Date().toUTCString() + '\r\n'
+              + 'Message-ID: ' + msgId + '\r\n'
+              + 'MIME-Version: 1.0\r\n'
+              + 'Content-Type: text/plain; charset=utf-8\r\n'
+              + 'Content-Transfer-Encoding: 8bit\r\n'
+              + '\r\n'
+              + text;
+            // DATA 正文：CRLF 归一化 + SMTP 行首点填充 + 尾部结束标记点。
+            // 不能写成 body + '\r\n.\r\n' 再让下一行 send('.')——那样点终止符不在正确行位。
+            await send(body.replace(/\r?\n/g, '\r\n').replace(/^\./gm, '..') + '\r\n.');
+            await send('QUIT');
+          }
+          // 成功完成：解析 Promise（不清除已建立的连接由 cleanup 处理）。
+          // 修复：原实现成功后无人 resolve，只能等 20s 超时报错——邮件其实已发出。
+          cleanup();
+        } catch (e) {
+          cleanup(e);
         }
       });
     }
