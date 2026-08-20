@@ -41,6 +41,7 @@ jobs:
           node test-charset.js
           node test-auth-v2.js
           node test-launch-check.js
+          node test-ops-tools.js
 
       # 全站导出冒烟（生成 site-export.zip 验证打包链路）
       - name: Export smoke
