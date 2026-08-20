@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const zlib = require('zlib');
-const { processUpload, UploadError, cleanupTmp, rebuildPrivateShells, rebuildDocShell } = require('./lib/upload');
+const { processUpload, UploadError, cleanupTmp, rebuildPrivateShells, rebuildDocShell, rebuildStalePublicShells } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs, exportDocDirs } = require('./lib/site-export');
 const auth = require('./lib/auth');
@@ -779,6 +779,11 @@ server.listen(Number(PORT), HOST, () => {
     const r = rebuildPrivateShells({ dataDir: DATA_DIR });
     if (r.rebuilt) console.log('[startup] rebuilt private shells:', r.rebuilt, '件；skipped', r.skipped);
   } catch (e) { console.error('[startup] rebuildPrivateShells failed', e); }
+  // 升级存量公开文档壳（旧 JS 全展开大目录树 → 惰性渲染）
+  try {
+    const r = rebuildStalePublicShells({ siteRoot: SITE_ROOT });
+    if (r.rebuilt) console.log('[startup] upgraded public shells:', r.rebuilt, '件；skipped', r.skipped);
+  } catch (e) { console.error('[startup] rebuildStalePublicShells failed', e); }
   // 启动时清理崩溃/超时残留的临时文件（异步，不阻塞监听）
   try { cleanupTmp({ dataDir: DATA_DIR, siteRoot: SITE_ROOT }); } catch (e) { console.error('cleanup failed', e); }
   // 用量校准：以 meta + 磁盘为准重算 user_usage（防历史迁移/手动改动导致的 docs/bytes 失实）

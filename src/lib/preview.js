@@ -224,19 +224,26 @@ var leafList = [];
 var openSet = new Set();
 (function(){
   try { openSet = new Set(JSON.parse(localStorage.getItem('chm-open') || 'null') || []); } catch(e){}
+  // 防旧版遗留的"全展开"巨量记忆（数千节点）导致首次打开仍全展开卡死
+  if (openSet.size > 300) { openSet = new Set(); try { localStorage.removeItem('chm-open'); } catch(e){} }
   function walk(nodes){
     for (var i=0;i<nodes.length;i++){
       var n = nodes[i];
       if (n.u) { urlToNode.set(normPath(n.u), n); leafList.push(n); }
-      if (n.c) {
-        if (openSet.size === 0) openSet.add(n.i); // 首次：全部展开
-        walk(n.c);
-      }
+      // 不再「首次全部展开」——大文档（数千节点）一次性渲染全部 DOM 会卡死浏览器
+      if (n.c) walk(n.c);
     }
   }
   walk(tocData);
 })();
 function saveOpen(){ try { localStorage.setItem('chm-open', JSON.stringify(Array.from(openSet))); } catch(e){} }
+/* 惰性渲染：分支默认只建空的 .toc-kids 容器，展开时才构建子节点。
+   这样 6919 节点的目录初始只渲染顶层几十个 DOM，展开哪个分支才补哪个。 */
+function ensureKids(div, n, depth){
+  var kids = div.querySelector('.toc-kids');
+  if (!kids || kids.childNodes.length) return;
+  n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth)); });
+}
 function renderNode(n, depth){
   var div = document.createElement('div');
   div.className = 'toc-node';
@@ -244,17 +251,18 @@ function renderNode(n, depth){
   var row = document.createElement('div');
   row.className = 'toc-row' + (n.c ? ' branch' : ' leaf');
   row.style.paddingLeft = (10 + depth * 14) + 'px';
-  if (openSet.has(n.i)) row.classList.add('open');
+  var isOpen = openSet.has(n.i);
+  if (isOpen) row.classList.add('open');
   if (n.c) {
     var tw = document.createElement('span');
     tw.className = 'tw';
-    tw.title = openSet.has(n.i) ? '折叠' : '展开';
+    tw.title = isOpen ? '折叠' : '展开';
     row.appendChild(tw);
     // 箭头：仅折叠/展开（阻止冒泡，避免触发打开页面）
     tw.addEventListener('click', function(e){
       e.stopPropagation();
-      if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
-      row.classList.toggle('open');
+      if (openSet.has(n.i)) { openSet.delete(n.i); row.classList.remove('open'); }
+      else { openSet.add(n.i); row.classList.add('open'); ensureKids(div, n, depth + 1); }
       tw.title = openSet.has(n.i) ? '折叠' : '展开';
       saveOpen();
     });
@@ -274,8 +282,9 @@ function renderNode(n, depth){
   if (n.c) {
     var kids = document.createElement('div');
     kids.className = 'toc-kids';
-    n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth + 1)); });
     div.appendChild(kids);
+    // 记忆里是展开态的分支立即填充（其余保持惰性）
+    if (openSet.has(n.i)) ensureKids(div, n, depth + 1);
   }
   return div;
 }

@@ -135,7 +135,12 @@ function rebuildDocShell(docDir, docId, title, o = {}) {
   return { docId, title: title || docId, hhc: hhc || null, hhk: hhk || null };
 }
 
-/** 扫描并重建全部存量私有文档阅读壳（启动自愈：修复旧壳 URL 前缀缺失问题） */
+/**
+ * 扫描并重建全部存量私有文档阅读壳（启动自愈）：
+ * - 修复旧壳 URL 前缀缺失（无 /p/<id>/ 前缀 → 正文 iframe 404）
+ * - 升级旧壳 JS（无惰性渲染 ensureKids → 大文档目录树全展开卡死）
+ * 已是新壳（绝对前缀 + 惰性渲染）跳过（省 IO）。
+ */
 function rebuildPrivateShells({ dataDir }) {
   const privRoot = path.join(path.resolve(dataDir), 'private');
   if (!fs.existsSync(privRoot)) return { rebuilt: 0, skipped: 0 };
@@ -148,10 +153,9 @@ function rebuildPrivateShells({ dataDir }) {
     try { st = fs.statSync(dir); } catch { continue; }
     if (!st.isDirectory()) continue;
     try {
-      // 只重建壳里没有绝对 /p/<id>/ 前缀的旧文档；已是新壳跳过（省 IO）
       const shell = path.join(dir, 'index.html');
       const content = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '';
-      if (content.indexOf('/p/' + n + '/') !== -1) { skipped++; continue; }
+      if (content.indexOf('/p/' + n + '/') !== -1 && content.indexOf('ensureKids') !== -1) { skipped++; continue; }
       rebuildDocShell(dir, n, n, { visibility: 'private', skipIndexes: true });
       rebuilt++;
       out.push(n);
@@ -160,6 +164,33 @@ function rebuildPrivateShells({ dataDir }) {
     }
   }
   if (rebuilt) console.log(`[private-shell] rebuilt ${rebuilt} private doc shell(s): ${out.join(', ')}`);
+  return { rebuilt, skipped };
+}
+
+/** 扫描并升级存量公开文档阅读壳（旧 JS 全展开 → 惰性渲染），大文档目录树不再卡浏览器 */
+function rebuildStalePublicShells({ siteRoot }) {
+  const pubRoot = path.join(path.resolve(siteRoot), 'd');
+  if (!fs.existsSync(pubRoot)) return { rebuilt: 0, skipped: 0 };
+  const out = [];
+  let rebuilt = 0, skipped = 0;
+  for (const n of fs.readdirSync(pubRoot)) {
+    if (!/^[^.].*/.test(n)) continue;
+    const dir = path.join(pubRoot, n);
+    let st;
+    try { st = fs.statSync(dir); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    try {
+      const shell = path.join(dir, 'index.html');
+      const content = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '';
+      if (content.indexOf('ensureKids') !== -1) { skipped++; continue; }
+      rebuildDocShell(dir, n, n, { visibility: 'public', skipIndexes: true });
+      rebuilt++;
+      out.push(n);
+    } catch (e) {
+      console.error('rebuild public shell failed:', n, e && e.message || e);
+    }
+  }
+  if (rebuilt) console.log(`[public-shell] upgraded ${rebuilt} public doc shell(s): ${out.join(', ')}`);
   return { rebuilt, skipped };
 }
 
@@ -195,4 +226,4 @@ function cleanupTmp({ dataDir, siteRoot, ageMs = 24 * 60 * 60 * 1000 } = {}) {
   } catch {}
 }
 
-module.exports = { processUpload, UploadError, safeId, cleanupTmp, rebuildDocShell, rebuildPrivateShells };
+module.exports = { processUpload, UploadError, safeId, cleanupTmp, rebuildDocShell, rebuildPrivateShells, rebuildStalePublicShells };
