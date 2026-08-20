@@ -133,12 +133,21 @@ a{color:var(--accent);text-decoration:none}
 #frame{flex:1;width:100%;border:0;background:#fff}
 mark.wz-hl{background:var(--hl);color:inherit;padding:0 1px;border-radius:2px}
 mark.wz-hl.cur{outline:2px solid var(--accent)}
+/* ---------- 移动端底部操作条 ---------- */
+#mobile-bar{display:none}
 @media(max-width:680px){
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18);width:86vw;max-width:340px;min-width:0}
   #sidebar.open{transform:translateX(0)}
   #topbar{gap:4px;padding:0 6px}
   .tb-btn{padding:5px 8px;font-size:13px}
   #frame{-webkit-text-size-adjust:100%}
+  /* 底部固定条：目录 / 上一页 / 下一页 / 页内搜索 */
+  #mobile-bar{display:flex;align-items:center;justify-content:space-around;height:52px;min-height:52px;background:var(--panel);border-top:1px solid var(--border);position:sticky;bottom:0;z-index:50}
+  #mobile-bar .mb-btn{flex:1;text-align:center;border:0;background:transparent;color:var(--text);font-size:13px;padding:4px 0;line-height:1.2;cursor:pointer}
+  #mobile-bar .mb-btn:hover{color:var(--accent)}
+  #mobile-bar .mb-btn b{display:block;font-size:16px;font-weight:600}
+  #main{padding-bottom:env(safe-area-inset-bottom)}
+  #app{min-height:0}
 }
 @media(max-width:380px){
   .tb-btn{width:34px;padding:0}
@@ -280,8 +289,15 @@ function openPage(url){
   try { history.replaceState(null, '', '#' + url); } catch(e){}
   if (window.innerWidth <= 680) closeDrawer();
 }
+/* ---------- 移动端底部操作条 ---------- */
+var mbMenu = document.getElementById('mb-menu'), mbPrev = document.getElementById('mb-prev'), mbNext = document.getElementById('mb-next'), mbSearch = document.getElementById('mb-search');
+function openDrawer(){ sidebar.classList.add('open'); mask.classList.add('on'); }
 function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
-document.getElementById('menu-btn').addEventListener('click', function(){ sidebar.classList.add('open'); mask.classList.add('on'); });
+if (mbMenu) mbMenu.addEventListener('click', openDrawer);
+if (mbPrev) mbPrev.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+if (mbNext) mbNext.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
+if (mbSearch) mbSearch.addEventListener('click', function(){ psBar.classList.add('on'); psQ.focus(); runPageSearch(); });
+document.getElementById('menu-btn').addEventListener('click', openDrawer);
 if (mask) mask.addEventListener('click', closeDrawer);
 var homeBtn = document.getElementById('home-btn');
 if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = '../..'; });
@@ -626,6 +642,12 @@ function shell({ title, home, tocJson }) {
       <button id="ps-close" title="关闭" type="button">✕</button>
     </div>
     <iframe id="frame" title="正文" src=""></iframe>
+    <div id="mobile-bar" aria-label="移动端操作">
+      <button class="mb-btn" id="mb-menu" type="button"><b>☰</b>目录</button>
+      <button class="mb-btn" id="mb-prev" type="button"><b>↑</b>上一页</button>
+      <button class="mb-btn" id="mb-next" type="button"><b>↓</b>下一页</button>
+      <button class="mb-btn" id="mb-search" type="button"><b>🔍</b>查找</button>
+    </div>
   </main>
 </div>
 <script>window.__TOC__ = ${JSON.stringify(tocJson)};</script>
