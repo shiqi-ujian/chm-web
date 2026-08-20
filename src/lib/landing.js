@@ -509,12 +509,16 @@ const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
     if(!arr.length){box.innerHTML='<div style="color:var(--mut);font-size:14px;text-align:center">还没有公开文档，去上传第一个吧。</div>';return;}
     box.innerHTML='<div class="doc-grid">'+arr.slice(0,6).map(function(d){
       var tags=(d.tags||[]).map(function(t){return '<span class="tag">#'+escS(t)+'</span>';}).join('');
-      return '<div class="card doc-card"><span style="font-size:28px">📘</span>'+
+      return '<div class="card doc-card" data-href="'+escS(d.href||('d/'+d.id+'/'))+'"><span style="font-size:28px">📘</span>'+
       '<b class="doc-title">'+escS(d.name||d.id)+'</b>'+
       (d.author?'<div style="font-size:12.5px;color:var(--mut)">作者：'+escS(d.author)+'</div>':'')+
       '<span class="tag pub">公开</span>'+
       (tags?'<div class="doc-tags">'+tags+'</div>':'')+
-      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm" style="margin-top:auto">打开 →</a></div>';}).join('')+'</div>';}
+      '<span class="btn ghost sm" style="margin-top:auto;align-self:flex-start">打开 →</span></div>';}).join('')+'</div>';
+    Array.prototype.forEach.call(box.querySelectorAll('.doc-card'),function(c){
+      c.addEventListener('click',function(){window.location.href=c.getAttribute('data-href')||'#';});
+      c.style.cursor='pointer';
+    });}
   function recent(){fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs){window.__setDocs(j.docs);recentRender(j.docs);}}).catch(function(){recentRender();});}
   recent();
   window.__onAuth=function(){renderAuth();if(window.location.hash==='#mine')location.reload();};
@@ -536,14 +540,15 @@ const BROWSE = page('浏览文档 · CHM 网页', true, `
     if(fAuthor)arr=arr.filter(function(d){return (d.author||'')===fAuthor;});
     if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">没有匹配的文档</div>';return;}
     box.innerHTML=arr.map(function(d){
-      return '<div class="card row-card"><span style="font-size:24px">📘</span>'+
+      return '<div class="card row-card" data-href="'+escS(d.href||('d/'+d.id+'/'))+'"><span style="font-size:24px">📘</span>'+
       '<span style="flex:1;min-width:0"><b style="display:block;font-size:16px">'+escS(d.name||d.id)+'</b>'+
       (d.author?'<div style="font-size:13px;color:var(--mut)">作者：'+escS(d.author)+'</div>':'')+
       '<span class="tag pub">公开</span>'+
       (d.tags||[]).map(function(t){return '<span class="tag" data-tag="'+escS(t)+'" style="cursor:pointer">#'+escS(t)+'</span>';}).join('')+
-      '</span>'+
-      '<a href="'+escS(d.href||('d/'+d.id+'/'))+'" class="btn ghost sm">打开 →</a></div>';}).join('');
-    Array.prototype.forEach.call(box.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(){fTag=b.getAttribute('data-tag');refresh();});});
+      '</span></div>';}).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.row-card'),function(c){c.style.cursor='pointer';c.addEventListener('click',function(e){if(e.target.closest && e.target.closest('[data-tag]'))return;window.location.href=c.getAttribute('data-href')||'#';});
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(e){e.stopPropagation();fTag=b.getAttribute('data-tag');refresh();});});
   }
   function renderFilters(allArr){var tagSet=[],authorSet=[];(allArr||[]).forEach(function(d){if(d.visibility==='private')return;(d.tags||[]).forEach(function(t){if(tagSet.indexOf(t)===-1)tagSet.push(t);});if(d.author&&authorSet.indexOf(d.author)===-1)authorSet.push(d.author);});
     var h='';

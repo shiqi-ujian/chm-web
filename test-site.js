@@ -41,6 +41,10 @@ setTimeout(async () => {
     // fetch one doc shell + its index over real server
     const doc = await get('/d/7-zip/');
     ok('GET /d/7-zip/ shell 200', doc.st === 200 && doc.body.includes('frame'));
+    ok('shell has mobile action bar', doc.body.includes('id="mobile-bar"') && doc.body.includes('mb-menu'));
+    ok('shell has ctrl-k hint', doc.body.includes('Ctrl+K 搜索'));
+    // 阅读壳返回列表应回到站点根（兼容 d/<id> 与 p/<id> 两种形态）
+    ok('shell docListUrl computes site root', doc.body.includes("parts.slice(0, parts.length - 2)") || doc.body.includes("docListUrl"));
     const didx = await get('/d/7-zip/search-index.json');
     ok('GET doc search-index 200', didx.st === 200);
 
