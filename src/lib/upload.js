@@ -104,24 +104,60 @@ async function convertOne(input, outDir, id, name, o = {}) {
   // 修复链接大小写与实际文件不一致（Linux 严格区分大小写）
   try { require('./fixlinks').fixLinks(outDir); } catch (e) { console.error('fixlinks failed', e); }
   // 生成阅读壳 index.html + keywords.json（复用 preview parser）
-  try {
-    const preview = require('./preview');
-    const files = require('fs').readdirSync(outDir);
-    const hhc = files.find((f) => /\.hhc$/i.test(f));
-    const hhk = files.find((f) => /\.hhk$/i.test(f));
-    // 私有文档挂在 /p/<id>/ 下，TOC/首页/章节 URL 都要带这个前缀，否则
-    // iframe 会去请求 /start.htm 等公开静态路径 → 404 Not Found。
-    const urlPrefix = (o && o.visibility === 'private') ? ('p/' + id + '/') : '';
-    preview.build({
-      outDir: outDir,
-      hhcFile: hhc ? path.join(outDir, hhc) : null,
-      hhkFile: hhk ? path.join(outDir, hhk) : null,
-      title: name || id,
-      urlPrefix,
-    });
-  } catch (e) {
+  try { rebuildDocShell(outDir, id, name, o); } catch (e) {
     // 生成不了壳也不至于致命
   }
+}
+
+/**
+ * 重建单个文档阅读壳（公开或私有统一入口）。
+ * 私有文档挂在 /p/<id>/ 下，TOC/首页/章节 URL 必须带绝对前缀，否则 iframe
+ * 会去请求 /start.htm 等公开静态路径 → 404 Not Found。
+ * 启动修复存量私有文档时也会调用本函数。
+ */
+function rebuildDocShell(docDir, docId, title, o = {}) {
+  const outDir = path.resolve(docDir);
+  const files = fs.readdirSync(outDir);
+  const hhc = files.find((f) => /\.hhc$/i.test(f));
+  const hhk = files.find((f) => /\.hhk$/i.test(f));
+  const isPrivate = o.visibility === 'private';
+  const preview = require('./preview');
+  preview.build({
+    outDir,
+    hhcFile: hhc ? path.join(outDir, hhc) : null,
+    hhkFile: hhk ? path.join(outDir, hhk) : null,
+    title: title || docId,
+    urlPrefix: isPrivate ? ('p/' + docId + '/') : '',
+  });
+  return { docId, title: title || docId, hhc: hhc || null, hhk: hhk || null };
+}
+
+/** 扫描并重建全部存量私有文档阅读壳（启动自愈：修复旧壳 URL 前缀缺失问题） */
+function rebuildPrivateShells({ dataDir }) {
+  const privRoot = path.join(path.resolve(dataDir), 'private');
+  if (!fs.existsSync(privRoot)) return { rebuilt: 0, skipped: 0 };
+  const out = [];
+  let rebuilt = 0, skipped = 0;
+  for (const n of fs.readdirSync(privRoot)) {
+    if (!/^[^.].*/.test(n)) continue;
+    const dir = path.join(privRoot, n);
+    let st;
+    try { st = fs.statSync(dir); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    try {
+      // 只重建壳里没有绝对 /p/<id>/ 前缀的旧文档；已是新壳跳过（省 IO）
+      const shell = path.join(dir, 'index.html');
+      const content = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '';
+      if (content.indexOf('/p/' + n + '/') !== -1) { skipped++; continue; }
+      rebuildDocShell(dir, n, n, { visibility: 'private' });
+      rebuilt++;
+      out.push(n);
+    } catch (e) {
+      console.error('rebuild private shell failed:', n, e && e.message || e);
+    }
+  }
+  if (rebuilt) console.log(`[private-shell] rebuilt ${rebuilt} private doc shell(s): ${out.join(', ')}`);
+  return { rebuilt, skipped };
 }
 
 /**
@@ -156,4 +192,4 @@ function cleanupTmp({ dataDir, siteRoot, ageMs = 24 * 60 * 60 * 1000 } = {}) {
   } catch {}
 }
 
-module.exports = { processUpload, UploadError, safeId, cleanupTmp };
+module.exports = { processUpload, UploadError, safeId, cleanupTmp, rebuildDocShell, rebuildPrivateShells };

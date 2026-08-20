@@ -5,7 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { processUpload, UploadError, cleanupTmp } = require('./lib/upload');
+const { processUpload, UploadError, cleanupTmp, rebuildPrivateShells } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs, exportDocDirs } = require('./lib/site-export');
 const auth = require('./lib/auth');
@@ -714,6 +714,12 @@ server.listen(Number(PORT), HOST, () => {
   // 空卷时从镜像种子填充初始站点内容，再用当前环境变量重建欢迎页
   ensureSeed();
   rebuildSite();
+  // 启动修复存量私有文档阅读壳（旧壳 URL 缺 /p/<id>/ 前缀 → 正文 iframe 404）。
+  // 重要：线上阿里云要求重启后私有文档才能全部恢复。
+  try {
+    const r = rebuildPrivateShells({ dataDir: DATA_DIR });
+    if (r.rebuilt) console.log('[startup] rebuilt private shells:', r.rebuilt, '件；skipped', r.skipped);
+  } catch (e) { console.error('[startup] rebuildPrivateShells failed', e); }
   // 启动时清理崩溃/超时残留的临时文件（异步，不阻塞监听）
   try { cleanupTmp({ dataDir: DATA_DIR, siteRoot: SITE_ROOT }); } catch (e) { console.error('cleanup failed', e); }
   console.log('chm-web server listening: http://' + HOST + ':' + port);
