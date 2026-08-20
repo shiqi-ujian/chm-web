@@ -5,7 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { processUpload, UploadError, cleanupTmp, rebuildPrivateShells } = require('./lib/upload');
+const { processUpload, UploadError, cleanupTmp, rebuildPrivateShells, rebuildDocShell } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs, exportDocDirs } = require('./lib/site-export');
 const auth = require('./lib/auth');
@@ -653,6 +653,14 @@ function route(req, res) {
     handleJson(req, res, (b) => {
       const meta = auth.setVisibility(id, b.visibility, currentUser(req));
       migrateDoc(id, meta.visibility);   // 公开⇄私有实体迁移
+      // 公开转私有后，私有区壳必须用 /p/<id>/ 绝对前缀重建，
+      // 否则旧公开壳的相对链接会去请求 /start.htm → 404。
+      // 私有转公开时保持公开相对链接（无需动壳）。
+      if (meta.visibility === 'private' && fs.existsSync(path.join(DATA_DIR, 'private', id))) {
+        try {
+          rebuildDocShell(path.join(DATA_DIR, 'private', id), id, meta.name || id, { visibility: 'private' });
+        } catch (e) { console.error('rebuild private shell after visibility change failed', id, e); }
+      }
       rebuildSite();                     // 重建欢迎页/索引
       return { id, visibility: meta.visibility };
     });
