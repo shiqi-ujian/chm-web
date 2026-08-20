@@ -517,8 +517,10 @@ function handleExportDocs(req, res) {
         }
         const priv = auth.privateDir(id);
         if (fs.existsSync(priv) && fs.statSync(priv).isDirectory()) {
-          // 私有文档：登录用户须为 owner；若走服务方 EXPORT_TOKEN 也放行
-          if (!(user && meta && meta.owner === user) && !authorized(req, EXPORT_TOKEN)) {
+          // 私有文档：登录用户须为 owner；服务方 EXPORT_TOKEN 显式配置后才可放行。
+          // 注意：EXPORT_TOKEN 为空时 authorized() 恒返回 true（"未配置不锁"的通用设计），
+          // 私有导出绝不能走该放行——否则任何匿名者都能打包下载私有文档（绕过 /p/ ACL）。
+          if (!(user && meta && meta.owner === user) && !(EXPORT_TOKEN && authorized(req, EXPORT_TOKEN))) {
             throw new auth.AuthError('无权导出私有文档：' + id, 403);
           }
           dirs.push({ dir: priv, rel: 'p/' + String(id).replace(/\\/g, '/').replace(/^\/+/, ''), name: (meta && meta.name) || id });

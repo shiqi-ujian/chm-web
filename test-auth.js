@@ -192,6 +192,18 @@ async function main() {
   ok('after delete: /p/ gone (not 200)', (await get('/p/' + idB + '/', tok)) !== 200);
   ok('after delete: entity gone', !fs.existsSync(path.join(DATA, 'private', idB)));
 
+  // ---- 私有文档导出 ACL（回归：EXPORT_TOKEN 未配置时匿名不得导出私有）----
+  {
+    // 重新造一个私有文档来测（上面已删）
+    const up2 = await upload(tok, 'private', 'exppriv.chm');
+    const expId = up2.body.id;
+    const anonExp = await json('POST', '/api/export-docs', { ids: [expId], title: 'x' }, {});
+    ok('anon export private doc 403', anonExp.st === 403, String(anonExp.st) + ' ' + (anonExp.body && anonExp.body.error || ''));
+    const ownerExp = await json('POST', '/api/export-docs', { ids: [expId], title: 'x' }, { 'X-User-Token': tok });
+    ok('owner export private doc 200', ownerExp.st === 200 && !!ownerExp.body.zip, String(ownerExp.st));
+    await del('/api/doc/' + expId, { 'X-User-Token': tok });
+  }
+
   // ---- 修改密码 ----
   const cpAnon = await json('POST', '/api/change-password', { oldPassword: 'secret1', newPassword: 'newsecret1' });
   ok('change-pwd anon 401', cpAnon.st === 401, String(cpAnon.st));
