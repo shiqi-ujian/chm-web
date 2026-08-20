@@ -873,6 +873,47 @@ function build({ outDir, docs }) {
   // 全站聚合检索索引（欢迎页/浏览页共用）
   fs.writeFileSync(path.join(dir, 'site-index.json'),
     JSON.stringify(buildSiteIndex({ siteRoot: dir, docs })));
+
+  // PWA：manifest + Service Worker（离线 / 添加到主屏）
+  fs.writeFileSync(path.join(dir, 'manifest.webmanifest'),
+    JSON.stringify({
+      name: 'CHM 网页',
+      short_name: 'CHM',
+      start_url: '.',
+      display: 'standalone',
+      background_color: '#f6f7fb',
+      theme_color: '#7c3aed',
+      icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }]
+    }, null, 2));
+  fs.writeFileSync(path.join(dir, 'sw.js'), `'use strict';
+const CACHE = 'chm-pwa-v1';
+const ASSETS = [
+  './',
+  './index.html',
+  './browse.html',
+  './upload.html',
+  './mine.html',
+  './terms.html',
+  './privacy.html',
+  './disclaimer.html',
+  './report.html',
+  './admin.html',
+  './site-index.json',
+  './manifest.webmanifest'
+];
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', (e) => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.pathname.startsWith('/api/') || u.pathname.startsWith('/p/')) return;
+  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));
+});
+`);
+
   return { outFile: path.join(dir, 'index.html'), docs };
 }
 
