@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const { processUpload, UploadError, cleanupTmp, rebuildPrivateShells, rebuildDocShell } = require('./lib/upload');
 const landing = require('./lib/landing');
 const { exportSite, exportDocs, exportDocDirs } = require('./lib/site-export');
@@ -88,7 +89,32 @@ const MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.json': 'application/json',
   '.txt': 'text/plain', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.webmanifest': 'application/manifest+json',
 };
+
+// —— 传输优化：文本类资源 gzip 压缩 + 静态缓存头。
+//   背景：文档壳页/搜索索引可达数百 KB~1.3MB，弱网下每次刷新全量重下体验像"卡死"。
+//   gzip 可把 JSON/HTML 压到 10%~20%；合理 max-age 让浏览器复用已下载内容。
+const COMPRESSIBLE = new Set(['.html', '.htm', '.css', '.js', '.json', '.svg', '.txt', '.xml', '.webmanifest']);
+function acceptsGzip(req) {
+  return /(^|,)\s*(gzip|x-gzip)\s*(,|$)/i.test(req.headers['accept-encoding'] || '');
+}
+/** 静态文件统一出口：gzip（文本类且客户端接受）+ Cache-Control */
+function sendStatic(req, res, file, contentType, cacheControl) {
+  const ext = path.extname(file).toLowerCase();
+  const headers = { 'Content-Type': contentType, 'Cache-Control': cacheControl };
+  // sw.js 必须尽快感知更新（浏览器每次都会重新拉取比对），不能强缓存
+  if (path.basename(file) === 'sw.js') headers['Cache-Control'] = 'no-cache';
+  if (acceptsGzip(req) && COMPRESSIBLE.has(ext)) {
+    headers['Content-Encoding'] = 'gzip';
+    headers['Vary'] = 'Accept-Encoding';
+    res.writeHead(200, headers);
+    fs.createReadStream(file).pipe(zlib.createGzip()).pipe(res);
+  } else {
+    res.writeHead(200, headers);
+    fs.createReadStream(file).pipe(res);
+  }
+}
 
 /************ 简易 multipart 解析（file 字段 + 其它表单字段） ************/
 function parseMultipart(buf, boundary) {
@@ -129,7 +155,10 @@ function parseMultipart(buf, boundary) {
 
 function sendJSON(res, status, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',   // API 响应（登录态/配额/文档列表）一律禁止缓存
+  });
   res.end(body);
 }
 
@@ -238,8 +267,8 @@ function serveStatic(req, res) {
     const cs = sniffFileCharset(file);
     if (cs) contentType += '; charset=' + cs;
   }
-  res.writeHead(200, { 'Content-Type': contentType });
-  fs.createReadStream(file).pipe(res);
+  // 静态资源强缓存 5 分钟（文档站更新低频；上传/重建后最多 5 分钟内可见）
+  sendStatic(req, res, file, contentType, 'public, max-age=300');
 }
 
 async function handleUpload(req, res) {
@@ -364,8 +393,8 @@ function listDocs(username) {
     const cs = sniffFileCharset(file);
     if (cs) contentType += '; charset=' + cs;
   }
-  res.writeHead(200, { 'Content-Type': contentType });
-  fs.createReadStream(file).pipe(res);
+  // 私有文档内容仅本浏览器缓存（private 语义，不共享）
+  sendStatic(req, res, file, contentType, 'private, max-age=300');
 }
 
 /** 分享链接：/s/<token> → 302 到私有文档并种下该文档的分享 cookie */
