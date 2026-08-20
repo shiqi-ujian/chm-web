@@ -115,8 +115,8 @@ a{color:var(--accent);text-decoration:none}
 .toc-row .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .toc-kids{display:none}
 .toc-row.open + .toc-kids{display:block}
-.side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-#theme-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px}
+.side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px}
+#theme-btn{flex:0 0 auto;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px;color:var(--text)}
 #theme-btn:hover{border-color:var(--accent)}
 /* ---------- 主区 ---------- */
 #main{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -144,11 +144,20 @@ mark.wz-hl.cur{outline:2px solid var(--accent)}
   #frame{-webkit-text-size-adjust:100%}
   /* 底部固定条：目录 / 字号 / 上一页 / 下一页 / 页内搜索 */
   #mobile-bar{display:flex;align-items:center;justify-content:space-around;height:52px;min-height:52px;background:var(--panel);border-top:1px solid var(--border);position:sticky;bottom:0;z-index:50}
-  #mobile-bar .mb-btn{flex:1;text-align:center;border:0;background:transparent;color:var(--text);font-size:13px;padding:4px 0;line-height:1.2;cursor:pointer}
+  #mobile-bar .mb-btn{flex:1;text-align:center;border:0;background:transparent;color:var(--text);font-size:13px;padding:4px 0;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent}
   #mobile-bar .mb-btn:hover{color:var(--accent)}
+  #mobile-bar .mb-btn:active{background:var(--hover)}
   #mobile-bar .mb-btn b{display:block;font-size:16px;font-weight:600}
+  #mobile-bar .mb-btn:disabled b{opacity:.4}
   #main{padding-bottom:env(safe-area-inset-bottom)}
   #app{min-height:0}
+  /* 侧栏抽屉头部固定，目录区可独立滚动 */
+  #sidebar .side-head{flex:0 0 auto}
+  #toc{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #sidebar .side-foot{flex:0 0 auto}
+  /* 顶栏按钮在超窄屏下更紧凑 */
+  #topbar{overflow:hidden}
+  #crumb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
 @media(max-width:380px){
   .tb-btn{width:34px;padding:0}
@@ -170,6 +179,15 @@ var mask = document.getElementById('mask');
 var sidebar = document.getElementById('sidebar');
 var home = '${escAttr(t.home)}';
 var title = '${escAttr(t.title)}';
+var lastUrl = '';
+/* 返回列表：去掉当前阅读壳文件名，得到文档目录（/d/<id>/ 或 /p/<id>/），
+   静态导出/离线 zip 下也能回到文档列表页。 */
+var docListUrl = (function(){
+  try {
+    var p = window.location.pathname || '';
+    return p.replace(/[^/]*$/, '') || './';
+  } catch(e){ return './'; }
+})();
 
 /* ---------- 主题（深色/浅色，记忆 + 跟随系统） ---------- */
 var theme = (function(){ try { return localStorage.getItem('chm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch(e){ return 'light'; } })();
@@ -285,6 +303,7 @@ function renderCrumb(url){
 function openPage(url){
   if (!url || url === '#') return;
   frame.src = url;
+  lastUrl = url;
   setActive(url);
   renderCrumb(url);
   try { history.replaceState(null, '', '#' + url); } catch(e){}
@@ -339,14 +358,23 @@ if (mbNext) mbNext.addEventListener('click', function(){ var i = leafList.indexO
 if (mbPrev) mbPrev.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
 if (mbSearch) mbSearch.addEventListener('click', function(){ psBar.classList.add('on'); psQ.focus(); runPageSearch(); });
 document.getElementById('menu-btn').addEventListener('click', openDrawer);
+document.getElementById('home-btn').addEventListener('click', function(){ window.location.href = docListUrl; });
 if (mask) mask.addEventListener('click', closeDrawer);
 document.getElementById('prev-btn').addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
 document.getElementById('next-btn').addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
 function currentUrl(){
+  var src;
   try {
-    var a = new URL(frame.contentWindow.location.href);
+    var w = frame.contentWindow;
+    if (w && w.location && w.location.href && !/^about:blank$/i.test(w.location.href)) {
+      src = w.location.href;
+    }
+  } catch(e){}
+  if (src == null) src = frame.getAttribute('src') || '';
+  try {
+    var a = new URL(src, window.location.href);
     return decodeURIComponent(a.pathname).replace(/^\\//, '');
-  } catch(e){ return (frame.getAttribute('src')||'').replace(/^[^:]*:\\/\\//,''); }
+  } catch(e){ return src.replace(/^[^:]*:\\/\\//,''); }
 }
 /* ---------- 章节进度 / 返回顶部 ---------- */
 var progressEl = document.getElementById('progress');

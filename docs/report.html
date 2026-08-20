@@ -116,10 +116,14 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
 .modal .err{color:var(--err);font-size:12.5px;margin-top:10px;min-height:16px}
 .row-card{display:flex;align-items:center;gap:14px;padding:18px;margin-bottom:12px;transition:.16s box-shadow}
 .row-card:hover{box-shadow:var(--shadow-md)}
+/* 窄屏文档行：图标/标题列自动换行，操作按钮整行排布，避免按钮挤压 */
+@media(max-width:640px){.row-card{gap:8px;padding:14px}.row-card>span:last-child{flex:1 1 calc(100% - 44px);word-break:break-word}}
 .doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
 .doc-card{display:flex;flex-direction:column;gap:8px;padding:18px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-sm);transition:.16s box-shadow,transform}
 .doc-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
 .doc-card .doc-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* 文档标题/作者可能很长：窄屏下禁止撑破卡片，标题最多两行 */
+.doc-card .doc-title{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
 .doc-card .doc-tags{display:flex;flex-wrap:wrap;gap:6px}
 @media(max-width:640px){.header .logo span.txt{display:none}.row-card{gap:10px;padding:14px}}
 @media(max-width:480px){.modal .box{padding:20px}.btn{padding:12px 18px}}
