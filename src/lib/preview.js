@@ -288,8 +288,10 @@ function openPage(url){
   renderCrumb(url);
   try { history.replaceState(null, '', '#' + url); } catch(e){}
   if (window.innerWidth <= 680) closeDrawer();
-  // 打开新页面后应用已保存的字号（iframe 可能尚未加载，等 load 再设一次）
-  try { setTimeout(function(){ applyFontSize(fontSizeStep); }, 30); } catch(e){}
+  try { localStorage.setItem('chm-last', url); } catch(e){}
+  // 打开新页面后应用已保存的字号/阅读宽度（iframe 可能尚未加载，等 load 再设一次）
+  try { setTimeout(function(){ applyFontSize(fontSizeStep); applyReadingStyle(); }, 30); } catch(e){}
+  renderProgress();
 }
 /* ---------- 移动端底部操作条 ---------- */
 var mbMenu = document.getElementById('mb-menu'), mbPrev = document.getElementById('mb-prev'), mbNext = document.getElementById('mb-next'), mbSearch = document.getElementById('mb-search');
@@ -310,7 +312,20 @@ function applyFontSize(step){
   if (mbFontM) mbFontM.disabled = step <= -3;
   if (mbFontP) mbFontP.disabled = step >= 3;
 }
+/* 阅读排版：给 iframe 正文注入合适的行高/段落间距/最大宽度，桌面与移动通用 */
+function applyReadingStyle(){
+  try {
+    var d = frame.contentDocument;
+    if (!d || !d.body) return;
+    d.body.style.lineHeight = '1.7';
+    d.body.style.maxWidth = '860px';
+    d.body.style.margin = '0 auto';
+    var p = d.querySelectorAll('p,li,td,blockquote');
+    for (var i=0;i<p.length;i++) p[i].style.lineHeight = '1.7';
+  } catch(e){}
+}
 applyFontSize(fontSizeStep);
+applyReadingStyle();
 if (mbFontM) mbFontM.addEventListener('click', function(e){ e.stopPropagation(); applyFontSize(fontSizeStep - 1); });
 if (mbFontP) mbFontP.addEventListener('click', function(e){ e.stopPropagation(); applyFontSize(fontSizeStep + 1); });
 if (mbNext) mbNext.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
@@ -326,6 +341,25 @@ function currentUrl(){
     return decodeURIComponent(a.pathname).replace(/^\\//, '');
   } catch(e){ return (frame.getAttribute('src')||'').replace(/^[^:]*:\\/\\//,''); }
 }
+/* ---------- 章节进度 / 返回顶部 ---------- */
+var progressEl = document.getElementById('progress');
+function renderProgress(){
+  if (!progressEl) return;
+  var idx = leafList.indexOf(urlToNode.get(currentUrl()));
+  if (idx < 0){ progressEl.textContent = ''; return; }
+  progressEl.textContent = (idx + 1) + ' / ' + leafList.length;
+  progressEl.setAttribute('data-idx', idx);
+}
+function backToTop(){
+  try {
+    var w = frame.contentWindow, d = w && w.document;
+    if (d && d.documentElement) d.documentElement.scrollTop = 0;
+    if (d && d.body) d.body.scrollTop = 0;
+    if (w && w.scrollTo) w.scrollTo(0, 0);
+  } catch(e){}
+}
+var progBtn = document.getElementById('progress');
+if (progBtn) progBtn.addEventListener('click', backToTop);
 /* ---------- 移动端左右滑动切章 ---------- */
 var touchStartX = 0, touchStartY = 0, touchStartT = 0;
 function goPrevPage(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); }
@@ -620,8 +654,12 @@ buildCats();
 /* ---------- 初始化 ---------- */
 (function init(){
   var start = (location.hash || '').replace('#', '');
-  if (!start || !urlToNode.has(start)) start = home;
+  if (!start || !urlToNode.has(start)) {
+    try { start = localStorage.getItem('chm-last') || ''; } catch(e){ start = ''; }
+    if (!start || !urlToNode.has(start)) start = home;
+  }
   openPage(start);
+  try { localStorage.setItem('chm-last', start); } catch(e){}
 })();
 })();
 `;
@@ -663,6 +701,7 @@ function shell({ title, home, tocJson }) {
       <button class="tb-btn" id="prev-btn" title="上一页" type="button">↑</button>
       <button class="tb-btn" id="next-btn" title="下一页" type="button">↓</button>
       <button class="tb-btn" id="page-search-btn" title="页内搜索（Alt+↑↓ 跳转）" type="button">🔍</button>
+      <button class="tb-btn" id="progress" title="第 N / M 章 · 点击回到顶部" type="button"></button>
     </header>
     <div id="page-search-bar">
       <input id="ps-q" type="search" placeholder="在当前页面中查找…" autocomplete="off">
