@@ -141,7 +141,7 @@ mark.wz-hl.cur{outline:2px solid var(--accent)}
   #topbar{gap:4px;padding:0 6px}
   .tb-btn{padding:5px 8px;font-size:13px}
   #frame{-webkit-text-size-adjust:100%}
-  /* 底部固定条：目录 / 上一页 / 下一页 / 页内搜索 */
+  /* 底部固定条：目录 / 字号 / 上一页 / 下一页 / 页内搜索 */
   #mobile-bar{display:flex;align-items:center;justify-content:space-around;height:52px;min-height:52px;background:var(--panel);border-top:1px solid var(--border);position:sticky;bottom:0;z-index:50}
   #mobile-bar .mb-btn{flex:1;text-align:center;border:0;background:transparent;color:var(--text);font-size:13px;padding:4px 0;line-height:1.2;cursor:pointer}
   #mobile-bar .mb-btn:hover{color:var(--accent)}
@@ -288,30 +288,60 @@ function openPage(url){
   renderCrumb(url);
   try { history.replaceState(null, '', '#' + url); } catch(e){}
   if (window.innerWidth <= 680) closeDrawer();
+  // 打开新页面后应用已保存的字号（iframe 可能尚未加载，等 load 再设一次）
+  try { setTimeout(function(){ applyFontSize(fontSizeStep); }, 30); } catch(e){}
 }
 /* ---------- 移动端底部操作条 ---------- */
 var mbMenu = document.getElementById('mb-menu'), mbPrev = document.getElementById('mb-prev'), mbNext = document.getElementById('mb-next'), mbSearch = document.getElementById('mb-search');
+var mbFontM = document.getElementById('mb-font-m'), mbFontP = document.getElementById('mb-font-p');
 function openDrawer(){ sidebar.classList.add('open'); mask.classList.add('on'); }
 function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
 if (mbMenu) mbMenu.addEventListener('click', openDrawer);
-if (mbPrev) mbPrev.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+/* 正文字号：向 iframe 注入 font-size + 记忆 */
+var fontSizeStep = (function(){ try { var v = parseInt(localStorage.getItem('chm-font-size') || '0', 10) || 0; return Math.max(-3, Math.min(3, v)); } catch(e){ return 0; } })();
+function applyFontSize(step){
+  step = Math.max(-3, Math.min(3, step));
+  fontSizeStep = step;
+  try { localStorage.setItem('chm-font-size', String(step)); } catch(e){}
+  try {
+    var d = frame.contentDocument;
+    if (d && d.body) d.body.style.fontSize = step ? ((100 + step * 10) + '%') : '';
+  } catch(e){}
+  if (mbFontM) mbFontM.disabled = step <= -3;
+  if (mbFontP) mbFontP.disabled = step >= 3;
+}
+applyFontSize(fontSizeStep);
+if (mbFontM) mbFontM.addEventListener('click', function(e){ e.stopPropagation(); applyFontSize(fontSizeStep - 1); });
+if (mbFontP) mbFontP.addEventListener('click', function(e){ e.stopPropagation(); applyFontSize(fontSizeStep + 1); });
 if (mbNext) mbNext.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
+if (mbPrev) mbPrev.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
 if (mbSearch) mbSearch.addEventListener('click', function(){ psBar.classList.add('on'); psQ.focus(); runPageSearch(); });
 document.getElementById('menu-btn').addEventListener('click', openDrawer);
 if (mask) mask.addEventListener('click', closeDrawer);
-var homeBtn = document.getElementById('home-btn');
-if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = '../..'; });
-var prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
-if (prevBtn && nextBtn){
-  prevBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
-  nextBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
-}
+document.getElementById('prev-btn').addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+document.getElementById('next-btn').addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
 function currentUrl(){
   try {
     var a = new URL(frame.contentWindow.location.href);
     return decodeURIComponent(a.pathname).replace(/^\\//, '');
   } catch(e){ return (frame.getAttribute('src')||'').replace(/^[^:]*:\\/\\//,''); }
 }
+/* ---------- 移动端左右滑动切章 ---------- */
+var touchStartX = 0, touchStartY = 0, touchStartT = 0;
+function goPrevPage(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); }
+function goNextPage(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); }
+document.addEventListener('touchstart', function(e){
+  if (window.innerWidth > 680) return;
+  var t = e.touches && e.touches[0]; if (!t) return;
+  touchStartX = t.clientX; touchStartY = t.clientY; touchStartT = Date.now();
+}, { passive: true });
+document.addEventListener('touchend', function(e){
+  if (window.innerWidth > 680) return;
+  var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+  var dx = t.clientX - touchStartX, dy = t.clientY - touchStartY, dt = Date.now() - touchStartT;
+  if (dt > 700 || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 1.5) return;
+  if (dx < 0) goNextPage(); else goPrevPage();
+}, { passive: true });
 
 /* ---------- 页内搜索（同源 iframe 高亮） ---------- */
 var psBar = document.getElementById('page-search-bar');
@@ -644,6 +674,7 @@ function shell({ title, home, tocJson }) {
     <iframe id="frame" title="正文" src=""></iframe>
     <div id="mobile-bar" aria-label="移动端操作">
       <button class="mb-btn" id="mb-menu" type="button"><b>☰</b>目录</button>
+      <button class="mb-btn" id="mb-font-m" type="button"><b>A-</b>字号</button>
       <button class="mb-btn" id="mb-prev" type="button"><b>↑</b>上一页</button>
       <button class="mb-btn" id="mb-next" type="button"><b>↓</b>下一页</button>
       <button class="mb-btn" id="mb-search" type="button"><b>🔍</b>查找</button>
