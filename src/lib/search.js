@@ -186,7 +186,13 @@ function search(siteRoot, query, { limit = 10, offset = 0, username = null, scop
       ok: true,
       query: q,
       total: uniq.length,
-      hits: uniq.slice(offset, offset + limit).map((h) => ({ doc: h.doc, href: h.href, snippet: h.snippet })),
+      hits: uniq.slice(offset, offset + limit).map((h) => ({
+        doc: h.doc || '',
+        href: h.href,
+        title: h.title || '',
+        docName: h.docName || '',
+        snippet: h.snippet || '',
+      })),
     };
   }
 
@@ -205,16 +211,32 @@ function search(siteRoot, query, { limit = 10, offset = 0, username = null, scop
           ok: true,
           query: q,
           total,
-          hits: rows.map((r) => ({
-            doc: (r.title || r.doc || ''),
-            href: 'd/' + (r.doc || '') + '/',
-            snippet: (r.body || r.title || '').replace(/\[page:[^\]]*\]/g, '').trim(),
-          })),
+          hits: rows.map((r) => formatFtsHit(r)),
         };
       }
     } catch (e) { /* fall through */ }
   }
   return publicStringSearch(siteRoot, q, { limit, offset });
+}
+
+/** FTS 行 → 前端友好 hit：尽力从 snippet 里解析出章节标题 */
+function formatFtsHit(r) {
+  const rawBody = r.body || r.title || '';
+  const body = rawBody.replace(/\[page:[^\]]*\]/g, '').trim();
+  let title = (r.title && r.title !== r.doc) ? r.title : '';
+  const m = rawBody.match(/\[page:([^\]]+)\]/);
+  const page = m ? m[1] : '';
+  const firstLine = body.split('\n')[0] || '';
+  if (!title || title === r.doc) title = firstLine || page || '';
+  const cleanPath = (page || '').replace(/\\/g, '/');
+  const href = 'd/' + (r.doc || '') + '/' + cleanPath;
+  return {
+    doc: r.doc || '',
+    href: href.replace(/\/\//g, '/'),
+    title: title.slice(0, 120),
+    docName: '',
+    snippet: body.slice(0, 200),
+  };
 }
 
 function scanDoc(docId, dir, hrefPrefix, groups) {
@@ -225,14 +247,28 @@ function scanDoc(docId, dir, hrefPrefix, groups) {
       const name = String(k.name || '');
       if (hitScore(name, groups) !== -1) {
         out.push({
-          doc: name, href: hrefPrefix + docId + '/' + (k.href || '').replace(/\\/g, '/'),
-          snippet: '', score: 10,
+          doc: docId,
+          href: hrefPrefix + docId + '/' + (k.href || '').replace(/\\/g, '/'),
+          title: name,
+          docName: '',
+          snippet: name,
+          score: 10,
         });
       }
     }
   } catch (_) {}
   try {
     const idx = JSON.parse(fs.readFileSync(path.join(dir, 'search-index.json'), 'utf8')) || { records: [] };
+    const lines = [];
+    // 先收集 [page:file] 标题行（新增的标题记录），用于正文命中时取章节名
+    const titleByUrl = {};
+    for (const rec of (idx.records || [])) {
+      const m = /^\[page:([^\]]+)\]\n([\s\S]*)$/.exec(String(rec.text || ''));
+      if (m) {
+        const t = (m[2] || '').split('\n')[0].trim();
+        if (t) titleByUrl[m[1].replace(/\\/g, '/')] = t;
+      }
+    }
     for (const rec of (idx.records || [])) {
       const text = String(rec.text || '');
       const pages = [];
@@ -247,9 +283,12 @@ function scanDoc(docId, dir, hrefPrefix, groups) {
         const at = p.seg.toLowerCase().indexOf(first);
         const ctx = p.seg.replace(/\s+/g, ' ').trim();
         const snippet = ctx.slice(Math.max(0, at - 30), at + 60);
+        const url = (p.url || '').replace(/\\/g, '/');
         out.push({
-          doc,
-          href: hrefPrefix + docId + '/' + (p.url || '').replace(/\\/g, '/'),
+          doc: docId,
+          href: hrefPrefix + docId + '/' + url,
+          title: titleByUrl[url] || url || docId,
+          docName: '',
           snippet,
           score: score + 6,
         });

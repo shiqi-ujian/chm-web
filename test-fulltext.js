@@ -27,6 +27,8 @@ const ok = (name, cond) => { log((cond ? 'OK  ' : 'FAIL') + ' ' + name); if (!co
   ok('search-index.json parses with records', Array.isArray(idx.records) && idx.records.length > 0);
   const idxHits = idx.records.filter((x) => x.text.toLowerCase().includes('benchmark')).length;
   ok('search-index.json matches benchmark', idxHits >= 1);
+  const titleRecords = idx.records.filter((x) => /^\[page:[^\]]+\]\n/.test(x.text)).length;
+  ok('search-index.json includes page-title records', titleRecords >= 1);
 
   // 3) index.html shell now references search + dropdown (5z 风格壳)
   const shell = fs.readFileSync(path.join(docDir, 'index.html'), 'utf8');

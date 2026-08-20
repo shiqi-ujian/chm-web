@@ -329,7 +329,7 @@ loadMe();
       rows.push({grp:rep.name||rep.doc||'',href:'d/'+(rep.doc||'')+'/'+pg,t:pg||'',p:ctx});});
     var seen={},u=[];rows.forEach(function(r){var k=r.href+'|'+r.t;if(!seen[k]){seen[k]=1;u.push(r);}});render(u);}
   function apiFn(q){fetch('/api/search?q='+encodeURIComponent(q)+'&limit=20').then(function(r){return r.json();}).then(function(j){
-    var rows=(j&&j.hits||[]).map(function(h){return {grp:h.doc||'',href:h.href||('d/'+(h.doc||'')+'/'),t:h.doc||'',p:h.snippet||''};});render(rows);}).catch(function(){local(q);});}
+    var rows=(j&&j.hits||[]).map(function(h){return {grp:(h.docNs||h.doc)||'',href:h.href||('d/'+(h.doc||'')+'/'),t:(h.title||h.snippet||h.doc||'').slice(0,60),p:h.snippet||''};});render(rows);}).catch(function(){local(q);});}
   siteq.addEventListener('input',function(){var v=siteq.value.trim();if(!v){sres.style.display='none';return;}if(api)apiFn(v);else local(v);});
   document.addEventListener('click',function(e){if(e.target!==siteq&&!sres.contains(e.target))sres.style.display='none';});
   function recentRender(list){var box=document.getElementById('recentDocs');var arr=list&&list.length?list:window.__docs||[];

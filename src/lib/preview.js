@@ -677,6 +677,10 @@ function buildFullText(docDir) {
     if (chunks.length >= CHUNK_SIZE) flush();
   }
   flush();
+  // 标题记录同时进入 records，让服务端 /api/search 能把正文命中的“章节名”展示出来
+  for (const t of titles) {
+    records.push({ text: '[page:' + t.file + ']\n' + t.title });
+  }
   return { records, titles };
 }
 
