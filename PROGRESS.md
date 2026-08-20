@@ -142,6 +142,7 @@
 - [ ] 正文中文翻译（需外部服务/预算评估）
 - [ ] autosync 在多台设备上的部署说明
 - [ ] PROGRESS/README/HANDOFF 按最新线上与功能状态持续归档（有更新随提交补）
+- [ ] **核对阿里云自动部署链路**：仓库内只有测试 workflow，没有部署 workflow；确认服务器侧是 webhook / cron / systemd timer 拉取部署，`push main → 线上自动更新` 是否真实生效（回家查 `crontab -l` / `systemctl list-timers` / webhook 服务）
 
 ---
 
