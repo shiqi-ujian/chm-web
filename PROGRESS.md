@@ -24,6 +24,7 @@
 | 公网部署 | 迁至阿里云自建生产 | ✅ 已完成：生产环境从 Railway 迁移到阿里云服务器，`push → GitHub → 阿里云自动拉取部署`链路已验证。由 `HOST`/`PORT` 监听 + `UPLOAD_TOKEN`/`EXPORT_TOKEN`/`ADMIN_TOKEN` 访问令牌 + 持久数据目录（`CHM_SITE` / `CHM_DATA`，站点与数据分离）。访问密钥只放阿里云服务器环境变量 + 本机 `data/deploy-tokens.txt`（gitignore），不入库 |
 | **P1·健壮与安全**（M5） | **稳定性 + 公共服务护栏** | **✅ 已完成一批**：原子写（临时文件+rename+重试，防崩溃损坏）、会话 30 天惰性过期清理、账号/上传/导出接口限流（滑动窗口）、每用户文档数/字节配额 + 全局存储上限、并发上传槽位（异步 7z 解包 + 超时 + 失败自动清理临时文件）、修复阅读壳/欢迎页**存储型 XSS**（搜索结果一律转义再高亮）、**移除烘焙进页面的 UPLOAD/EXPORT_TOKEN 明文**（改为已登录用户会话服务端校验）、新增服务端检索 `/api/search`（保留客户端静态回退）。新增 `test-quota / test-xss / test-search-api / test-atomic` 并接入 CI。SQLite 化 + FTS5 + 字符集归一化也已完成，`npm test` 15 项全绿 |
 | M7 | 登录加固 + 移动端 + 合规 | ✅ 已完成：注册需邮箱+同意条款、邮箱验证、忘记/重置密码、失败锁定、CSRF；移动端优化（汉堡菜单、上传权利勾选、阅读壳适配）；新增 `terms/privacy/disclaimer/report.html`，举报入库 + 管理后台 `admin.html`（状态流转/下架）；测试 `test-auth-v2` 并入 `npm test`，15 项全绿 |
+| M8·产品体验补强 | 首页改版 / SEO / 运维自愈 / 问题反馈闭环 | ✅ 已完成：首页公开文档区改为响应式卡片网格；全站加 SEO meta + OpenGraph；新增文档管理增强（重命名/作者/标签/用量）、批量操作（勾选导出/改公开/删除）、浏览页标签/作者筛选、上传失败重试、批量上传后直接打包下载；新增 `watchdog.sh` 探活（自动重启 + 连续失败 webhook/日志告警）、启动自检、旧库缺列崩溃修复；上线「问题反馈」流程：腾讯文档收集表读取桥 `tools/feedback-bridge/` + 全站入口（导航/抽屉/页脚）+ 自动处理工作流（定时读取→修复→发布→CHANGELOG 公示） |
 
 ---
 
@@ -41,9 +42,15 @@
 - `src/lib/translations.js`：目录节点名中英对照（示例做了 7-Zip 手册）。
 - `src/lib/upload.js`：上传→转换→存盘→更新索引 的完整管线（`processUpload`，支持公开/私密落盘）。
 - `src/lib/auth.js`：账号体系 + 可见性 + 举报（注册/登录/会话 scrypt 哈希；文档元数据；私有/公开/分享链接 ACL；私有实体 `data/private/`；存储已 SQLite 化）。
-- `src/server.js`：真实后端（静态托管 + 账号 API + `POST /api/upload` + `GET /api/docs`（按可见性过滤） + 私有文档 `/p/` 服务 + 分享 `/s/` 跳转 + 批量导出/整站导出 + 举报/管理接口）。
+- `src/lib/db.js`：SQLite（better-sqlite3，WAL）+ JSON→SQLite 一次性迁移；`users/sessions/meta/user_usage` + FTS5。
+- `src/lib/quota.js`：限流 / 配额（`user_usage` 持久化）。
+- `src/lib/search.js`：服务端检索（SQLite FTS5，相关性排序 + 高亮 + 分页）。
+- `src/lib/mailer.js`：零依赖 SMTP 邮件发送（`SMTP_*`，缺省写 `logs/mailer.log`）。
+- `src/server.js`：真实后端（静态托管 + 账号 API + `POST /api/upload` + `GET /api/docs`（按可见性过滤） + 私有文档 `/p/` 服务 + 分享 `/s/` 跳转 + 批量导出/整站导出 + 举报/管理接口 + `/api/search`）。
+- `tools/feedback-bridge/`：腾讯文档收集表读取桥（定时把新问题读入本地 inbox，供 agent 自动处理）。
 - `scripts/autosync.ps1` + `autosync_over.vbs`：计划任务「拉取+推送」自动同步（**不做自动提交**），失败留到下一轮。
-- Git 已开启 GitHub Actions CI：每次 push 到 main 自动跑 15 项测试；阿里云生产由 `push → GitHub → 自动拉取`链路发布。
+- `scripts/launch-check.js` / `.deploy-tools/watchdog.sh`：启动自检 + 服务器探活（自动重启 + 连续失败 webhook/日志告警）。
+- Git 已开启 GitHub Actions CI：每次 push 到 main 自动跑 15+ 项测试；阿里云生产由 `push → GitHub → 自动拉取`链路发布。
 
 **线上**：生产为**阿里云服务器**（地址占位，不写入仓库）；GitHub Pages `https://shiqi-ujian.github.io/chm-web/` 仍作为静态阅读层示例/公开页使用。
 
@@ -109,6 +116,20 @@
 - 新增合规页 + 举报入库 + 管理后台 `admin.html` + 举报状态 API + 下架接口。
 - 邮件走零依赖 SMTP 客户端（缺省写 `logs/mailer.log`）。
 
+### 12. 旧库缺列启动崩溃（已解决，2026-08-19）
+- 现象：旧库升级后服务启动崩溃。
+- 根因：`email` 索引在补列之前创建，旧库缺列时 `ensureIndex` 直接抛错。
+- 修复：把 `email` 索引移到补列之后创建；`test-db.js` 补旧库缺列升级回归用例。
+
+### 13. 我的文档页整页 JS 失效（已解决，2026-08-19）
+- 根因：`loadUsage` 调用少写一个右括号，导致整页脚本解析失败。
+- 修复：补缺失括号；`test-site.js` 增加全页面脚本语法检查回归，防类似问题再发生。
+
+### 14. 问题反馈自动处理工作流上线（2026-08-19/20）
+- 群友在腾讯文档收集表提交问题 → `tools/feedback-bridge/` 定时读取进本地 inbox → agent 自动 debug / 修复 / 发布 → `CHANGELOG.md` 公示。
+- 同步上线全站「问题反馈」入口（导航 / 抽屉 / 页脚）。
+- 注意：`问题收集/`、`tools/feedback-bridge/config.json`、共享登录 profile、`feedback-state.json` 均在 .gitignore，严禁提交（公开仓库）。
+
 ---
 
 ## 五、仍待办 / 下一步
@@ -116,9 +137,11 @@
 - [x] 公网真实部署上线（阿里云迁移）
 - [x] P1 稳健/安全批处理
 - [x] M7 登录加固 + 移动端 + 合规
-- [ ] 转换完成整批自动打包下载（M4 可选增强）
+- [x] M8 产品体验补强 + 问题反馈闭环（首页卡片 / SEO / 文档管理增强 / watchdog / feedback-bridge）
+- [x] 转换完成整批自动打包下载（M4 可选增强）——批量上传后直接打包下载已实现
 - [ ] 正文中文翻译（需外部服务/预算评估）
 - [ ] autosync 在多台设备上的部署说明
+- [ ] PROGRESS/README/HANDOFF 按最新线上与功能状态持续归档（有更新随提交补）
 
 ---
 
