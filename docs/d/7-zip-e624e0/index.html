@@ -45,13 +45,13 @@ a{color:var(--accent);text-decoration:none}
 .toc-row .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .toc-kids{display:none}
 .toc-row.open + .toc-kids{display:block}
-.side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-#theme-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px}
+.side-foot{padding:8px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px}
+#theme-btn{flex:0 0 auto;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:14px;color:var(--text)}
 #theme-btn:hover{border-color:var(--accent)}
 /* ---------- 主区 ---------- */
 #main{flex:1;min-width:0;display:flex;flex-direction:column}
 #topbar{height:48px;min-height:48px;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--border)}
-.tb-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:14px;color:var(--text);line-height:1}
+.tb-btn{flex:0 0 auto;border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:14px;color:var(--text);line-height:1}
 .tb-btn:hover{border-color:var(--accent);color:var(--accent)}
 #crumb{flex:1;min-width:0;font-size:13px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #crumb b{color:var(--accent);font-weight:600}
@@ -62,11 +62,40 @@ a{color:var(--accent);text-decoration:none}
 #page-search-bar button{border:1px solid var(--border);background:var(--panel);border-radius:6px;padding:4px 9px;cursor:pointer;font-size:13px}
 #page-search-bar .cnt{font-size:12px;color:var(--muted);white-space:nowrap}
 #frame{flex:1;width:100%;border:0;background:#fff}
+/* 桌面上 Ctrl+K 聚焦搜索时让输入框视觉反馈更明显 */
+.search-box input:focus{box-shadow:0 0 0 3px var(--accent-soft)}
 mark.wz-hl{background:var(--hl);color:inherit;padding:0 1px;border-radius:2px}
 mark.wz-hl.cur{outline:2px solid var(--accent)}
+/* ---------- 移动端底部操作条 ---------- */
+#mobile-bar{display:none}
 @media(max-width:680px){
   #sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:transform .22s ease;box-shadow:2px 0 12px rgba(0,0,0,.18);width:86vw;max-width:340px;min-width:0}
   #sidebar.open{transform:translateX(0)}
+  #topbar{gap:4px;padding:0 6px}
+  .tb-btn{padding:5px 8px;font-size:13px}
+  /* 移动端顶栏只保留核心导航按钮：页内搜索由底部操作条承担，避免顶栏过挤 */
+  #page-search-btn{display:none}
+  #frame{-webkit-text-size-adjust:100%}
+  /* 底部固定条：目录 / 字号 / 上一页 / 下一页 / 页内搜索 */
+  #mobile-bar{display:flex;align-items:center;justify-content:space-around;height:52px;min-height:52px;background:var(--panel);border-top:1px solid var(--border);position:sticky;bottom:0;z-index:50}
+  #mobile-bar .mb-btn{flex:1;text-align:center;border:0;background:transparent;color:var(--text);font-size:13px;padding:4px 0;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  #mobile-bar .mb-btn:hover{color:var(--accent)}
+  #mobile-bar .mb-btn:active{background:var(--hover)}
+  #mobile-bar .mb-btn b{display:block;font-size:16px;font-weight:600}
+  #mobile-bar .mb-btn:disabled b{opacity:.4}
+  #main{padding-bottom:env(safe-area-inset-bottom)}
+  #app{min-height:0}
+  /* 侧栏抽屉头部固定，目录区可独立滚动 */
+  #sidebar .side-head{flex:0 0 auto}
+  #toc{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  #sidebar .side-foot{flex:0 0 auto}
+  /* 顶栏按钮在超窄屏下更紧凑 */
+  #topbar{overflow:hidden}
+  #crumb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media(max-width:380px){
+  .tb-btn{width:34px;padding:0}
+  #crumb{max-width:30vw}
 }
 </style>
 </head><body>
@@ -100,6 +129,7 @@ mark.wz-hl.cur{outline:2px solid var(--accent)}
       <button class="tb-btn" id="prev-btn" title="上一页" type="button">↑</button>
       <button class="tb-btn" id="next-btn" title="下一页" type="button">↓</button>
       <button class="tb-btn" id="page-search-btn" title="页内搜索（Alt+↑↓ 跳转）" type="button">🔍</button>
+      <button class="tb-btn" id="progress" title="第 N / M 章 · 点击回到顶部" type="button"></button>
     </header>
     <div id="page-search-bar">
       <input id="ps-q" type="search" placeholder="在当前页面中查找…" autocomplete="off">
@@ -109,6 +139,13 @@ mark.wz-hl.cur{outline:2px solid var(--accent)}
       <button id="ps-close" title="关闭" type="button">✕</button>
     </div>
     <iframe id="frame" title="正文" src=""></iframe>
+    <div id="mobile-bar" aria-label="移动端操作">
+      <button class="mb-btn" id="mb-menu" type="button"><b>☰</b>目录</button>
+      <button class="mb-btn" id="mb-font-m" type="button"><b>A-</b>字号</button>
+      <button class="mb-btn" id="mb-prev" type="button"><b>↑</b>上一页</button>
+      <button class="mb-btn" id="mb-next" type="button"><b>↓</b>下一页</button>
+      <button class="mb-btn" id="mb-search" type="button"><b>🔍</b>查找</button>
+    </div>
   </main>
 </div>
 <script>window.__TOC__ = [{"i":0,"n":"7-Zip 起始页","u":"start.htm"},{"i":1,"n":"基本信息","u":"general/index.htm","c":[{"i":2,"n":"支持的格式","u":"general/formats.htm"},{"i":3,"n":"7z 格式","u":"general/7z.htm"},{"i":4,"n":"性能","u":"general/performance.htm"},{"i":5,"n":"常见问题","u":"general/faq.htm"},{"i":6,"n":"许可协议","u":"general/license.htm"},{"i":7,"n":"致谢","u":"general/thanks.htm"}]},{"i":8,"n":"文件管理器","u":"fm/index.htm","c":[{"i":9,"n":"菜单项与快捷键","u":"fm/menu.htm"},{"i":10,"n":"选项对话框","u":"fm/options.htm"},{"i":11,"n":"基准测试","u":"fm/benchmark.htm"},{"i":12,"n":"删除临时文件","u":"fm/temp.htm"},{"i":13,"n":"关于对话框","u":"fm/about.htm"},{"i":14,"n":"插件","u":"fm/plugins/index.htm","c":[{"i":15,"n":"7-Zip","u":"fm/plugins/7-zip/index.htm","c":[{"i":16,"n":"添加到压缩包对话框","u":"fm/plugins/7-zip/add.htm"},{"i":17,"n":"解压对话框","u":"fm/plugins/7-zip/extract.htm"}]}]}]},{"i":18,"n":"命令行版本","u":"cmdline/index.htm","c":[{"i":19,"n":"语法","u":"cmdline/syntax.htm"},{"i":20,"n":"退出代码","u":"cmdline/exit_codes.htm"},{"i":21,"n":"命令","u":"cmdline/commands/index.htm","c":[{"i":22,"n":"a（添加）","u":"cmdline/commands/add.htm"},{"i":23,"n":"b（基准测试）","u":"cmdline/commands/bench.htm"},{"i":24,"n":"d（删除）","u":"cmdline/commands/delete.htm"},{"i":25,"n":"e（解压）","u":"cmdline/commands/extract.htm"},{"i":26,"n":"h（哈希）","u":"cmdline/commands/hash.htm"},{"i":27,"n":"l（列出）","u":"cmdline/commands/list.htm"},{"i":28,"n":"rn（重命名）","u":"cmdline/commands/rename.htm"},{"i":29,"n":"t（测试）","u":"cmdline/commands/test.htm"},{"i":30,"n":"u（更新）","u":"cmdline/commands/update.htm"},{"i":31,"n":"x（完整路径解压）","u":"cmdline/commands/extract_full.htm"}]},{"i":32,"n":"开关选项","u":"cmdline/switches/index.htm","c":[{"i":33,"n":"--（停止解析开关）","u":"cmdline/switches/stop_switch.htm"},{"i":34,"n":"-ai（包含压缩包文件名）","u":"cmdline/switches/ar_include.htm"},{"i":35,"n":"-an（禁用压缩包名解析）","u":"cmdline/switches/ar_no.htm"},{"i":36,"n":"-ao（覆盖模式）","u":"cmdline/switches/overwrite.htm"},{"i":37,"n":"-ax（排除压缩包文件名）","u":"cmdline/switches/ar_exclude.htm"},{"i":38,"n":"-bb（设置输出日志级别）开关","u":"cmdline/switches/bb.htm"},{"i":39,"n":"-bs（设置输出/错误/进度流）开关","u":"cmdline/switches/bs.htm"},{"i":40,"n":"-i（包含文件名）","u":"cmdline/switches/include.htm"},{"i":41,"n":"-m（设置压缩方式）","u":"cmdline/switches/method.htm"},{"i":42,"n":"-o（设置输出目录）","u":"cmdline/switches/output_dir.htm"},{"i":43,"n":"-p（设置密码）","u":"cmdline/switches/password.htm"},{"i":44,"n":"-r（递归子目录）","u":"cmdline/switches/recurse.htm"},{"i":45,"n":"-sa（设置压缩包命名方式）","u":"cmdline/switches/sa.htm"},{"i":46,"n":"-scc（设置控制台输入输出字符集）","u":"cmdline/switches/scc.htm"},{"i":47,"n":"-scs（设置列表文件字符集）","u":"cmdline/switches/charset.htm"},{"i":48,"n":"-scrc（设置哈希算法）","u":"cmdline/switches/scrc.htm"},{"i":49,"n":"-sdel（加入压缩包后删除文件）","u":"cmdline/switches/sdel.htm"},{"i":50,"n":"-seml（通过电子邮件发送压缩包）","u":"cmdline/switches/email.htm"},{"i":51,"n":"-sfx（创建自解压压缩包）","u":"cmdline/switches/sfx.htm"},{"i":52,"n":"-si（从标准输入读取数据）","u":"cmdline/switches/stdin.htm"},{"i":53,"n":"-so（将数据写入标准输出）","u":"cmdline/switches/stdout.htm"},{"i":54,"n":"-slp（设置大页模式）","u":"cmdline/switches/large_pages.htm"},{"i":55,"n":"-slt（显示技术信息）","u":"cmdline/switches/list_tech.htm"},{"i":56,"n":"-sni（存储 NT 安全信息）","u":"cmdline/switches/sni.htm"},{"i":57,"n":"-sns（存储 NTFS 备用数据流）","u":"cmdline/switches/sns.htm"},{"i":58,"n":"-spf（使用完整文件路径）","u":"cmdline/switches/spf.htm"},{"i":59,"n":"-spm（要求目录路径带分隔符）","u":"cmdline/switches/spm.htm"},{"i":60,"n":"-ssc（设置大小写敏感模式）","u":"cmdline/switches/ssc.htm"},{"i":61,"n":"-ssw（压缩正在写入的文件）","u":"cmdline/switches/shared.htm"},{"i":62,"n":"-stl（用最新修改文件的日期作为压缩包时间戳）","u":"cmdline/switches/stl.htm"},{"i":63,"n":"-stx（排除压缩包类型）","u":"cmdline/switches/stx.htm"},{"i":64,"n":"-t（设置压缩包类型）","u":"cmdline/switches/type.htm"},{"i":65,"n":"-u（更新选项）","u":"cmdline/switches/update.htm"},{"i":66,"n":"-v（创建分卷）","u":"cmdline/switches/volume.htm"},{"i":67,"n":"-w（设置工作目录）","u":"cmdline/switches/working_dir.htm"},{"i":68,"n":"-x（排除文件名）","u":"cmdline/switches/exclude.htm"},{"i":69,"n":"-y（所有询问一律回答“是”）","u":"cmdline/switches/yes.htm"}]}]}];</script>
@@ -122,8 +159,28 @@ var resultsEl = document.getElementById('results');
 var crumbEl = document.getElementById('crumb');
 var mask = document.getElementById('mask');
 var sidebar = document.getElementById('sidebar');
-var home = 'start.htm';
+var home = 'general/index.htm';
 var title = '7-zip-e624e0';
+var lastUrl = '';
+/* URL 归一化：把「壳内相对路径 / 带 /p/<id>/ 前缀的绝对路径 / iframe 实际 URL」统一
+   成文档内相对路径（如 start.htm、general/7z.htm），用于目录高亮、上下页、进度匹配。
+   私有壳的 n.u 是绝对 /p/<id>/xxx，而 currentUrl() 取到的是无前导斜杠的绝对路径，
+   不归一化就永远匹配不上 → 上一页/下一页/进度/高亮全部失效。 */
+function normPath(p){
+  try { if (/^https?:\/\//i.test(p)) p = new URL(p).pathname; } catch(e){}
+  p = String(p || '').replace(/^\/+/, '');
+  p = p.replace(/^(?:[^/]+\/)?(?:d\/[^/]+\/|p\/[^/]+\/)/, '');
+  try { return decodeURIComponent(p); } catch(e){ return p; }
+}
+/* 返回列表：从当前壳路径去掉最后两段（如 d/7-zip 或 p/xxxx），回到站点根；
+   兼容在线部署、GitHub Pages 子路径（/仓库名/d/<id>/ → /仓库名/）与离线 zip 导出。 */
+var docListUrl = (function(){
+  try {
+    var parts = (window.location.pathname || '').split('/').filter(Boolean);
+    if (parts.length <= 1) return './';
+    return '/' + parts.slice(0, parts.length - 2).join('/') + '/';
+  } catch(e){ return './'; }
+})();
 
 /* ---------- 主题（深色/浅色，记忆 + 跟随系统） ---------- */
 var theme = (function(){ try { return localStorage.getItem('chm-theme') || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch(e){ return 'light'; } })();
@@ -145,19 +202,26 @@ var leafList = [];
 var openSet = new Set();
 (function(){
   try { openSet = new Set(JSON.parse(localStorage.getItem('chm-open') || 'null') || []); } catch(e){}
+  // 防旧版遗留的"全展开"巨量记忆（数千节点）导致首次打开仍全展开卡死
+  if (openSet.size > 300) { openSet = new Set(); try { localStorage.removeItem('chm-open'); } catch(e){} }
   function walk(nodes){
     for (var i=0;i<nodes.length;i++){
       var n = nodes[i];
-      if (n.u) { urlToNode.set(n.u, n); leafList.push(n); }
-      if (n.c) {
-        if (openSet.size === 0) openSet.add(n.i); // 首次：全部展开
-        walk(n.c);
-      }
+      if (n.u) { urlToNode.set(normPath(n.u), n); leafList.push(n); }
+      // 不再「首次全部展开」——大文档（数千节点）一次性渲染全部 DOM 会卡死浏览器
+      if (n.c) walk(n.c);
     }
   }
   walk(tocData);
 })();
 function saveOpen(){ try { localStorage.setItem('chm-open', JSON.stringify(Array.from(openSet))); } catch(e){} }
+/* 惰性渲染：分支默认只建空的 .toc-kids 容器，展开时才构建子节点。
+   这样 6919 节点的目录初始只渲染顶层几十个 DOM，展开哪个分支才补哪个。 */
+function ensureKids(div, n, depth){
+  var kids = div.querySelector('.toc-kids');
+  if (!kids || kids.childNodes.length) return;
+  n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth)); });
+}
 function renderNode(n, depth){
   var div = document.createElement('div');
   div.className = 'toc-node';
@@ -165,17 +229,18 @@ function renderNode(n, depth){
   var row = document.createElement('div');
   row.className = 'toc-row' + (n.c ? ' branch' : ' leaf');
   row.style.paddingLeft = (10 + depth * 14) + 'px';
-  if (openSet.has(n.i)) row.classList.add('open');
+  var isOpen = openSet.has(n.i);
+  if (isOpen) row.classList.add('open');
   if (n.c) {
     var tw = document.createElement('span');
     tw.className = 'tw';
-    tw.title = openSet.has(n.i) ? '折叠' : '展开';
+    tw.title = isOpen ? '折叠' : '展开';
     row.appendChild(tw);
     // 箭头：仅折叠/展开（阻止冒泡，避免触发打开页面）
     tw.addEventListener('click', function(e){
       e.stopPropagation();
-      if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
-      row.classList.toggle('open');
+      if (openSet.has(n.i)) { openSet.delete(n.i); row.classList.remove('open'); }
+      else { openSet.add(n.i); row.classList.add('open'); ensureKids(div, n, depth + 1); }
       tw.title = openSet.has(n.i) ? '折叠' : '展开';
       saveOpen();
     });
@@ -195,8 +260,9 @@ function renderNode(n, depth){
   if (n.c) {
     var kids = document.createElement('div');
     kids.className = 'toc-kids';
-    n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth + 1)); });
     div.appendChild(kids);
+    // 记忆里是展开态的分支立即填充（其余保持惰性）
+    if (openSet.has(n.i)) ensureKids(div, n, depth + 1);
   }
   return div;
 }
@@ -239,27 +305,127 @@ function renderCrumb(url){
 function openPage(url){
   if (!url || url === '#') return;
   frame.src = url;
+  lastUrl = url;
   setActive(url);
   renderCrumb(url);
   try { history.replaceState(null, '', '#' + url); } catch(e){}
   if (window.innerWidth <= 680) closeDrawer();
+  try { localStorage.setItem('chm-last', url); } catch(e){}
+  // 打开新页面后应用已保存的字号/阅读宽度（iframe 可能尚未加载，等 load 再设一次）
+  try { setTimeout(function(){ applyFontSize(fontSizeStep); applyReadingStyle(); }, 30); } catch(e){}
+  renderProgress();
+}
+/* iframe 加载完成后补一次阅读样式，确保字号/进度/排版在真实正文页上生效 */
+if (frame) frame.addEventListener('load', function(){
+  try { applyFontSize(fontSizeStep); } catch(e){}
+  try { applyReadingStyle(); } catch(e){}
+  try { renderProgress(); } catch(e){}
+});
+/* ---------- 移动端底部操作条 ---------- */
+var mbMenu = document.getElementById('mb-menu'), mbPrev = document.getElementById('mb-prev'), mbNext = document.getElementById('mb-next'), mbSearch = document.getElementById('mb-search');
+var mbFontM = document.getElementById('mb-font-m'), mbFontP = document.getElementById('mb-font-p');
+function openDrawer(){
+  sidebar.classList.add('open');
+  mask.classList.add('on');
+  // 打开抽屉后尽量让当前章节可见（手机目录一般很长，避免每次都要手动翻找）
+  try {
+    var cur = urlToNode.get(currentUrl());
+    if (!cur) return;
+    var rows = tocEl.querySelectorAll('.toc-row');
+    for (var i=0;i<rows.length;i++){
+      if (rows[i].parentElement.dataset.id === String(cur.i)){
+        rows[i].scrollIntoView({ block: 'center' });
+        break;
+      }
+    }
+  } catch(e){}
 }
 function closeDrawer(){ sidebar.classList.remove('open'); mask.classList.remove('on'); }
-document.getElementById('menu-btn').addEventListener('click', function(){ sidebar.classList.add('open'); mask.classList.add('on'); });
-if (mask) mask.addEventListener('click', closeDrawer);
-var homeBtn = document.getElementById('home-btn');
-if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = '../..'; });
-var prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
-if (prevBtn && nextBtn){
-  prevBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
-  nextBtn.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
-}
-function currentUrl(){
+if (mbMenu) mbMenu.addEventListener('click', openDrawer);
+/* 正文字号：向 iframe 注入 font-size + 记忆 */
+var fontSizeStep = (function(){ try { var v = parseInt(localStorage.getItem('chm-font-size') || '0', 10) || 0; return Math.max(-3, Math.min(3, v)); } catch(e){ return 0; } })();
+function applyFontSize(step){
+  step = Math.max(-3, Math.min(3, step));
+  fontSizeStep = step;
+  try { localStorage.setItem('chm-font-size', String(step)); } catch(e){}
   try {
-    var a = new URL(frame.contentWindow.location.href);
-    return decodeURIComponent(a.pathname).replace(/^\//, '');
-  } catch(e){ return (frame.getAttribute('src')||'').replace(/^[^:]*:\/\//,''); }
+    var d = frame.contentDocument;
+    if (d && d.body) d.body.style.fontSize = step ? ((100 + step * 10) + '%') : '';
+  } catch(e){}
+  if (mbFontM) mbFontM.disabled = step <= -3;
+  if (mbFontP) mbFontP.disabled = step >= 3;
 }
+/* 阅读排版：给 iframe 正文注入合适的行高/段落间距/最大宽度，桌面与移动通用 */
+function applyReadingStyle(){
+  try {
+    var d = frame.contentDocument;
+    if (!d || !d.body) return;
+    d.body.style.lineHeight = '1.7';
+    d.body.style.maxWidth = '860px';
+    d.body.style.margin = '0 auto';
+    var p = d.querySelectorAll('p,li,td,blockquote');
+    for (var i=0;i<p.length;i++) p[i].style.lineHeight = '1.7';
+  } catch(e){}
+}
+applyFontSize(fontSizeStep);
+applyReadingStyle();
+if (mbFontM) mbFontM.addEventListener('click', function(e){ e.stopPropagation(); applyFontSize(fontSizeStep - 1); });
+if (mbFontP) mbFontP.addEventListener('click', function(e){ e.stopPropagation(); applyFontSize(fontSizeStep + 1); });
+if (mbNext) mbNext.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
+if (mbPrev) mbPrev.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+if (mbSearch) mbSearch.addEventListener('click', function(){ psBar.classList.add('on'); psQ.focus(); runPageSearch(); });
+document.getElementById('menu-btn').addEventListener('click', openDrawer);
+var homeBtn = document.getElementById('home-btn');
+if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = docListUrl; });
+if (mask) mask.addEventListener('click', closeDrawer);
+document.getElementById('prev-btn').addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
+document.getElementById('next-btn').addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
+function currentUrl(){
+  var src;
+  try {
+    var w = frame.contentWindow;
+    if (w && w.location && w.location.href && !/^about:blank$/i.test(w.location.href)) {
+      src = w.location.href;
+    }
+  } catch(e){}
+  if (src == null) src = frame.getAttribute('src') || '';
+  return normPath(src);
+}
+/* ---------- 章节进度 / 返回顶部 ---------- */
+var progressEl = document.getElementById('progress');
+function renderProgress(){
+  if (!progressEl) return;
+  var idx = leafList.indexOf(urlToNode.get(currentUrl()));
+  if (idx < 0){ progressEl.textContent = ''; return; }
+  progressEl.textContent = (idx + 1) + ' / ' + leafList.length;
+  progressEl.setAttribute('data-idx', idx);
+}
+function backToTop(){
+  try {
+    var w = frame.contentWindow, d = w && w.document;
+    if (d && d.documentElement) d.documentElement.scrollTop = 0;
+    if (d && d.body) d.body.scrollTop = 0;
+    if (w && w.scrollTo) w.scrollTo(0, 0);
+  } catch(e){}
+}
+var progBtn = document.getElementById('progress');
+if (progBtn) progBtn.addEventListener('click', backToTop);
+/* ---------- 移动端左右滑动切章 ---------- */
+var touchStartX = 0, touchStartY = 0, touchStartT = 0;
+function goPrevPage(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); }
+function goNextPage(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); }
+document.addEventListener('touchstart', function(e){
+  if (window.innerWidth > 680) return;
+  var t = e.touches && e.touches[0]; if (!t) return;
+  touchStartX = t.clientX; touchStartY = t.clientY; touchStartT = Date.now();
+}, { passive: true });
+document.addEventListener('touchend', function(e){
+  if (window.innerWidth > 680) return;
+  var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+  var dx = t.clientX - touchStartX, dy = t.clientY - touchStartY, dt = Date.now() - touchStartT;
+  if (dt > 700 || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 1.5) return;
+  if (dx < 0) goNextPage(); else goPrevPage();
+}, { passive: true });
 
 /* ---------- 页内搜索（同源 iframe 高亮） ---------- */
 var psBar = document.getElementById('page-search-bar');
@@ -278,28 +444,31 @@ function clearHl(doc){
 function highlightIn(doc, terms){
   clearHl(doc);
   if (!terms.length || !doc || !doc.body) return 0;
+  var MAX_MARKS = 500;
   var walker = doc.createTreeWalker(doc.body, 4 /* SHOW_TEXT */, null);
   var nodes = [], n;
   while ((n = walker.nextNode())) nodes.push(n);
   var count = 0;
-  nodes.forEach(function(node){
+  for (var ni = 0; ni < nodes.length && count < MAX_MARKS; ni++){
+    var node = nodes[ni];
     var text = node.nodeValue || '', lower = text.toLowerCase();
     var hits = [];
-    terms.forEach(function(t){
-      var from = 0, at;
-      while ((at = lower.indexOf(t, from)) !== -1){ hits.push([at, t.length]); from = at + t.length; }
-    });
-    if (!hits.length) return;
+    for (var ti = 0; ti < terms.length && count + hits.length < MAX_MARKS; ti++){
+      var tl = terms[ti].toLowerCase(), from = 0, at;
+      while ((at = lower.indexOf(tl, from)) !== -1){ hits.push([at, terms[ti].length]); from = at + terms[ti].length; }
+    }
+    if (!hits.length) continue;
     hits.sort(function(a,b){ return a[0]-b[0]; });
     var frag = doc.createDocumentFragment(), pos = 0;
-    hits.forEach(function(h){
+    for (var hi = 0; hi < hits.length && count < MAX_MARKS; hi++){
+      var h = hits[hi];
       if (h[0] > pos) frag.appendChild(doc.createTextNode(text.slice(pos, h[0])));
       var mk = doc.createElement('mark'); mk.className = 'wz-hl'; mk.textContent = text.slice(h[0], h[0]+h[1]);
       frag.appendChild(mk); pos = h[0]+h[1]; count++;
-    });
+    }
     if (pos < text.length) frag.appendChild(doc.createTextNode(text.slice(pos)));
     node.parentNode.replaceChild(frag, node);
-  });
+  }
   return count;
 }
 function extractTerms(input){
@@ -319,7 +488,7 @@ function runPageSearch(){
   psCount.textContent = terms.length ? (psTotal ? ('1/' + psTotal) : '0 结果') : '';
   if (psTotal) scrollToMark(0);
 }
-function scrollToMark(i){
+function scrollToMark(i, keepFocus){
   var doc = fdoc(); if (!doc) return;
   var marks = doc.querySelectorAll('mark.wz-hl');
   for (var k=0;k<marks.length;k++) marks[k].classList.remove('cur');
@@ -328,26 +497,40 @@ function scrollToMark(i){
   psCur = i;
   psCount.textContent = (i+1) + '/' + marks.length;
   try { marks[i].scrollIntoView({ block: 'center' }); } catch(e){}
-  var w = frame.contentWindow; if (w && w.focus) w.focus();
+  // 只有用户主动用键盘导航（Enter/↑↓）时才把焦点交给 iframe，
+  // 否则（搜索输入触发）会抢走输入框焦点，导致无法连续输入。
+  if (keepFocus){ var w = frame.contentWindow; if (w && w.focus) w.focus(); }
 }
-document.getElementById('page-search-btn').addEventListener('click', function(){
+var psPageBtn = document.getElementById('page-search-btn');
+if (psPageBtn) psPageBtn.addEventListener('click', function(){
   psBar.classList.toggle('on');
   if (psBar.classList.contains('on')){ psQ.focus(); runPageSearch(); }
   else { clearHl(fdoc()); psCount.textContent=''; }
 });
 if (psQ){
-  psQ.addEventListener('input', runPageSearch);
+  var psTimer = null;
+  var psRun = function(){
+    psTimer = null;
+    runPageSearch();
+  };
+  psQ.addEventListener('input', function(){
+    if (psTimer) window.clearTimeout(psTimer);
+    psTimer = window.setTimeout(psRun, 250);
+  });
   psQ.addEventListener('keydown', function(e){
-    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
-    else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
-    else if (e.key === 'ArrowUp' && e.altKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur); }
-    else if (e.key === 'ArrowDown' && e.altKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur); }
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur, true); }
+    else if (e.key === 'Enter' && e.shiftKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur, true); }
+    else if (e.key === 'ArrowUp' && e.altKey){ e.preventDefault(); psCur = (psCur - 1 + (psTotal||1)) % (psTotal||1); scrollToMark(psCur, true); }
+    else if (e.key === 'ArrowDown' && e.altKey){ e.preventDefault(); psCur = (psCur + 1) % (psTotal || 1); scrollToMark(psCur, true); }
     else if (e.key === 'Escape'){ psBar.classList.remove('on'); clearHl(fdoc()); }
   });
 }
-document.getElementById('ps-prev').addEventListener('click', function(){ if (psTotal) { psCur = (psCur - 1 + psTotal) % psTotal; scrollToMark(psCur); } });
-document.getElementById('ps-next').addEventListener('click', function(){ if (psTotal) { psCur = (psCur + 1) % psTotal; scrollToMark(psCur); } });
-document.getElementById('ps-close').addEventListener('click', function(){ psBar.classList.remove('on'); clearHl(fdoc()); });
+var psPrev = document.getElementById('ps-prev');
+var psNext = document.getElementById('ps-next');
+if (psPrev) psPrev.addEventListener('click', function(){ if (psTotal) { psCur = (psCur - 1 + psTotal) % psTotal; scrollToMark(psCur, true); } });
+if (psNext) psNext.addEventListener('click', function(){ if (psTotal) { psCur = (psCur + 1) % psTotal; scrollToMark(psCur, true); } });
+var psClose = document.getElementById('ps-close');
+if (psClose) psClose.addEventListener('click', function(){ psBar.classList.remove('on'); clearHl(fdoc()); });
 
 /* ---------- 全站搜索（keywords + search-index，增强语法） ---------- */
 var kwData = [], ftData = [], kwReady = false, ftReady = false;
@@ -432,10 +615,19 @@ function renderResults(hits, terms){
   lastHits = hits;
   resultsEl.innerHTML = '';
   if (!hits.length){ resultsEl.innerHTML = '<div class="empty">无匹配结果</div>'; resultsEl.hidden = false; return; }
+  // XSS 修复：全文/关键字索引可能来自任意上传文档（页面标题、正文），
+  // 绝不能直接把其内容当 HTML 拼进 DOM —— 先转义再环绕高亮 <mark>，杜绝脚本注入。
+  function escapeHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
   function hl(s){
-    var out = String(s);
-    terms.slice().sort(function(a,b){ return b.length - a.length; }).forEach(function(t){
-      out = out.split(t).join('<mark>' + t + '</mark>');
+    var out = escapeHtml(String(s == null ? '' : s));
+    terms.slice().sort(function(a,b){ return (b||'').length - (a||'').length; }).forEach(function(t){
+      var te = escapeHtml(String(t || ''));
+      if (!te) return;
+      out = out.split(te).join('<mark>' + te + '</mark>');
     });
     return out;
   }
@@ -461,6 +653,14 @@ function buildCats(){
   });
 }
 var searchTimer = null;
+/* Ctrl+K / Cmd+K：聚焦站内/全库搜索框（桌面快捷键，移动端键盘快捷键不常用但无害） */
+document.addEventListener('keydown', function(e){
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')){
+    e.preventDefault();
+    if (q){ q.focus(); q.select(); setTimeout(function(){ q.focus(); }, 0); }
+    else { var el = document.getElementById('q'); if (el){ el.focus(); el.select(); } }
+  }
+});
 if (q){
   q.addEventListener('input', function(){
     var v = q.value;
@@ -516,8 +716,12 @@ buildCats();
 /* ---------- 初始化 ---------- */
 (function init(){
   var start = (location.hash || '').replace('#', '');
-  if (!start || !urlToNode.has(start)) start = home;
+  if (!start || !urlToNode.has(normPath(start))) {
+    try { start = localStorage.getItem('chm-last') || ''; } catch(e){ start = ''; }
+    if (!start || !urlToNode.has(normPath(start))) start = home;
+  }
   openPage(start);
+  try { localStorage.setItem('chm-last', start); } catch(e){}
 })();
 })();
 </script>

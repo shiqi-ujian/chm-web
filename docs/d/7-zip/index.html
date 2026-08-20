@@ -162,6 +162,16 @@ var sidebar = document.getElementById('sidebar');
 var home = 'general/index.htm';
 var title = '7-Zip';
 var lastUrl = '';
+/* URL 归一化：把「壳内相对路径 / 带 /p/<id>/ 前缀的绝对路径 / iframe 实际 URL」统一
+   成文档内相对路径（如 start.htm、general/7z.htm），用于目录高亮、上下页、进度匹配。
+   私有壳的 n.u 是绝对 /p/<id>/xxx，而 currentUrl() 取到的是无前导斜杠的绝对路径，
+   不归一化就永远匹配不上 → 上一页/下一页/进度/高亮全部失效。 */
+function normPath(p){
+  try { if (/^https?:\/\//i.test(p)) p = new URL(p).pathname; } catch(e){}
+  p = String(p || '').replace(/^\/+/, '');
+  p = p.replace(/^(?:[^/]+\/)?(?:d\/[^/]+\/|p\/[^/]+\/)/, '');
+  try { return decodeURIComponent(p); } catch(e){ return p; }
+}
 /* 返回列表：从当前壳路径去掉最后两段（如 d/7-zip 或 p/xxxx），回到站点根；
    兼容在线部署、GitHub Pages 子路径（/仓库名/d/<id>/ → /仓库名/）与离线 zip 导出。 */
 var docListUrl = (function(){
@@ -192,19 +202,26 @@ var leafList = [];
 var openSet = new Set();
 (function(){
   try { openSet = new Set(JSON.parse(localStorage.getItem('chm-open') || 'null') || []); } catch(e){}
+  // 防旧版遗留的"全展开"巨量记忆（数千节点）导致首次打开仍全展开卡死
+  if (openSet.size > 300) { openSet = new Set(); try { localStorage.removeItem('chm-open'); } catch(e){} }
   function walk(nodes){
     for (var i=0;i<nodes.length;i++){
       var n = nodes[i];
-      if (n.u) { urlToNode.set(n.u, n); leafList.push(n); }
-      if (n.c) {
-        if (openSet.size === 0) openSet.add(n.i); // 首次：全部展开
-        walk(n.c);
-      }
+      if (n.u) { urlToNode.set(normPath(n.u), n); leafList.push(n); }
+      // 不再「首次全部展开」——大文档（数千节点）一次性渲染全部 DOM 会卡死浏览器
+      if (n.c) walk(n.c);
     }
   }
   walk(tocData);
 })();
 function saveOpen(){ try { localStorage.setItem('chm-open', JSON.stringify(Array.from(openSet))); } catch(e){} }
+/* 惰性渲染：分支默认只建空的 .toc-kids 容器，展开时才构建子节点。
+   这样 6919 节点的目录初始只渲染顶层几十个 DOM，展开哪个分支才补哪个。 */
+function ensureKids(div, n, depth){
+  var kids = div.querySelector('.toc-kids');
+  if (!kids || kids.childNodes.length) return;
+  n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth)); });
+}
 function renderNode(n, depth){
   var div = document.createElement('div');
   div.className = 'toc-node';
@@ -212,17 +229,18 @@ function renderNode(n, depth){
   var row = document.createElement('div');
   row.className = 'toc-row' + (n.c ? ' branch' : ' leaf');
   row.style.paddingLeft = (10 + depth * 14) + 'px';
-  if (openSet.has(n.i)) row.classList.add('open');
+  var isOpen = openSet.has(n.i);
+  if (isOpen) row.classList.add('open');
   if (n.c) {
     var tw = document.createElement('span');
     tw.className = 'tw';
-    tw.title = openSet.has(n.i) ? '折叠' : '展开';
+    tw.title = isOpen ? '折叠' : '展开';
     row.appendChild(tw);
     // 箭头：仅折叠/展开（阻止冒泡，避免触发打开页面）
     tw.addEventListener('click', function(e){
       e.stopPropagation();
-      if (openSet.has(n.i)) openSet.delete(n.i); else openSet.add(n.i);
-      row.classList.toggle('open');
+      if (openSet.has(n.i)) { openSet.delete(n.i); row.classList.remove('open'); }
+      else { openSet.add(n.i); row.classList.add('open'); ensureKids(div, n, depth + 1); }
       tw.title = openSet.has(n.i) ? '折叠' : '展开';
       saveOpen();
     });
@@ -242,8 +260,9 @@ function renderNode(n, depth){
   if (n.c) {
     var kids = document.createElement('div');
     kids.className = 'toc-kids';
-    n.c.forEach(function(k){ kids.appendChild(renderNode(k, depth + 1)); });
     div.appendChild(kids);
+    // 记忆里是展开态的分支立即填充（其余保持惰性）
+    if (openSet.has(n.i)) ensureKids(div, n, depth + 1);
   }
   return div;
 }
@@ -370,10 +389,7 @@ function currentUrl(){
     }
   } catch(e){}
   if (src == null) src = frame.getAttribute('src') || '';
-  try {
-    var a = new URL(src, window.location.href);
-    return decodeURIComponent(a.pathname).replace(/^\//, '');
-  } catch(e){ return src.replace(/^[^:]*:\/\//,''); }
+  return normPath(src);
 }
 /* ---------- 章节进度 / 返回顶部 ---------- */
 var progressEl = document.getElementById('progress');
@@ -700,9 +716,9 @@ buildCats();
 /* ---------- 初始化 ---------- */
 (function init(){
   var start = (location.hash || '').replace('#', '');
-  if (!start || !urlToNode.has(start)) {
+  if (!start || !urlToNode.has(normPath(start))) {
     try { start = localStorage.getItem('chm-last') || ''; } catch(e){ start = ''; }
-    if (!start || !urlToNode.has(start)) start = home;
+    if (!start || !urlToNode.has(normPath(start))) start = home;
   }
   openPage(start);
   try { localStorage.setItem('chm-last', start); } catch(e){}
