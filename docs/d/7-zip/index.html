@@ -272,6 +272,12 @@ function openPage(url){
   try { setTimeout(function(){ applyFontSize(fontSizeStep); applyReadingStyle(); }, 30); } catch(e){}
   renderProgress();
 }
+/* iframe 加载完成后补一次阅读样式，确保字号/进度/排版在真实正文页上生效 */
+if (frame) frame.addEventListener('load', function(){
+  try { applyFontSize(fontSizeStep); } catch(e){}
+  try { applyReadingStyle(); } catch(e){}
+  try { renderProgress(); } catch(e){}
+});
 /* ---------- 移动端底部操作条 ---------- */
 var mbMenu = document.getElementById('mb-menu'), mbPrev = document.getElementById('mb-prev'), mbNext = document.getElementById('mb-next'), mbSearch = document.getElementById('mb-search');
 var mbFontM = document.getElementById('mb-font-m'), mbFontP = document.getElementById('mb-font-p');
