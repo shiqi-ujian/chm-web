@@ -343,6 +343,7 @@ loadMe();
   function showPrivateSearch(on){if(!privateSearchCard)return;privateSearchCard.style.display=(on&&window.currentUser)?'':'none';}
   function runPrivateSearch(){
     var q=privateSearchInput.value.trim();if(!q){privateSearchResults.innerHTML='';return;}
+    privateSearchResults.innerHTML='<div style="color:var(--mut)">搜索中…</div>';
     fetch('/api/search?scope=mine&q='+encodeURIComponent(q)+'&limit=20',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
       if(privateSearchClear)privateSearchClear.style.display='';
       if(!j||!j.hits||!j.hits.length){privateSearchResults.innerHTML='<div style="color:var(--mut)">没有匹配的私密文档内容。</div>';return;}

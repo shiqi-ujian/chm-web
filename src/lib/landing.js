@@ -645,7 +645,9 @@ const UPLOAD = page('上传 · CHM 网页', true, `
     function finish(){go.disabled=false;all=[];sel();hideProg();isDone=!!ok.length;
       if(isDone&&batchDone){batchDone.style.display='';packBtn.textContent=ok.length>1?'⬇ 把刚上传的 '+ok.length+' 篇一起打包成 zip 下载':'⬇ 把刚上传的这篇打包成 zip 下载';
         if(failFiles.length&&retryBtn){retryBtn.style.display='';retryBtn.textContent='↻ 重试失败的 '+failFiles.length+' 个';}}
-      msg.innerHTML=fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>');}
+      var msgTail='';
+      if(okId.length){var mineUrl='mine.html';if(window.currentUser)msgTail='<a class="btn ghost sm" href="'+mineUrl+'" style="margin-left:10px">去「我的文档」管理</a>';}
+      msg.innerHTML=(fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>'))+msgTail;}
     (function loop(i){if(i>=files.length)return finish();var f=files[i];
       go.textContent='转换中 '+i+'/'+files.length;
       setProg(0,(files.length>1?('第 '+(i+1)+'/'+files.length+' 个 · '):'')+escS(f.name)+' — 上传中…');
@@ -711,6 +713,7 @@ const MINE = page('我的文档 · CHM 网页', true, `
   function showPrivateSearch(on){if(!privateSearchCard)return;privateSearchCard.style.display=(on&&window.currentUser)?'':'none';}
   function runPrivateSearch(){
     var q=privateSearchInput.value.trim();if(!q){privateSearchResults.innerHTML='';return;}
+    privateSearchResults.innerHTML='<div style="color:var(--mut)">搜索中…</div>';
     fetch('/api/search?scope=mine&q='+encodeURIComponent(q)+'&limit=20',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
       if(privateSearchClear)privateSearchClear.style.display='';
       if(!j||!j.hits||!j.hits.length){privateSearchResults.innerHTML='<div style="color:var(--mut)">没有匹配的私密文档内容。</div>';return;}
