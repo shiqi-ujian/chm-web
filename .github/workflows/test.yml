@@ -42,6 +42,7 @@ jobs:
           node test-auth-v2.js
           node test-launch-check.js
           node test-ops-tools.js
+          node test-share-mgmt.js samples/7-zip.chm
 
       # 全站导出冒烟（生成 site-export.zip 验证打包链路）
       - name: Export smoke

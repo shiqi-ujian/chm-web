@@ -593,7 +593,23 @@ function route(req, res) {
     const q = (u.searchParams.get('q') || '').trim();
     const limit = Math.min(Number(u.searchParams.get('limit')) || 10, 50);
     const offset = Math.max(Number(u.searchParams.get('offset')) || 0, 0);
-    sendJSON(res, 200, LibSearch.search(SITE_ROOT, q, { limit, offset }));
+    const username = currentUser(req) || null;
+    // 私密搜索：?scope=mine 只搜当前登录用户自己的私有文档
+    const scopeKind = u.searchParams.get('scope') || '';
+    if (scopeKind === 'mine') {
+      if (!username) { sendJSON(res, 401, { ok: false, error: '请先登录后再搜索私密文档' }); return; }
+      sendJSON(res, 200, LibSearch.searchUserPrivate(SITE_ROOT, q, username, { limit, offset }));
+      return;
+    }
+    // 可选：?scope=<id> 或 ?share=<token>（分享链接授权时由前端显式传，服务端校验分享 token）
+    const scopeParam = u.searchParams.get('share') || (scopeKind && scopeKind !== 'mine' ? scopeKind : '') || '';
+    let scopeIds = null;
+    if (scopeParam) {
+      const id = auth.docIdByShareToken(scopeParam);
+      if (!id) { sendJSON(res, 404, { ok: false, error: '分享链接无效或已过期' }); return; }
+      scopeIds = [id];
+    }
+    sendJSON(res, 200, LibSearch.search(SITE_ROOT, q, { limit, offset, username, scopeIds }));
   } else if (req.method === 'GET' && urlPath === '/api/verify-email') {
     handleJson(req, res, () => auth.verifyEmailCode(u.searchParams.get('token') || ''));
   } else if (req.method === 'POST' && urlPath === '/api/verify-email') {
@@ -650,7 +666,16 @@ function route(req, res) {
     });
   } else if (req.method === 'POST' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
     const id = decodeURIComponent(urlPath.split('/')[3]);
-    handleJson(req, res, (b) => auth.share(id, currentUser(req), { reset: !!(b && b.reset) }));
+    handleJson(req, res, (b) => {
+      const owner = currentUser(req);
+      return auth.share(id, owner, { reset: !!(b && b.reset), expiresAt: (b && b.expiresAt) || null });
+    });
+  } else if (req.method === 'GET' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    handleJson(req, res, () => auth.getShare(id, currentUser(req)));
+  } else if (req.method === 'DELETE' && /^\/api\/doc\/[^/]+\/share$/.test(urlPath)) {
+    const id = decodeURIComponent(urlPath.split('/')[3]);
+    handleJson(req, res, () => auth.revokeShare(id, currentUser(req)));
   } else if (req.method === 'DELETE' && /^\/api\/doc\/[^/]+$/.test(urlPath)) {
     // 删除文档：仅 owner 可删。删除公开区 docs/d/<id> 与私有区 data/private/<id> 实体 + meta
     const id = decodeURIComponent(urlPath.split('/')[3]);

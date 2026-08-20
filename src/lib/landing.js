@@ -661,9 +661,18 @@ const MINE = page('我的文档 · CHM 网页', true, `
   <div class="eyebrow">我的文档</div><h1>我的文档</h1>
   <div class="sub">管理你的私有 / 公开文档：改可见性、复制分享链接、删除。</div>`, `
   <div style="max-width:820px;margin:28px auto 0">
-    <div class="card" style="padding:16px 20px;margin-bottom:16px;display:none" id="usageCard">
+    <div class="card" style="padding:14px 20px;margin-bottom:16px;display:none" id="usageCard">
       <b>📦 已用容量</b>：<span id="usageText">--</span>
       <div style="font-size:13px;color:var(--mut);margin-top:2px">配额由服务器端控制，删除文档会实时释放。</div>
+    </div>
+    <div class="card" style="padding:14px 20px;margin-bottom:16px;display:none" id="privateSearchCard">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <b style="font-size:14px">🔍 搜索我的私密文档</b>
+        <input class="in" id="privateSearchInput" placeholder="输入关键词…" style="flex:1;min-width:180px" autocomplete="off">
+        <button class="btn sm" id="privateSearchBtn" type="button">搜索</button>
+        <button class="btn ghost sm" id="privateSearchClear" type="button" style="display:none">清除</button>
+      </div>
+      <div id="privateSearchResults" style="margin-top:10px;font-size:13.5px"></div>
     </div>
     <div id="batchBar" style="display:none;margin-bottom:14px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);align-items:center;gap:10px;flex-wrap:wrap">
       <span>已选 <b id="selCount">0</b> 篇</span>
@@ -696,6 +705,28 @@ const MINE = page('我的文档 · CHM 网页', true, `
   function loadUsage(){if(!window.currentUser||!window.fetch||!usageCard)return;fetch('/api/usage',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
     if(j&&j.usage&&usageCard){usageCard.style.display='';usageText.textContent=(j.usage.docs||0)+' 篇 / '+fmtSize(j.usage.bytes||0);}})
     .catch(function(){});}
+  // ---- 私密文档搜索 ----
+  var privateSearchCard=document.getElementById('privateSearchCard'),privateSearchInput=document.getElementById('privateSearchInput'),privateSearchBtn=document.getElementById('privateSearchBtn'),privateSearchClear=document.getElementById('privateSearchClear'),privateSearchResults=document.getElementById('privateSearchResults');
+  function mineHasPrivate(){return (window.__docs||[]).some(function(d){return window.currentUser && d.owner===window.currentUser && d.visibility==='private';});}
+  function showPrivateSearch(on){if(!privateSearchCard)return;privateSearchCard.style.display=(on&&window.currentUser)?'':'none';}
+  function runPrivateSearch(){
+    var q=privateSearchInput.value.trim();if(!q){privateSearchResults.innerHTML='';return;}
+    fetch('/api/search?scope=mine&q='+encodeURIComponent(q)+'&limit=20',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
+      if(privateSearchClear)privateSearchClear.style.display='';
+      if(!j||!j.hits||!j.hits.length){privateSearchResults.innerHTML='<div style="color:var(--mut)">没有匹配的私密文档内容。</div>';return;}
+      privateSearchResults.innerHTML='<div style="margin-bottom:6px">命中 '+j.total+' 条：</div>'+j.hits.map(function(h){
+        var url=h.href||('p/'+h.doc+'/');var title=escS2(h.doc||'');
+        return '<div style="padding:5px 0;border-bottom:1px solid var(--line)"><a href="'+escS2(url)+'">'+title+'</a>'+
+          (h.snippet?'<div style="color:var(--mut);font-size:12px;word-break:break-all">'+escS2(h.snippet)+'</div>':'')+'</div>';
+      }).join('');
+    }).catch(function(){privateSearchResults.innerHTML='<div style="color:var(--err)">搜索失败，请稍后重试。</div>';});
+  }
+  if(privateSearchBtn)privateSearchBtn.addEventListener('click',runPrivateSearch);
+  if(privateSearchInput)privateSearchInput.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();runPrivateSearch();}});
+  if(privateSearchClear)privateSearchClear.addEventListener('click',function(){privateSearchInput.value='';privateSearchResults.innerHTML='';privateSearchClear.style.display='none';});
+  function touchPrivateSearch(){showPrivateSearch(mineHasPrivate());}
+  function mineHasPrivate(){return (window.__docs||[]).some(function(d){return window.currentUser && d.owner===window.currentUser && d.visibility==='private';});}
+  function showPrivateSearch(on){if(!privateSearchCard)return;privateSearchCard.style.display=(on&&window.currentUser)?'':'none';}
   function editMeta(id,name,tags,author){var nn=prompt('重命名文档',name||'');if(nn==null)return;var na=prompt('作者（可留空）',author||'');if(na==null)return;var nt=prompt('标签（用逗号分隔，最多 10 个）',(tags||[]).join(', '));if(nt==null)return;
     fetch('/api/doc/'+encodeURIComponent(id)+'/meta',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({name:nn.trim(),author:na.trim(),tags:String(nt).split(/[,，;\s]+/).filter(function(t){return t.trim();})})})
       .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){if(x.st===200)load();else alert((x.j&&x.j.error)||'保存失败');}).catch(function(e){alert('网络错误：'+e.message);});}
@@ -703,10 +734,37 @@ const MINE = page('我的文档 · CHM 网页', true, `
   function mineOnly(list){return (list||[]).filter(function(d){return window.currentUser&&d.owner===window.currentUser;});}
   function toggleVis(id,btn){var target=btn.textContent.indexOf('公开')!==-1?'public':'private';
     fetch('/api/doc/'+encodeURIComponent(id)+'/visibility',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({visibility:target})}).then(function(){load();});}
+  function revokeShare2(id){if(!confirm('确认撤销该文档的分享链接？已有链接将立即失效。'))return;
+    fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'DELETE',headers:userHeaders()}).then(function(r){return r.json();}).then(function(){load();}).catch(function(){alert('撤销失败');});}
+  function manageShareFlow(id){if(window.confirm('管理分享链接？' + String.fromCharCode(10) + '确定：设置/更新有效期；取消：撤销当前分享。')){manageShare(id);}else{revokeShare2(id);}}
   function shareLink(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'}).then(function(r){return r.json();}).then(function(j){
       if(j.sharePath){var url=location.origin+location.pathname.replace(/\\/[^\\/]*$/,'/')+j.sharePath;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已复制');});}else{alert('分享链接：'+url);}}});}
   function del(id){if(!confirm('删除该文档？不可恢复。'))return;fetch('/api/doc/'+encodeURIComponent(id),{method:'DELETE',headers:userHeaders()}).then(function(){load();});}
-  function batchExport(){var ids=Object.keys(selected).filter(function(id){return selected[id];});if(!ids.length){alert('请先勾选文档');return;}
+  function manageShare(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){
+    if(!j||j.error){alert((j&&j.error)||'加载分享状态失败');return;}
+    var exp='';
+    if(j.expiresAt) exp=new Date(j.expiresAt).toISOString().slice(0,16).replace('T',' ');
+    var msg='当前分享链接：'+(j.sharePath?('https://'+location.hostname+(location.port?':'+location.port:'')+j.sharePath):'（未创建）')+
+      String.fromCharCode(10,10)+'有效期：'+(j.expiresAt?('到 '+exp):'永久')+
+      String.fromCharCode(10,10)+'输入新的过期时间（留空=永久，格式 YYYY-MM-DDTHH:mm）或输入 0 保持原样：';
+    var today=new Date();today.setDate(today.getDate()+1);var def=today.toISOString().slice(0,16);
+    var input=window.prompt(msg, j.expiresAt?new Date(j.expiresAt).toISOString().slice(0,16):def);
+    if(input===null)return;
+    if(input==='0')input='';
+    var expiresAt=input?new Date(input).getTime():null;
+    if(input&&isNaN(expiresAt)){alert('日期格式无效');return;}
+    fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({reset:false,expiresAt:expiresAt})}).then(function(r){return r.json();}).then(function(x){
+      if(x.error){alert(x.error);return;}
+      var url=location.origin+location.pathname.replace(/\\/[^\\/]*$/,'/')+x.sharePath;
+      if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已更新并复制');});}
+      else alert('分享链接已更新：'+url);load();}).catch(function(e){alert('网络错误：'+e.message);});
+  });
+  function revokeShare2(id){if(!confirm('确认撤销该文档的分享链接？已有链接将立即失效。'))return;
+    fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'DELETE',headers:userHeaders()}).then(function(r){return r.json();}).then(function(){load();}).catch(function(){alert('撤销失败');});}
+  function manageShareFlow(id){if(window.confirm('管理分享链接？' + String.fromCharCode(10) + '确定：设置/更新有效期；取消：撤销当前分享。')){manageShare(id);}else{revokeShare2(id);}}
+  function shareLink(id){fetch('/api/doc/'+encodeURIComponent(id)+'/share',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:'{}'}).then(function(r){return r.json();}).then(function(j){
+      if(j.sharePath){var url=location.origin+location.pathname.replace(/\\/[^\\/]*$/,'/')+j.sharePath;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(function(){alert('分享链接已复制');});}else{alert('分享链接：'+url);}}});}
+  var ids=Object.keys(selected).filter(function(id){return selected[id];});if(!ids.length){alert('请先勾选文档');return;}
     fetch('/api/export-docs',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({ids:ids,title:'选中导出'})}).then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
       if(x.st===200&&x.j&&x.j.zip){var blob=new Blob([Uint8Array.from(atob(x.j.zip),function(c){return c.charCodeAt(0);})],{type:'application/zip'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='chm-web-docs-'+Date.now()+'.zip';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);document.body.removeChild(a);},200);}
       else alert((x.j&&x.j.error)||'导出失败');}).catch(function(e){alert('网络错误：'+e.message);});}
@@ -722,9 +780,10 @@ const MINE = page('我的文档 · CHM 网页', true, `
     var bv=document.getElementById('batchVis');if(bv)bv.addEventListener('click',function(){batchVis('public');});}
   var filterTag='';
   function render(arr){arr=arr||[];
-    if(!window.currentUser){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">请先登录，才能查看和管理你的上传文档。</div>';if(usageCard)usageCard.style.display='none';return;}
-    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">你还没有上传文档，去「上传」页传一个 .chm 吧。</div>';if(usageCard)usageCard.style.display='none';return;}
+    if(!window.currentUser){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">请先登录，才能查看和管理你的上传文档。</div>';if(usageCard)usageCard.style.display='none';if(privateSearchCard)privateSearchCard.style.display='none';return;}
+    if(!arr.length){box.innerHTML='<div style="text-align:center;color:var(--mut);padding:40px 0">你还没有上传文档，去「上传」页传一个 .chm 吧。</div>';if(usageCard)usageCard.style.display='none';if(privateSearchCard)privateSearchCard.style.display='none';return;}
     if(filterTag)arr=arr.filter(function(d){return (d.tags||[]).indexOf(filterTag)!==-1;});
+    touchPrivateSearch();
     var tagSet=[];
     arr.forEach(function(d){(d.tags||[]).forEach(function(t){if(tagSet.indexOf(t)===-1)tagSet.push(t);});});
     var filterHtml=tagSet.length?('<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"><button class="btn ghost sm" data-tag="" style="'+(filterTag===''?'border-color:var(--acc);color:var(--acc)':'')+'">全部</button>'+
@@ -742,18 +801,19 @@ const MINE = page('我的文档 · CHM 网页', true, `
       '<span style="flex:100%;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">'+
         '<button class="btn ghost sm" data-edit="'+escS2(d.id)+'" data-name="'+escS2(d.name||d.id)+'" data-author="'+escS2(d.author||'')+'" data-tags="'+escS2((d.tags||[]).join(','))+'">编辑信息</button>'+
         '<button class="btn ghost sm" data-vis="'+escS2(d.id)+'">'+(d.visibility==='private'?'设为公开':'设为私密')+'</button>'+
-        '<button class="btn ghost sm" data-share="'+escS2(d.id)+'">复制分享链接</button>'+
+        '<button class="btn ghost sm" data-share="'+escS2(d.id)+'">管理分享链接</button>'+
         '<button class="btn danger sm" data-del="'+escS2(d.id)+'">删除</button></span></div>';}).join('');
     Array.prototype.forEach.call(box.querySelectorAll('.row-check'),function(b){b.addEventListener('click',function(){if(b.checked)selected[b.getAttribute('data-id')]=true;else delete selected[b.getAttribute('data-id')];updateBatchBar();});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-edit]'),function(b){b.addEventListener('click',function(){editMeta(b.getAttribute('data-edit'),b.getAttribute('data-name'),(b.getAttribute('data-tags')||'').split(',').filter(Boolean),b.getAttribute('data-author'));});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-tag]'),function(b){b.addEventListener('click',function(){filterTag=b.getAttribute('data-tag');load();});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-vis]'),function(b){b.addEventListener('click',function(){toggleVis(b.getAttribute('data-vis'),b);});});
-    Array.prototype.forEach.call(box.querySelectorAll('[data-share]'),function(b){b.addEventListener('click',function(){shareLink(b.getAttribute('data-share'));});});
+    Array.prototype.forEach.call(box.querySelectorAll('[data-share]'),function(b){b.addEventListener('click',function(){manageShareFlow(b.getAttribute('data-share'));});});
     Array.prototype.forEach.call(box.querySelectorAll('[data-del]'),function(b){b.addEventListener('click',function(){del(b.getAttribute('data-del'));});});
   }
   function load(){render(mineOnly(window.__docs));
-    fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs)render(mineOnly(j.docs));}).catch(function(){});}
+    fetch('/api/docs',{headers:userHeaders()}).then(function(r){return r.json();}).then(function(j){if(j&&j.docs){render(mineOnly(j.docs));touchPrivateSearch();}}).catch(function(){});}
   bindBatch();
+  touchPrivateSearch();
   // ---- 修改密码（仅登录后可见）----
   var pwCard=document.getElementById('pwCard'),cpGo=document.getElementById('cpGo');
   function showPw(on){if(pwCard)pwCard.style.display=on?'':'none';}
@@ -771,7 +831,7 @@ const MINE = page('我的文档 · CHM 网页', true, `
       .catch(function(e){if(cpGo)cpGo.disabled=false;er.style.color='';er.textContent='网络错误：'+e.message;});}
   if(cpGo)cpGo.addEventListener('click',changePw);
   load();loadUsage();showPw(!!window.currentUser);
-  window.__onAuth=function(){load();loadUsage();showPw(!!window.currentUser);};`, 'mine');
+  window.__onAuth=function(){load();loadUsage();showPw(!!window.currentUser);touchPrivateSearch();};`, 'mine');
 
 module.exports = { build, buildSiteIndex, WELCOME, BROWSE, UPLOAD, MINE, TERMS, PRIVACY, DISCLAIMER, REPORT, ADMIN, LANDING_HTML: WELCOME };
 

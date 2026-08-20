@@ -273,6 +273,7 @@ function rowToMeta(r) {
     name: r.name,
     visibility: r.visibility,
     shareToken: r.share_token,
+    shareExpiresAt: r.share_expires_at || null,
     createdAt: r.created_at,
     updatedAt: r.updated_at || r.created_at || null,
     tags: tags.slice(0, 10),
@@ -343,17 +344,53 @@ function updateMeta(docId, username, patch = {}) {
   return getMeta(docId);
 }
 
-/** 仅 owner 可生成/重置分享链接；返回 shareUrl 路径片段 */
-function share(docId, username, { reset = false } = {}) {
+function share(docId, username, { reset = false, expiresAt = null } = {}) {
   const meta = getMeta(docId);
   if (!meta) throw new AuthError('文档不存在', 404);
   if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以分享', 403);
+  if (meta.visibility !== 'private') throw new AuthError('公开文档无需分享链接', 400);
+  let exp = null;
+  if (expiresAt !== null && expiresAt !== undefined && expiresAt !== '') {
+    exp = Math.floor(Number(expiresAt));
+    if (!Number.isFinite(exp) || exp <= Date.now()) throw new AuthError('分享有效期必须晚于当前时间', 400);
+  }
   if (!meta.shareToken || reset) {
     const tok = crypto.randomBytes(16).toString('hex');
-    dbm.db.prepare('UPDATE meta SET share_token = ? WHERE doc_id = ?').run(tok, docId);
+    dbm.db.prepare('UPDATE meta SET share_token = ?, share_expires_at = ?, updated_at = ? WHERE doc_id = ?')
+      .run(tok, exp, Date.now(), docId);
     meta.shareToken = tok;
+  } else {
+    // 已有 token：仅更新有效期
+    dbm.db.prepare('UPDATE meta SET share_expires_at = ?, updated_at = ? WHERE doc_id = ?')
+      .run(exp, Date.now(), docId);
   }
-  return { shareToken: meta.shareToken, sharePath: '/s/' + meta.shareToken };
+  meta.shareExpiresAt = exp;
+  return { shareToken: meta.shareToken, sharePath: '/s/' + meta.shareToken, expiresAt: exp };
+}
+
+/** 查看当前分享状态（仅 owner）；无 token 返回 {hasShare:false} */
+function getShare(docId, username) {
+  const meta = getMeta(docId);
+  if (!meta) throw new AuthError('文档不存在', 404);
+  if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以管理分享', 403);
+  const expired = meta.shareToken && meta.shareExpiresAt && meta.shareExpiresAt < Date.now();
+  return {
+    docId,
+    shareToken: meta.shareToken || null,
+    sharePath: meta.shareToken ? '/s/' + meta.shareToken : null,
+    expiresAt: meta.shareExpiresAt || null,
+    expired: !!expired,
+  };
+}
+
+/** 撤销分享：清除 token 与过期时间 */
+function revokeShare(docId, username) {
+  const meta = getMeta(docId);
+  if (!meta) throw new AuthError('文档不存在', 404);
+  if (!username || meta.owner !== username) throw new AuthError('只有文档所有者可以撤销分享', 403);
+  dbm.db.prepare('UPDATE meta SET share_token = NULL, share_expires_at = NULL, updated_at = ? WHERE doc_id = ?')
+    .run(Date.now(), docId);
+  return { ok: true, shareToken: null, sharePath: null };
 }
 
 /** 仅 owner 可删除文档元数据；返回是否删除了 meta 记录 */
@@ -371,15 +408,23 @@ function canRead(docId, { username = null, shareToken = null } = {}) {
   if (!meta) return false;
   if (meta.visibility !== 'private') return true; // public / 无 meta 视为公开
   if (username && meta.owner && username === meta.owner) return true;
-  if (shareToken && meta.shareToken && shareToken === meta.shareToken) return true;
-  return false;
+  return isShareValid(meta, shareToken);
 }
 
-/** 由分享 token 反查文档 id（无则 null） */
+/** 分享 token 是否有效期可用（不校验 owner） */
+function isShareValid(metaOrId, shareToken) {
+  const meta = typeof metaOrId === 'string' ? getMeta(metaOrId) : metaOrId;
+  if (!meta || !meta.shareToken || !shareToken || shareToken !== meta.shareToken) return false;
+  if (meta.shareExpiresAt && meta.shareExpiresAt < Date.now()) return false;
+  return true;
+}
+
+/** 由分享 token 反查文档 id（无或已过期则 null） */
 function docIdByShareToken(shareToken) {
   if (!shareToken) return null;
   const r = dbm.db.prepare('SELECT doc_id FROM meta WHERE share_token = ?').get(shareToken);
-  return r ? r.doc_id : null;
+  if (!r) return null;
+  return isShareValid(r.doc_id, shareToken) ? r.doc_id : null;
 }
 
 /** 私有文档实体目录 */
@@ -402,6 +447,7 @@ module.exports = {
   register, login, logout, changePassword, userByToken,
   verifyEmailCode, requestEmailVerification, forgotPassword, resetPassword, getUser,
   createReport, listReports, setReportStatus,
-  ensureMeta, getMeta, setVisibility, updateMeta, share, deleteMeta, canRead, docIdByShareToken, privateDir,
+  ensureMeta, getMeta, setVisibility, updateMeta, share, getShare, revokeShare,
+  deleteMeta, canRead, isShareValid, docIdByShareToken, privateDir,
   readAllMeta,
 };

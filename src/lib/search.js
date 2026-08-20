@@ -2,6 +2,8 @@
 // search.js — 服务端检索。
 // 在线后端优先走 SQLite FTS5（src/lib/db.js 的 search_fts 虚拟表）：相关性排序 +
 // 高亮片段 + 分页，文档一多时性能好。离线/纯静态 zip 仍由前端回退到 site-index.json。
+// 私有文档不写入公开 site-index，单独按文档扫描 keywords.json / search-index.json，
+// 由 server 层把可读范围（owner / 分享 token）转换成 scopeIds 传入。
 const fs = require('fs');
 const path = require('path');
 const dbm = require('./db');
@@ -63,72 +65,9 @@ function buildFtsQuery(query) {
   return pieces.join(' ');
 }
 
-/**
- * 服务端检索：优先 FTS5；FTS 失败或返回空时回退纯文本扫描（兼容非常规 query / 未建索引）。
- * @returns {{ok:true, query, total, hits:[{doc,href,snippet}]}}
- */
-function search(siteRoot, query, { limit = 10, offset = 0 } = {}) {
+/** 统一查询解析函数；FTS 和字符串回退共用 */
+function parseQueryTerms(query) {
   const q = String(query || '').trim();
-  if (!q) return { ok: true, query: q, hits: [], total: 0 };
-
-  const ftsQuery = buildFtsQuery(q);
-  if (dbm.db && ftsQuery) {
-    try {
-      const total = dbm.db.prepare('SELECT COUNT(*) AS c FROM search_fts WHERE search_fts MATCH ?').get(ftsQuery).c;
-      if (total > 0) {
-        const rows = dbm.db.prepare(
-          `SELECT doc, title, snippet(search_fts, 2, '', '', '…', 28) AS body
-           FROM search_fts WHERE search_fts MATCH ?
-           ORDER BY rank LIMIT ? OFFSET ?`
-        ).all(ftsQuery, Math.max(0, limit), Math.max(0, offset));
-        const hits = rows.map((r) => ({
-          // doc 列存 id（slug）用于拼真实链接；标题列存文档名用于展示。
-          doc: (r.title || r.doc || ''),
-          href: 'd/' + (r.doc || '') + '/',
-          snippet: (r.body || r.title || '').replace(/\[page:[^\]]*\]/g, '').trim(),
-        }));
-        return { ok: true, query: q, total, hits };
-      }
-    } catch (e) { /* fall through to string search */ }
-  }
-  return stringSearch(siteRoot, q, { limit, offset });
-}
-
-/** 纯静态回退（读取 site-index.json 字符串扫描），与旧行为一致。 */
-function stringSearch(siteRoot, query, { limit = 10, offset = 0 } = {}) {
-  const idx = loadSiteIndex(siteRoot);
-  const q = String(query || '').trim();
-  if (!q) return { ok: true, query: q, hits: [], total: 0 };
-
-  const kwHits = [];
-  for (const k of (idx.keywords || [])) {
-    const name = (k.name || '').toLowerCase();
-    const doc = (k.doc || '');
-    if (name.indexOf(q.toLowerCase()) !== -1) {
-      kwHits.push({ doc, snippet: (k.name || ''), href: k.href || ('d/' + doc + '/'), score: 10 });
-    }
-  }
-
-  const recordsByDoc = {};
-  for (const rec of (idx.records || [])) {
-    if (!rec || !rec.text) continue;
-    (recordsByDoc[rec.doc] = recordsByDoc[rec.doc] || []).push(rec);
-  }
-  const body = legacyMatch(idx.records, recordsByDoc, q);
-
-  const all = kwHits.concat(body.hits.map((h) => ({ doc: h.doc, text: h.text, score: h.score, href: 'd/' + (h.doc || '') + '/' })));
-  all.sort((a, b) => (b.score || 0) - (a.score || 0));
-  const seen = new Set();
-  const uniq = all.filter((h) => { const k = h.doc + '::' + (h.text || h.snippet || ''); if (seen.has(k)) return false; seen.add(k); return true; });
-  const total = uniq.length;
-  const page = uniq.slice(offset, offset + limit);
-  return { ok: true, query: q, total, hits: page.map((h) => ({ doc: h.doc || '', href: h.href || '', snippet: h.text || h.snippet || '' })) };
-}
-
-/** 旧版简单分词/匹配（AND/OR/短语），作离线回退。 */
-function legacyMatch(records, recordsByDoc, query) {
-  const q = String(query || '').trim();
-  if (!q) return { hits: [], total: 0 };
   const groups = [];
   const re = /"([^"]+)"|(\S+)/g;
   let m;
@@ -140,28 +79,244 @@ function legacyMatch(records, recordsByDoc, query) {
       else if (parts.length) groups.push({ type: 'and', term: parts[0] });
     }
   }
-  if (!groups.length) return { hits: [], total: 0 };
-  const hits = [];
-  for (const docName of Object.keys(recordsByDoc)) {
-    for (const rec of recordsByDoc[docName]) {
-      const text = (rec.text || '').toLowerCase();
-      let ok = true, score = 0;
-      for (const g of groups) {
-        if (g.type === 'and') { if (text.indexOf(g.term) === -1) { ok = false; break; } score += 2; }
-        else if (g.type === 'phrase') { if (text.indexOf(g.term) === -1) { ok = false; break; } score += 4; }
-        else { let any = false; for (const t of g.terms) if (text.indexOf(t) !== -1) { any = true; score += 2; } if (!any) { ok = false; break; } }
-      }
-      if (!ok) continue;
-      const firstTerm = groups[0].type === 'and' ? groups[0].term : (groups[0].terms || [groups[0].term])[0];
-      const at = text.indexOf(firstTerm);
-      const snippet = rec.text.slice(Math.max(0, at - 30), at + 200).replace(/\s+/g, ' ').replace(/\[page:[^\]]*\]/g, '').trim();
-      hits.push({ doc: docName, text: snippet, score });
-    }
-  }
-  hits.sort((a, b) => b.score - a.score);
-  const seen = new Set();
-  const uniq = hits.filter((h) => { const k = h.doc + '::' + h.text; if (seen.has(k)) return false; seen.add(k); return true; });
-  return { hits: uniq, total: uniq.length };
+  return groups;
 }
 
-module.exports = { search, loadSiteIndex, rebuild, buildFtsQuery };
+function parseQuery(query) {
+  return parseQueryTerms(query);
+}
+
+function hitScore(text, groups) {
+  if (!groups.length) return 0;
+  const t = String(text || '').toLowerCase();
+  let score = 0;
+  for (const g of groups) {
+    if (g.type === 'and') { if (t.indexOf(g.term) === -1) return -1; score += 2; }
+    else if (g.type === 'phrase') { if (t.indexOf(g.term) === -1) return -1; score += 4; }
+    else {
+      let any = false;
+      for (const term of g.terms) { if (t.indexOf(term) !== -1) { any = true; score += 2; } }
+      if (!any) return -1;
+    }
+  }
+  return score;
+}
+
+/** 扫一个本地文档目录（私密文档或分享范围），返回 [{doc, name, href, snippet, score}] */
+function scanDocDir(docId, dir, query, groups, hrefPrefix) {
+  const hits = [];
+  if (!dir || !fs.existsSync(dir)) return hits;
+  // 标题关键字
+  try {
+    const kw = JSON.parse(fs.readFileSync(path.join(dir, 'keywords.json'), 'utf8')) || { keywords: [] };
+    for (const k of (kw.keywords || [])) {
+      const name = String(k.name || '');
+      if (hitScore(name, groups) !== -1) {
+        hits.push({ doc: doc, name: name, href: hrefPrefix + doc + '/' + (k.href || '').replace(/\\/g, '/'), snippet: '', score: 10 });
+      }
+    }
+  } catch (_) {}
+  // 全文
+  try {
+    const idx = JSON.parse(fs.readFileSync(path.join(dir, 'search-index.json'), 'utf8')) || { records: [] };
+    for (const rec of (idx.records || [])) {
+      const text = String(rec && rec.text || '');
+      const pages = [];
+      const re = /\[page:([^\]]+)\]([\s\S]*?)(?=\[page:|$)/g;
+      let m;
+      while ((m = re.exec(text))) pages.push({ url: m[1], seg: m[2] });
+      if (!pages.length) pages.push({ url: '', seg: text });
+      for (const p of pages) {
+        const score = hitScore(p.seg, groups);
+        if (score === -1) continue;
+        const at = p.seg.toLowerCase().indexOf((groups[0] && (groups[0].term || (groups[0].terms || [''])[0])) || '');
+        const ctx = p.seg.replace(/\s+/g, ' ').trim();
+        const snippet = ctx.slice(Math.max(0, at - 30), at + 60);
+        hits.push({
+          doc,
+          name: p.url || doc,
+          href: hrefPrefix + doc + '/' + p.url || hrefPrefix + doc + '/',
+          snippet,
+          score: score + 6,
+        });
+      }
+    }
+  } catch (_) {}
+  return hits;
+}
+
+function privateDocDir(docId) {
+  return path.join(dbm.dataDir, 'private', docId);
+}
+
+/**
+ * 服务端检索。
+ * @param {object} opts { limit, offset, username?, scopeIds?, onlyPrivate? }
+ *   scopeIds 非空 = 只在指定文档（多为分享授权文档）内检索。
+ *   username + onlyPrivate = 搜索该用户自己的私有文档。
+ * @returns {{ok:true, query, total, hits:[{doc,href,snippet}]}}
+ */
+function search(siteRoot, query, { limit = 10, offset = 0, username = null, scopeIds = null, onlyPrivate = false } = {}) {
+  const q = String(query || '').trim();
+  if (!q) return { ok: true, query: q, hits: [], total: 0 };
+  const groups = parseQueryTerms(q);
+
+  // 明确范围：分享/单文档 或 “我的私密文档”
+  let localDocs = [];
+  if (scopeIds && scopeIds.length) {
+    for (const id of scopeIds) {
+      const dir = privateDocDir(id);
+      if (!fs.existsSync(dir)) continue;
+      localDocs.push(...scanDoc(id, dir, 'p/', groups));
+    }
+  } else if (onlyPrivate && username) {
+    const rows = dbm.db.prepare('SELECT doc_id FROM meta WHERE owner = ? AND visibility = ?').all(username, 'private');
+    for (const r of rows) {
+      const dir = privateDocDir(r.doc_id);
+      if (!fs.existsSync(dir)) continue;
+      localDocs.push(...scanDoc(r.doc_id, dir, 'p/', groups));
+    }
+  }
+
+  if (localDocs.length) {
+    localDocs.sort((a, b) => (b.score || 0) - (a.score || 0));
+    const seen = new Set();
+    const uniq = localDocs.filter((h) => { const k = h.doc + '::' + h.href; if (seen.has(k)) return false; seen.add(k); return true; });
+    return {
+      ok: true,
+      query: q,
+      total: uniq.length,
+      hits: uniq.slice(offset, offset + limit).map((h) => ({ doc: h.doc, href: h.href, snippet: h.snippet })),
+    };
+  }
+
+  // 全局公开搜索（默认）——保留原 FTS5 路径 + 字符串回退
+  const ftsQuery = buildFtsQuery(q);
+  if (dbm.db && ftsQuery) {
+    try {
+      const total = dbm.db.prepare('SELECT COUNT(*) AS c FROM search_fts WHERE search_fts MATCH ?').get(ftsQuery).c;
+      if (total > 0) {
+        const rows = dbm.db.prepare(
+          `SELECT doc, title, snippet(search_fts, 2, '', '', '…', 28) AS body
+           FROM search_fts WHERE search_fts MATCH ?
+           ORDER BY rank LIMIT ? OFFSET ?`
+        ).all(ftsQuery, Math.max(0, limit), Math.max(0, offset));
+        return {
+          ok: true,
+          query: q,
+          total,
+          hits: rows.map((r) => ({
+            doc: (r.title || r.doc || ''),
+            href: 'd/' + (r.doc || '') + '/',
+            snippet: (r.body || r.title || '').replace(/\[page:[^\]]*\]/g, '').trim(),
+          })),
+        };
+      }
+    } catch (e) { /* fall through */ }
+  }
+  return publicStringSearch(siteRoot, q, { limit, offset });
+}
+
+function scanDoc(docId, dir, hrefPrefix, groups) {
+  const out = [];
+  try {
+    const kw = JSON.parse(fs.readFileSync(path.join(dir, 'keywords.json'), 'utf8')) || { keywords: [] };
+    for (const k of (kw.keywords || [])) {
+      const name = String(k.name || '');
+      if (hitScore(name, groups) !== -1) {
+        out.push({
+          doc: name, href: hrefPrefix + docId + '/' + (k.href || '').replace(/\\/g, '/'),
+          snippet: '', score: 10,
+        });
+      }
+    }
+  } catch (_) {}
+  try {
+    const idx = JSON.parse(fs.readFileSync(path.join(dir, 'search-index.json'), 'utf8')) || { records: [] };
+    for (const rec of (idx.records || [])) {
+      const text = String(rec.text || '');
+      const pages = [];
+      const re = /\[page:([^\]]+)\]([\s\S]*?)(?=\[page:|$)/g;
+      let m;
+      while ((m = re.exec(text))) pages.push({ url: m[1], seg: m[2] });
+      if (!pages.length) pages.push({ url: '', seg: text });
+      for (const p of pages) {
+        const score = hitScore(p.seg, groups);
+        if (score === -1) continue;
+        const first = (groups[0] && (groups[0].term || (groups[0].terms || [''])[0])) || '';
+        const at = p.seg.toLowerCase().indexOf(first);
+        const ctx = p.seg.replace(/\s+/g, ' ').trim();
+        const snippet = ctx.slice(Math.max(0, at - 30), at + 60);
+        out.push({
+          doc,
+          href: hrefPrefix + docId + '/' + (p.url || '').replace(/\\/g, '/'),
+          snippet,
+          score: score + 6,
+        });
+      }
+    }
+  } catch (_) {}
+  return out;
+}
+
+/** 纯静态回退：读取 site-index.json 字符串扫描（公开库）。 */
+function publicStringSearch(siteRoot, query, { limit = 10, offset = 0 } = {}) {
+  const idx = loadSiteIndex(siteRoot);
+  const q = String(query || '').trim();
+  if (!q) return { ok: true, query: q, hits: [], total: 0 };
+  const groups = parseQueryTerms(q);
+  const kwHits = [];
+  for (const k of (idx.keywords || [])) {
+    const name = (k.name || '').toLowerCase();
+    const doc = (k.doc || '');
+    if (hitScore(k.name || '', groups) !== -1) {
+      kwHits.push({ doc, snippet: (k.name || ''), href: k.href || ('d/' + doc + '/'), score: 10 });
+    }
+  }
+  const hits = [];
+  const seen = new Set();
+  for (const rec of (idx.records || [])) {
+    const text = rec.text || '';
+    const pages = [];
+    const re = /\[page:([^\]]+)\]([\s\S]*?)(?=\[page:|$)/g;
+    let m;
+    while ((m = re.exec(text))) pages.push({ url: m[1], seg: m[2] });
+    if (!pages.length) pages.push({ url: '', seg: text });
+    for (const p of pages) {
+      const score = hitScore(p.seg, groups);
+      if (score === -1) continue;
+      const first = (groups[0] && (groups[0].term || (groups[0].terms || [''])[0])) || '';
+      const at = p.seg.toLowerCase().indexOf(first);
+      const ctx = p.seg.replace(/\s+/g, ' ').trim();
+      const snippet = ctx.slice(Math.max(0, at - 30), at + 60);
+      const href = 'd/' + (rec.doc || '') + '/' + (p.url || '').replace(/\\/g, '/');
+      const key = href + '::' + snippet;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push({ doc: rec.doc || '', href, snippet, score: score + 6 });
+    }
+  }
+  const all = kwHits.concat(hits);
+  all.sort((a, b) => (b.score || 0) - (a.score || 0));
+  const uniq = [];
+  const uniqSet = new Set();
+  for (const h of all) {
+    const key = h.href + '::' + (h.snippet || h.doc || '');
+    if (uniqSet.has(key)) continue;
+    uniqSet.add(key);
+    uniq.push(h);
+  }
+  return { ok: true, query: q, total: uniq.length, hits: uniq.slice(offset, offset + limit).map((h) => ({ doc: h.doc || '', href: h.href || '', snippet: h.snippet || '' })) };
+}
+
+/** 在指定文档 id 范围内检索（分享链接场景），结果链接指向 p/。 */
+function searchScoped(siteRoot, query, docIds, { limit = 10, offset = 0 } = {}) {
+  return search(siteRoot, query, { limit, offset, scopeIds: docIds });
+}
+
+/** 搜索某用户自己的全部私有文档（用于「我的文档」私密搜索） */
+function searchUserPrivate(siteRoot, query, username, { limit = 10, offset = 0 } = {}) {
+  return search(siteRoot, query, { limit, offset, username, onlyPrivate: true });
+}
+
+module.exports = { search, searchScoped, searchUserPrivate, loadSiteIndex, rebuild, buildFtsQuery };

@@ -78,6 +78,7 @@ function open(dir) {
       name        TEXT,
       visibility  TEXT NOT NULL DEFAULT 'public',
       share_token TEXT,
+      share_expires_at INTEGER,
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER,
       tags        TEXT DEFAULT '[]',
@@ -128,6 +129,7 @@ function open(dir) {
   ensureColumn('meta', 'updated_at', 'INTEGER');
   ensureColumn('meta', 'tags', "TEXT DEFAULT '[]'");
   ensureColumn('meta', 'author', 'TEXT');
+  ensureColumn('meta', 'share_expires_at', 'INTEGER');
 
   migrateFromJsonOnce();
   return db;
