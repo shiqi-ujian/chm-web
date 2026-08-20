@@ -53,14 +53,14 @@ function renderTree(nodes, dir) {
 // tree → __TOC__ JSON：[{i,n,u,c}]，u 为相对阅读壳的 URL（leaf 才有），c 为子树。
 // i 全局唯一递增：递归子节点后必须用返回的 next 推进计数器，否则父级后续
 // 兄弟与子节点编号冲突 → setActive/折叠记忆按 i 匹配会错乱（多行同时高亮）。
-// 若给 urlPrefix（例如 '/p/<id>/'），存储的 u 会带前缀，作为真实的打开地址。
+// 若给 urlPrefix（例如 'p/<id>/'），存储的 u 会带绝对前缀，作为真实的打开地址。
 function toTocJson(nodes, dir, start, urlPrefix) {
   let i = start;
   const out = [];
   for (const n of nodes) {
     const node = { i: i++, n: translate(n.name) || n.name || '' };
     const href = relPath(dir, n.href);
-    if (href && href !== '#') node.u = (urlPrefix || '') + href;
+    if (href && href !== '#') node.u = (urlPrefix ? '/' + urlPrefix : '') + href;
     if (n.children && n.children.length) {
       const sub = toTocJson(n.children, dir, i, urlPrefix);
       node.c = sub.nodes;
@@ -792,8 +792,8 @@ function build({ outDir, hhcFile, hhkFile, title, urlPrefix }) {
     const first = tree.find((n) => n.href);
     if (first && first.href) homeHref = relPath(dir, first.href);
   }
-  // 私有文档壳挂在 /p/<id>/，所有正文/资源请求都应带上该前缀
-  if (urlPrefix) homeHref = urlPrefix + homeHref;
+  // 私有文档壳挂在 /p/<id>/，所有正文/资源请求都应带上该前缀（绝对路径形式）
+  if (urlPrefix) homeHref = '/' + urlPrefix + homeHref;
   // 兜底：若算出的首页是外部协议(CHM 内部 / 绝对 URL)或对应文件不存在，
   // 回退到文档内真实存在的内容首页。注意 index.html 是本阅读壳本身（不能当首页，
   // 否则 iframe 套娃）；故只挑真实内容页。
