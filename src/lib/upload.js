@@ -109,11 +109,15 @@ async function convertOne(input, outDir, id, name, o = {}) {
     const files = require('fs').readdirSync(outDir);
     const hhc = files.find((f) => /\.hhc$/i.test(f));
     const hhk = files.find((f) => /\.hhk$/i.test(f));
+    // 私有文档挂在 /p/<id>/ 下，TOC/首页/章节 URL 都要带这个前缀，否则
+    // iframe 会去请求 /start.htm 等公开静态路径 → 404 Not Found。
+    const urlPrefix = (o && o.visibility === 'private') ? ('p/' + id + '/') : '';
     preview.build({
       outDir: outDir,
       hhcFile: hhc ? path.join(outDir, hhc) : null,
       hhkFile: hhk ? path.join(outDir, hhk) : null,
       title: name || id,
+      urlPrefix,
     });
   } catch (e) {
     // 生成不了壳也不至于致命
