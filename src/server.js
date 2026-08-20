@@ -11,7 +11,7 @@ const landing = require('./lib/landing');
 const { exportSite, exportDocs, exportDocDirs } = require('./lib/site-export');
 const auth = require('./lib/auth');
 const dbm = require('./lib/db');
-const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf } = require('./lib/quota');
+const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf, reconcileUsage } = require('./lib/quota');
 const LibSearch = require('./lib/search');
 const { sniffFileCharset } = require('./lib/charset');
 
@@ -759,6 +759,11 @@ server.listen(Number(PORT), HOST, () => {
   } catch (e) { console.error('[startup] rebuildPrivateShells failed', e); }
   // 启动时清理崩溃/超时残留的临时文件（异步，不阻塞监听）
   try { cleanupTmp({ dataDir: DATA_DIR, siteRoot: SITE_ROOT }); } catch (e) { console.error('cleanup failed', e); }
+  // 用量校准：以 meta + 磁盘为准重算 user_usage（防历史迁移/手动改动导致的 docs/bytes 失实）
+  try {
+    const reconciled = reconcileUsage(SITE_ROOT, DATA_DIR);
+    if (reconciled.length) console.log('[startup] usage reconciled:', reconciled.map((u) => u.username + '=' + u.docs + '篇/' + u.bytes + 'B').join(', '));
+  } catch (e) { console.error('[startup] reconcileUsage failed', e); }
   console.log('chm-web server listening: http://' + HOST + ':' + port);
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';

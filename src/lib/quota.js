@@ -101,4 +101,35 @@ function releaseQuota(username, byteSize, { docs = 1 } = {}) {
     Math.max(0, use.bytes - (byteSize || 0)));
 }
 
-module.exports = { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf };
+/**
+ * 用量校准：以 meta 表（现存文档）为权威，重算每个 owner 的文档数与磁盘占用，
+ * 覆盖 user_usage 中的漂移值（历史迁移丢 bytes、删除未扣减、手动改动等都会导致失实）。
+ * bytes 口径 = 解包后磁盘实际占用（docs/d/<id> 或 data/private/<id>）。
+ * 返回本次校准的逐用户结果，供启动日志打印。
+ */
+function reconcileUsage(siteRoot, dataDir) {
+  const rows = dbm.db.prepare('SELECT doc_id, owner FROM meta').all();
+  const perUser = new Map(); // username -> { docs, bytes }
+  for (const r of rows) {
+    if (!r.owner) continue;
+    const u = perUser.get(r.owner) || { docs: 0, bytes: 0 };
+    u.docs += 1;
+    const pub = path.join(siteRoot, 'd', r.doc_id);
+    const priv = path.join(dataDir, 'private', r.doc_id);
+    let size = 0;
+    if (fs.existsSync(pub)) size = fsSizeRec(pub);
+    else if (fs.existsSync(priv)) size = fsSizeRec(priv);
+    u.bytes += size;
+    perUser.set(r.owner, u);
+  }
+  const stmt = dbm.db.prepare(
+    'INSERT INTO user_usage (username, docs, bytes) VALUES (?,?,?) ' +
+    'ON CONFLICT(username) DO UPDATE SET docs=excluded.docs, bytes=excluded.bytes'
+  );
+  dbm.db.transaction(() => {
+    for (const [name, v] of perUser) stmt.run(name, v.docs, v.bytes);
+  })();
+  return [...perUser.entries()].map(([username, v]) => ({ username, ...v }));
+}
+
+module.exports = { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf, reconcileUsage };

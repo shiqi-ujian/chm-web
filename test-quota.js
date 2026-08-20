@@ -78,6 +78,17 @@ async function main() {
   const anonUsage = await json('GET', '/api/usage');
   ok('anon usage returns null', anonUsage.st === 200 && anonUsage.body.usage === null, JSON.stringify(anonUsage.body));
 
+  // 用量校准：人为制造漂移（docs=99, bytes=0），reconcileUsage 应按 meta+磁盘重算为真实值
+  const dbm2 = require('./src/lib/db');
+  const quota2 = require('./src/lib/quota');
+  quota2.initQuota(DATA);
+  dbm2.db.pragma('busy_timeout = 5000');
+  dbm2.db.prepare('UPDATE user_usage SET docs=99, bytes=0 WHERE username=?').run('quota1');
+  const rec = quota2.reconcileUsage(SITE, DATA);
+  const after = quota2.usageOf('quota1');
+  ok('reconcile fixes drifted usage (docs=2, bytes>0)', after.docs === 2 && after.bytes > 0,
+    'after=' + JSON.stringify(after) + ' reconciled=' + JSON.stringify(rec));
+
   console.log(pass ? 'QUOTA_TEST_PASS' : 'QUOTA_TEST_FAIL');
   srv.kill();
   try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch (_) {}
