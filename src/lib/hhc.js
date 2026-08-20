@@ -34,17 +34,35 @@ function paramValue(inner, key) {
 
 /**
  * Parse .hhc text into nested nodes: {name, href, children[]}.
+ * 线性扫描：正则 exec 自带 lastIndex 推进；OBJECT 内容在遇到 </OBJECT> 闭合时按
+ * 记录的起始位置截取。切勿用 text.indexOf('</object>') 逐条查找——那会让
+ * 大目录（数千节点）退化为 O(n²) 全文本扫描（实测 7000 节点 ~20s）。
  */
 function parseHhc(text) {
   const root = [];
   const lists = [root];
   let curSitemap = null;
+  let openObjectAt = -1; // 当前未闭合 OBJECT 的内容起始（用于截取 param）
 
   const tokenRe = /<\s*(OBJECT|UL|LI)\b([^>]*)>|<\s*\/(?:OBJECT|UL|LI)\s*>/gi;
   let m;
   while ((m = tokenRe.exec(text)) !== null) {
     const full = m[0];
     if (full[1] === '/') {
+      if (/\/\s*OBJECT\b/i.test(full)) {
+        if (openObjectAt >= 0) {
+          const inner = text.slice(openObjectAt, m.index);
+          openObjectAt = -1;
+          const node = {
+            name: paramValue(inner, 'name') || '',
+            href: paramValue(inner, 'local'),
+            children: [],
+          };
+          lists[lists.length - 1].push(node);
+          curSitemap = node;
+        }
+        continue;
+      }
       if (/\/\s*UL\b/i.test(full)) {
         lists.pop();
         curSitemap = null;
@@ -66,18 +84,7 @@ function parseHhc(text) {
     } else if (tag === 'object') {
       const type = (attrs.match(/type\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
       if (!/sitemap/i.test(type)) continue;
-      const start = m.index + full.length;
-      const endIdx = text.toLowerCase().indexOf('</object>', start);
-      if (endIdx === -1) continue;
-      const inner = text.slice(start, endIdx);
-      tokenRe.lastIndex = endIdx + '</object>'.length;
-      const node = {
-        name: paramValue(inner, 'name') || '',
-        href: paramValue(inner, 'local'),
-        children: [],
-      };
-      lists[lists.length - 1].push(node);
-      curSitemap = node;
+      openObjectAt = m.index + full.length;
     }
   }
   return root;
