@@ -405,7 +405,7 @@ function rebuildSite() {
     fs.writeFileSync(path.join(SITE_ROOT, '_index.json'), JSON.stringify(listDocs(null), null, 2));
     landing.build({
       outDir: SITE_ROOT,
-      docs: listDocs(null).map((d) => ({ name: d.name, href: d.href, id: d.id })),
+      docs: listDocs(null).map((d) => ({ id: d.id, name: d.name, href: d.href })),
     });
     // 重建后同步灌入 SQLite FTS 索引（在线检索底座）
     LibSearch.rebuild(SITE_ROOT);
