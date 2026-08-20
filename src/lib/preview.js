@@ -184,6 +184,16 @@ var sidebar = document.getElementById('sidebar');
 var home = '${escAttr(t.home)}';
 var title = '${escAttr(t.title)}';
 var lastUrl = '';
+/* URL 归一化：把「壳内相对路径 / 带 /p/<id>/ 前缀的绝对路径 / iframe 实际 URL」统一
+   成文档内相对路径（如 start.htm、general/7z.htm），用于目录高亮、上下页、进度匹配。
+   私有壳的 n.u 是绝对 /p/<id>/xxx，而 currentUrl() 取到的是无前导斜杠的绝对路径，
+   不归一化就永远匹配不上 → 上一页/下一页/进度/高亮全部失效。 */
+function normPath(p){
+  try { if (/^https?:\\/\\//i.test(p)) p = new URL(p).pathname; } catch(e){}
+  p = String(p || '').replace(/^\\/+/, '');
+  p = p.replace(/^(?:[^/]+\\/)?(?:d\\/[^/]+\\/|p\\/[^/]+\\/)/, '');
+  try { return decodeURIComponent(p); } catch(e){ return p; }
+}
 /* 返回列表：从当前壳路径去掉最后两段（如 d/7-zip 或 p/xxxx），回到站点根；
    兼容在线部署、GitHub Pages 子路径（/仓库名/d/<id>/ → /仓库名/）与离线 zip 导出。 */
 var docListUrl = (function(){
@@ -217,7 +227,7 @@ var openSet = new Set();
   function walk(nodes){
     for (var i=0;i<nodes.length;i++){
       var n = nodes[i];
-      if (n.u) { urlToNode.set(n.u, n); leafList.push(n); }
+      if (n.u) { urlToNode.set(normPath(n.u), n); leafList.push(n); }
       if (n.c) {
         if (openSet.size === 0) openSet.add(n.i); // 首次：全部展开
         walk(n.c);
@@ -392,10 +402,7 @@ function currentUrl(){
     }
   } catch(e){}
   if (src == null) src = frame.getAttribute('src') || '';
-  try {
-    var a = new URL(src, window.location.href);
-    return decodeURIComponent(a.pathname).replace(/^\\//, '');
-  } catch(e){ return src.replace(/^[^:]*:\\/\\//,''); }
+  return normPath(src);
 }
 /* ---------- 章节进度 / 返回顶部 ---------- */
 var progressEl = document.getElementById('progress');
@@ -722,9 +729,9 @@ buildCats();
 /* ---------- 初始化 ---------- */
 (function init(){
   var start = (location.hash || '').replace('#', '');
-  if (!start || !urlToNode.has(start)) {
+  if (!start || !urlToNode.has(normPath(start))) {
     try { start = localStorage.getItem('chm-last') || ''; } catch(e){ start = ''; }
-    if (!start || !urlToNode.has(start)) start = home;
+    if (!start || !urlToNode.has(normPath(start))) start = home;
   }
   openPage(start);
   try { localStorage.setItem('chm-last', start); } catch(e){}
@@ -885,6 +892,9 @@ function build({ outDir, hhcFile, hhkFile, title, urlPrefix }) {
       if (real) homeHref = path.relative(dir, path.join(dir, real)).replace(/\\/g, '/');
     }
   }
+  // 私有壳：兜底逻辑可能把绝对 /p/<id>/ 前缀退化成相对路径（把带前缀的 homeHref 误判为
+  // 外部 URL 后重置），导致无尾斜杠 URL 或 iframe 相对解析错误 → 正文 404。这里补回前缀。
+  if (urlPrefix && !homeHref.startsWith('/' + urlPrefix)) homeHref = '/' + urlPrefix + homeHref;
 
   const navHtml = renderTree(tree, dir);
   const tocJson = toTocJson(tree, dir, 0, urlPrefix || '').nodes;

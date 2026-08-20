@@ -74,6 +74,16 @@ function get(p, token) {
     r.end();
   });
 }
+function raw(p, token) {
+  return new Promise((resolve) => {
+    const h = {}; if (token) h['X-User-Token'] = token;
+    const r = http.request({ host: 'localhost', port: PORT, path: p, method: 'GET', headers: h }, (x) => {
+      let b = []; x.on('data', (c) => b.push(c)); x.on('end', () => resolve({ st: x.statusCode, body: Buffer.concat(b).toString() }));
+    });
+    r.on('error', (e) => resolve({ st: 0, body: 'ERR ' + e.message }));
+    r.end();
+  });
+}
 function del(p, headers) {
   return new Promise((resolve) => {
     const r = http.request({ host: 'localhost', port: PORT, path: p, method: 'DELETE', headers: headers || {} }, (x) => {
@@ -140,11 +150,30 @@ async function main() {
   ok('owner set public 200', visPub.st === 200, String(visPub.st));
   ok('after public: /d/ 200 (migrated)', (await get('/d/' + idB + '/')) === 200);
   ok('after public: entity left private/', !fs.existsSync(path.join(DATA, 'private', idB)));
+  // 转公开后壳必须重建为相对链接（此前 idB 是私有上传的，壳带 /p/ 前缀；不重建则公开页 403/404）
+  {
+    const pubShell = await raw('/d/' + idB + '/');
+    const pubHome = /var home = '([^']*)'/.exec(pubShell.body);
+    ok('public shell rebuilt: home is relative (no /p/ prefix)', pubShell.st === 200 && pubHome && !pubHome[1].startsWith('/'),
+      pubHome ? pubHome[1] : 'no home');
+    ok('public shell has no /p/<id>/ absolute refs', !pubShell.body.includes('/p/' + idB + '/'));
+  }
   const visPriv = await json('POST', '/api/doc/' + idB + '/visibility', { visibility: 'private' }, { 'X-User-Token': tok });
   ok('owner set private 200', visPriv.st === 200, String(visPriv.st));
   ok('after private: /d/ 404', (await get('/d/' + idB + '/')) === 404);
   ok('after private: /p/ anon 403', (await get('/p/' + idB + '/')) === 403);
   ok('after private: /p/ owner 200', (await get('/p/' + idB + '/', tok)) === 200);
+  // 转私有后壳必须用 /p/<id>/ 绝对前缀（否则正文 iframe 相对解析 404 / 无尾斜杠 URL 也 404）
+  {
+    const privShell = await raw('/p/' + idB + '/', tok);
+    const privHome = /var home = '([^']*)'/.exec(privShell.body);
+    ok('private shell home is absolute /p/<id>/ prefixed', privShell.st === 200 && privHome && privHome[1].startsWith('/p/' + idB + '/'),
+      privHome ? privHome[1] : 'no home');
+    if (privHome && privHome[1].startsWith('/p/' + idB + '/')) {
+      const homeDoc = privHome[1].slice(('/p/' + idB).length); // /xxx.htm
+      ok('private home doc reachable', (await get('/p/' + idB + homeDoc, tok)) === 200, homeDoc);
+    }
+  }
 
   // ---- /api/docs 过滤 ----
   const anonList = await json('GET', '/api/docs');

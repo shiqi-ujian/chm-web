@@ -682,13 +682,23 @@ function route(req, res) {
     handleJson(req, res, (b) => {
       const meta = auth.setVisibility(id, b.visibility, currentUser(req));
       migrateDoc(id, meta.visibility);   // 公开⇄私有实体迁移
-      // 公开转私有后，私有区壳必须用 /p/<id>/ 绝对前缀重建，
-      // 否则旧公开壳的相对链接会去请求 /start.htm → 404。
-      // 私有转公开时保持公开相对链接（无需动壳）。
-      if (meta.visibility === 'private' && fs.existsSync(path.join(DATA_DIR, 'private', id))) {
-        try {
-          rebuildDocShell(path.join(DATA_DIR, 'private', id), id, meta.name || id, { visibility: 'private' });
-        } catch (e) { console.error('rebuild private shell after visibility change failed', id, e); }
+      // 可见性切换后重建阅读壳，保证 URL 前缀与所在区一致：
+      //   转私有 → /p/<id>/ 绝对前缀；转公开 → 相对链接（否则旧私有壳的 /p/ 前缀
+      //   会让公开访问 403/404，且目录高亮/上下页匹配失效）
+      if (meta.visibility === 'private') {
+        const privDir = path.join(DATA_DIR, 'private', id);
+        if (fs.existsSync(privDir)) {
+          try {
+            rebuildDocShell(privDir, id, meta.name || id, { visibility: 'private' });
+          } catch (e) { console.error('rebuild private shell after visibility change failed', id, e); }
+        }
+      } else {
+        const pubDir = path.join(SITE_ROOT, 'd', id);
+        if (fs.existsSync(pubDir)) {
+          try {
+            rebuildDocShell(pubDir, id, meta.name || id, { visibility: 'public' });
+          } catch (e) { console.error('rebuild public shell after visibility change failed', id, e); }
+        }
       }
       rebuildSite();                     // 重建欢迎页/索引
       return { id, visibility: meta.visibility };
