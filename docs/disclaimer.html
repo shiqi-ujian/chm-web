@@ -253,7 +253,11 @@ function doAuth(){var er=document.getElementById('authErr');
     .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
       if(x.st===200&&x.j.token){USER_TOKEN=x.j.token;try{localStorage.setItem('chm_user',USER_TOKEN);}catch(e){}
         currentUser=x.j.username||bodyObj.username;window.__closeAuth();renderAuth();afterMe();
-        if(mode==='register')er.textContent='注册成功，验证邮件已发送（开发模式见 logs/mailer.log）';
+      }
+      else if(x.st===200&&mode==='register'){
+        // 注册成功但无 token（服务端返回 {ok:true,username,emailVerified:false}，需邮箱验证后登录）。
+        // 原逻辑要求 x.j.token 才走成功分支 → 注册成功被误显示为「失败」，重试报「用户名已存在」。
+        er.style.color='#16a34a';er.textContent='注册成功，验证邮件已发送，请查收邮箱完成验证后登录';
       }
       else er.textContent=(x.j&&x.j.error)||'失败';
       if(x.j&&x.j.token)er.textContent='';
