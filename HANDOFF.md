@@ -152,7 +152,7 @@
    `node test-serve.js docs/d/7-zip` 等（见 `.github/workflows/test.yml` 里的命令序列）。
 4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 15 项测试，红了先看 CI 报错再提交。
 5. **上线部署（阿里云）**：
-   - 平时：push 到 main → GitHub → 阿里云自动拉取部署（链路已验证；回家核对服务器侧 webhook/cron/systemd timer 是否真实生效）。
+   - 平时：push 到 main → GitHub → 阿里云自动拉取部署（链路已验证并确认实际生效，push 后线上自动更新）。
    - 若服务器侧中断：SSH 到阿里云后到 `/root/app`（以实际部署目录为准）执行 `git pull && npm install && bash .deploy-tools/deploy.sh restart`，或按服务器实际的 systemd/Docker 配置重启。
    - 运维命令见 `.deploy-tools/`（`deploy.sh status/logs/restart`、`backup.sh`、`ssh-run.js`）。
 6. **敏感信息**：部署令牌 `UPLOAD_TOKEN`/`EXPORT_TOKEN`/`ADMIN_TOKEN` 只放在**阿里云服务器环境变量/systemd 环境**与本机 `data/deploy-tokens.txt`（gitignored）；新机器如需手动部署，从服务器上已配置的环境变量复制（勿提交进仓库）。

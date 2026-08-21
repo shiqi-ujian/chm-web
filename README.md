@@ -292,7 +292,7 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
 1. **批量上传即打包**：一次多选上传后直接打整批 zip 下载（当前是逐个入库→勾选导出）。
 2. **上传流式化（可选）**：改用 `busboy` 流式接收大文件。
 3. **正文中文翻译**：涉及外部服务/预算，单独评估。
-4. **autosync 多设备部署说明**；**核对阿里云自动部署链路**（webhook / cron / systemd timer 是否真实生效）。
+4. **autosync 多设备部署说明**。
 
 ---
 
