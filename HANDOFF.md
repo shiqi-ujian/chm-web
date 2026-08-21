@@ -79,6 +79,13 @@
 - **自测**：`test-auth-v2.js` 覆盖注册/验证/锁定/重置/举报/管理状态流转；`npm test` 15 项全绿。
 - **2026-08-20 晚补强**：未验证邮箱禁止登录（legacy 无邮箱豁免）；注册成功前端不再误报失败；验证链接 GET 自动登录跳首页；SMTP 三连坑修复（send 未定义/缺 RFC5322 From/未 resolve）与 `SMTP_FROM_NAME` 发件显示名（QQ SMTP 实测）。
 
+### M7b — 注册/账号体系补强 ✅ 已完成（2026-08-21）
+- **登录支持邮箱/用户名**：登录框改为“用户名或邮箱”，服务端按邮箱查用户并返回规范用户名。
+- **注册人机校验**：`GET /api/auth-challenge` 取一次性算术题，注册时提交 `challengeToken` + `challengeAnswer`；测试可用 `NO_CAPTCHA=1` 跳过。
+- **重发验证邮件冷却**：`requestEmailVerification` 60s 内禁止重复发送。
+- **修改绑定邮箱**：`POST /api/change-email`；改后清空验证状态并重发验证信。
+- **自助注销账号**：`POST /api/delete-account`；软删用户 + 清会话/用量 + 解除文档 owner + 删除文档实体；前端「我的文档 → 账号设置」提供入口。
+
 ### M8 — 私密搜索/分享/体验/性能 ✅ 已完成（2026-08-20）
 - **私密文档全文搜索 + 分享链接生命周期**：「我的文档」可搜私密文档；分享链接设置/更新有效期、查看、撤销。
 - **私有阅读壳修复/性能**：`/p/` 前缀 + URL 归一化（目录高亮/上下页/进度恢复）；目录树惰性渲染（7000 节点 DOM 从 7000+ → 17）；`parseHhc` 线性化（20s → 17ms）。
@@ -86,7 +93,7 @@
 - **弱网**：静态文本 gzip + `Cache-Control`（`sw.js` 强制 no-cache）。
 - **安全/运维**：私有文档导出 ACL（无 `EXPORT_TOKEN` 时匿名 403）；启动用量校准 `reconcileUsage`。
 
-- **部署注意（M5/M6/M7/M8）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。**生产建议配置**：`UPLOAD_TOKEN`、`EXPORT_TOKEN`、`ADMIN_TOKEN`、`PUBLIC_BASE_URL` 与 `SMTP_*`（可加 `SMTP_FROM_NAME`）。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
+- **部署注意（M5/M6/M7/M7b/M8）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。**生产建议配置**：`UPLOAD_TOKEN`、`EXPORT_TOKEN`、`ADMIN_TOKEN`、`PUBLIC_BASE_URL` 与 `SMTP_*`（可加 `SMTP_FROM_NAME`）。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
 
 ---
 

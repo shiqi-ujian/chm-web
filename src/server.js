@@ -36,6 +36,36 @@ function limited(limiter, key, res) {
   if (!limiter.allow(key)) { sendJSON(res, 429, { ok: false, error: '请求过于频繁，请稍后再试' }); return true; }
   return false;
 }
+// —— 注册人机校验（轻量 arithmetic challenge）——
+// 服务端内存保存未消费 challenge；注册前先 GET /api/auth-challenge 拿题，
+// 再在 POST /api/register 提交 answer。有效期 5 分钟、一次性、按 IP 防重放。
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const pendingChallenges = new Map(); // key -> { answer, exp }
+function createAuthChallenge(key) {
+  const a = 1 + Math.floor(Math.random() * 9);
+  const b = 1 + Math.floor(Math.random() * 9);
+  const answer = a + b;
+  const token = crypto.randomBytes(12).toString('hex');
+  pendingChallenges.set(token, { answer, exp: Date.now() + CHALLENGE_TTL_MS });
+  // 简单清理旧挑战，避免无限增长
+  if (pendingChallenges.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of pendingChallenges) if (v.exp < now) pendingChallenges.delete(k);
+  }
+  return { token, question: a + ' + ' + b + ' = ?' };
+}
+function verifyAuthChallenge(body) {
+  const b = body || {};
+  if (process.env.NO_CAPTCHA === '1') return true; // 本地/测试可跳过
+  const token = String(b.challengeToken || '').trim();
+  const answer = String(b.challengeAnswer == null ? '' : b.challengeAnswer).trim();
+  const rec = pendingChallenges.get(token);
+  if (!rec) throw new auth.AuthError('人机验证已过期，请刷新页面重试', 400);
+  pendingChallenges.delete(token); // 一次性
+  if (rec.exp < Date.now()) throw new auth.AuthError('人机验证已过期，请重试', 400);
+  if (String(rec.answer) !== answer) throw new auth.AuthError('人机验证答案错误', 403);
+  return true;
+}
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0'; // 默认绑全接口；本机调试可设 127.0.0.1
 const MAX_BYTES = 80 * 1024 * 1024;
@@ -601,9 +631,16 @@ function route(req, res) {
   if (req.method === 'GET' && urlPath !== '/api/' && !parseCookies(req).chm_csrf) {
     setCsrfCookie(res, csrfTokenFor(req));
   }
-  if (req.method === 'POST' && urlPath === '/api/register') {
+  if (req.method === 'GET' && urlPath === '/api/auth-challenge') {
+    // 注册人机校验：取一个一次性算术题
+    const ip = (req.socket && req.socket.remoteAddress) || 'unknown';
+    sendJSON(res, 200, createAuthChallenge('auth:' + ip));
+  } else if (req.method === 'POST' && urlPath === '/api/register') {
     if (limited(rateLimits.auth, 'auth:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
-    handleJson(req, res, (b) => auth.register(b));
+    handleJson(req, res, (b) => {
+      verifyAuthChallenge(b); // 轻量人机校验（NO_CAPTCHA=1 可跳过）
+      return auth.register(b);
+    });
   } else if (req.method === 'POST' && urlPath === '/api/login') {
     if (limited(rateLimits.auth, 'auth:' + ((req.socket && req.socket.remoteAddress) || 'unknown'), res)) return;
     handleJson(req, res, (b) => {
@@ -675,7 +712,26 @@ function route(req, res) {
   } else if (req.method === 'POST' && urlPath === '/api/verify-email') {
     handleJson(req, res, (b) => auth.verifyEmailCode(b && b.token));
   } else if (req.method === 'POST' && urlPath === '/api/resend-verification') {
-    handleJson(req, res, () => auth.requestEmailVerification(currentUser(req)));
+    handleJson(req, res, () => auth.requestEmailVerification(currentUser(req), { cooldownMs: 60 * 1000 }));
+  } else if (req.method === 'POST' && urlPath === '/api/change-email') {
+    handleJson(req, res, (b) => auth.changeEmail(currentUser(req), b && b.email));
+  } else if (req.method === 'POST' && urlPath === '/api/delete-account') {
+    const u = currentUser(req);
+    handleJson(req, res, (b) => {
+      const r = auth.deleteAccount(u, { removeDocs: (username) => {
+        // 删除该用户所有文档实体：先收集所有 meta，按 owner 逐个 removeDocFiles 并释放配额
+        const rows = dbm.db.prepare('SELECT doc_id, owner FROM meta').all();
+        for (const row of rows) {
+          if (row.owner !== username) continue;
+          const { size } = removeDocFiles(row.doc_id);
+          releaseQuota(username, size);
+        }
+        queueRebuildSite();
+      } });
+      // 注销后清客户端登录态
+      setCookie(res, 'chm_user', '', { maxAge: 0 });
+      return r;
+    });
   } else if (req.method === 'POST' && urlPath === '/api/forgot-password') {
     handleJson(req, res, (b) => auth.forgotPassword(b && b.usernameOrEmail));
   } else if (req.method === 'POST' && urlPath === '/api/reset-password') {
@@ -814,7 +870,7 @@ server.listen(Number(PORT), HOST, () => {
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
   console.log('  auth      : upload=' + lockU + '  export=' + lockE + '  (UPLOAD_TOKEN/EXPORT_TOKEN)');
-  console.log('  POST /api/register|login|logout|change-password  → 账号');
+  console.log('  POST /api/register|login|logout|change-password|change-email|delete-account  → 账号');
   console.log('  GET  /api/me / /api/docs         → 当前用户 / 可见文档列表（登录后含私有）');
   console.log('  POST /api/upload                 → 上传 .chm 并转换（表单可带 visibility=public|private）');
   console.log('  POST /api/doc/<id>/visibility|share → 改可见性 / 生成分享链接（仅 owner）');

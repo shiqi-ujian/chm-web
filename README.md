@@ -114,8 +114,9 @@ git push origin main
 | `SMTP_FROM_NAME` | 可选 | 发件显示名；RFC2047 编码后收件人看到「CHM 网页 \<addr\>」而非裸地址 |
 | `RATE_AUTH_MAX`/`RATE_UPLOAD_MAX`/`RATE_EXPORT_MAX`/`RATE_SEARCH_MAX` | 可选 | 接口限流阈值 |
 | `MAX_GLOBAL_BYTES`/`MAX_USER_DOCS`/`MAX_USER_BYTES` | 可选 | 存储配额 |
+| `NO_CAPTCHA` | 仅本地/测试 | 置 `1` 跳过注册算术题人机校验；生产不要设置 |
 
-> 生产环境**不要设 `NO_CSRF=1`**；本地/测试才关闭 CSRF。
+> 生产环境**不要设 `NO_CSRF=1` / `NO_CAPTCHA=1`**；本地/测试才关闭。
 
 ### 服务器目录约定（来自 .deploy-tools/）
 
@@ -286,6 +287,7 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
 - [x] **M5：阿里云自建部署**：生产环境已完成从 Railway 到阿里云的迁移，`push → GitHub → 阿里云自动拉取`链路已验证，`.deploy-tools` 运维脚本与持久化方案已就绪。
 - [x] **M6：登录加固 + 移动端 + 合规**：注册强制邮箱与同意条款、邮箱验证、忘记/重置密码、登录失败锁定、CSRF 防护、移动端汉堡菜单与上传勾选、terms/privacy/disclaimer 合规页、举报与管理员下架接口；新增 `admin.html` 管理页；`npm test` 15 项全绿。
 - [x] **M7+：私密搜索/分享/性能收尾（2026-08-20）**：私密文档全文搜索与分享链接有效期/撤销；私有阅读壳 `/p/` 前缀 + URL 归一化；移动端体验第二批；大文档性能（hhc 线性化、目录惰性渲染、rename 迁移、异步重建、gzip+缓存）；邮箱验证强制登录 + SMTP 修复与 `SMTP_FROM_NAME`；私有导出 ACL 安全修复；未验证邮箱禁止登录 + 验证链接自动登录。
+- [x] **M7b：注册/账号体系补强（2026-08-21）**：登录支持邮箱/用户名；注册人机校验（算术题 + `NO_CAPTCHA` 测试开关）；重发验证邮件 60s 冷却；修改绑定邮箱（改后重验）；自助注销账号（软删 + 清理会话/用量/文档）；「我的文档」新增账号设置入口；`npm test` 全绿。
 
 ## 后续优化方向（P2，按需推进）
 

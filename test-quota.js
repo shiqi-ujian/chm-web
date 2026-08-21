@@ -19,7 +19,7 @@ const srv = spawn(process.execPath, [path.join(root, 'src', 'server.js')], {
   cwd: root,
   env: { ...process.env, PORT: '18084', CHM_SITE: SITE, CHM_DATA: DATA,
          MAX_USER_DOCS: '2', MAX_USER_BYTES: String(10 * 1024 * 1024),
-         ALLOW_LEGACY_REGISTER: '1', NO_CSRF: '1' },
+         ALLOW_LEGACY_REGISTER: '1', NO_CSRF: '1', NO_CAPTCHA: '1' },
   stdio: 'pipe',
 });
 let pass = true;

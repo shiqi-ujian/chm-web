@@ -178,13 +178,17 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
   <div class="box">
     <h3 id="authTitle">登录</h3>
     <div id="authFieldsLogin">
-      <label class="field">用户名</label><input class="in" id="au" autocomplete="username">
+      <label class="field">用户名或邮箱</label><input class="in" id="au" autocomplete="username" placeholder="用户名或注册邮箱">
       <label class="field">密码</label><input class="in" id="ap" type="password" autocomplete="current-password">
     </div>
     <div id="authFieldsReg" style="display:none">
       <label class="field">用户名</label><input class="in" id="au2" autocomplete="username">
       <label class="field">邮箱</label><input class="in" id="ae" type="email" autocomplete="email" placeholder="用于验证与找回密码">
       <label class="field">密码</label><input class="in" id="ap2" type="password" autocomplete="new-password">
+      <div class="auth-challenge" style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <span id="authChallengeQ" style="font-size:13.5px;color:var(--ink)"></span>
+        <input class="in" id="authChallengeA" style="flex:1;min-width:120px" autocomplete="off" placeholder="答案" inputmode="numeric">
+      </div>
       <label style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12.5px;color:var(--mut);cursor:pointer">
         <input type="checkbox" id="acceptTerms" style="margin-top:2px">
         <span>我已阅读并同意 <a href="terms.html" target="_blank">《用户协议》</a> 与 <a href="privacy.html" target="_blank">《隐私政策》</a></span>
@@ -233,7 +237,11 @@ function loadMe(){if(!window.fetch||!USER_TOKEN)return;fetch('/api/me',{headers:
 var modal=document.getElementById('authModal');
 window.__openAuth=function(){if(modal)modal.classList.add('on');};
 window.__closeAuth=function(){if(modal)modal.classList.remove('on');};
-function doAuth(){var er=document.getElementById('authErr');
+var authChallengeToken='',authChallengeAnswer=null;
+  function loadAuthChallenge(){try{var cq=document.getElementById('authChallengeQ');if(!cq)return;if(authChallengeAnswer!=null)return;if(!window.fetch)return;
+    fetch('/api/auth-challenge').then(function(r){return r.json();}).then(function(j){if(!j||!j.token)return;authChallengeToken=j.token;cq.textContent='人机验证：'+j.question;authChallengeAnswer=null;document.getElementById('authChallengeA').value='';})
+    .catch(function(){});}catch(e){}}
+  function doAuth(){var er=document.getElementById('authErr');
   var title=document.getElementById('authTitle').textContent;
   if(title.indexOf('忘记')===0){
     var af=document.getElementById('af').value.trim();if(!af){er.textContent='请输入用户名或邮箱';return;}
@@ -248,7 +256,9 @@ function doAuth(){var er=document.getElementById('authErr');
     var ru=document.getElementById('au2').value.trim(),re=document.getElementById('ae').value.trim(),rp=document.getElementById('ap2').value,acc=document.getElementById('acceptTerms');
     if(!ru||!re||!rp){er.textContent='请填写用户名、邮箱和密码';return;}
     if(!acc||!acc.checked){er.textContent='请阅读并同意用户协议与隐私政策';return;}
-    bodyObj={username:ru,email:re,password:rp,acceptTerms:true};
+    var chA=document.getElementById('authChallengeA');
+    if(chA&&!chA.value.trim()){er.textContent='请完成人机验证（算术题）';return;}
+    bodyObj={username:ru,email:re,password:rp,acceptTerms:true,challengeToken:authChallengeToken,challengeAnswer:chA?chA.value.trim():''};
   }else{
     var u=document.getElementById('au').value.trim(),p=document.getElementById('ap').value;
     if(!u||!p){er.textContent='请填写用户名和密码';return;}
@@ -279,6 +289,7 @@ if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
     document.getElementById('authFieldsReg').style.display='none';
     document.getElementById('authForgot').style.display='none';
     document.getElementById('authForgotLink').style.display='';
+    loadAuthChallenge();
   }
   document.getElementById('authSwitch').addEventListener('click',function(){
     var reg=document.getElementById('authTitle').textContent==='登录';
@@ -292,6 +303,7 @@ if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
     document.getElementById('authForgot').style.display='none';
     document.getElementById('authForgotLink').style.display=reg?'none':'';
     document.getElementById('authErr').textContent='';
+    loadAuthChallenge();
   });
   var fl=document.getElementById('authForgotLink');
   if(fl)fl.addEventListener('click',function(){

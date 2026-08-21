@@ -53,6 +53,11 @@ function getRow(username) {
   return dbm.db.prepare('SELECT * FROM users WHERE username = ?').get(String(username || '').trim());
 }
 
+function getActiveRow(username) {
+  const u = getRow(username);
+  return u && !u.deleted_at ? u : null;
+}
+
 function publicUser(row) {
   if (!row) return null;
   return {
@@ -92,7 +97,10 @@ function register(body) {
 
 function login({ username, password }) {
   username = String(username || '').trim();
-  const u = dbm.db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  // 支持用户名或邮箱登录（邮箱不区分大小写；注册时已存小写）。
+  const u = EMAIL_RE.test(username)
+    ? dbm.db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(username.toLowerCase())
+    : dbm.db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!u) throw new AuthError('用户名或密码错误', 401);
   const now = Date.now();
   if (u.locked_until && u.locked_until > now) {
@@ -114,13 +122,14 @@ function login({ username, password }) {
   if (!legacyNoEmail && !u.email_verified) {
     throw new AuthError('请先验证邮箱再登录：点击注册邮件中的验证链接即可（未收到可联系管理员）', 403);
   }
+  const userKey = u.username;
   dbm.db.prepare('UPDATE users SET failed_attempts = 0, locked_until = 0, last_login_at = ?, updated_at = ? WHERE username = ?')
-    .run(now, now, username);
+    .run(now, now, userKey);
   const token = randomToken();
   dbm.db.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?,?,?)')
-    .run(token, username, Date.now());
+    .run(token, userKey, Date.now());
   try { dbm.pruneSessions(Date.now(), SESSION_TTL_MS); } catch (_) {}
-  return { token, username };
+  return { token, username: userKey };
 }
 
 function logout(token) {
@@ -176,11 +185,14 @@ async function sendResetEmail(email, code) {
   });
 }
 
-function requestEmailVerification(username) {
+function requestEmailVerification(username, { cooldownMs = 60 * 1000 } = {}) {
   const u = getRow(username);
   if (!u) throw new AuthError('用户不存在', 404);
   if (u.email_verified) throw new AuthError('邮箱已验证', 400);
   if (!u.email) throw new AuthError('该账号未绑定邮箱', 400);
+  if (u.verification_expires && u.verification_expires > Date.now() + cooldownMs) {
+    throw new AuthError('验证邮件刚刚发送过，请稍后再试（也可去垃圾邮件箱查看）', 429);
+  }
   const code = randomCode();
   dbm.db.prepare('UPDATE users SET verification_code = ?, verification_expires = ?, updated_at = ? WHERE username = ?')
     .run(hashToken(code), Date.now() + VERIFY_TTL_MS, Date.now(), username);
@@ -190,9 +202,14 @@ function requestEmailVerification(username) {
 
 function verifyEmailCode(code) {
   const h = hashToken(String(code || '').trim());
-  const row = dbm.db.prepare('SELECT username, verification_expires FROM users WHERE verification_code = ?').get(h);
+  const row = dbm.db.prepare('SELECT username, email, email_verified, deleted_at, verification_expires FROM users WHERE verification_code = ?').get(h);
   if (!row || !row.verification_expires || row.verification_expires < Date.now()) {
     throw new AuthError('验证链接无效或已过期', 400);
+  }
+  if (row.deleted_at) throw new AuthError('账号已注销', 403);
+  if (row.email_verified) {
+    // 已验证邮箱的账号再次点击验证链接：直接返回成功（幂等）
+    return { ok: true, username: row.username, token: null, already: true };
   }
   dbm.db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL, verification_expires = NULL, updated_at = ? WHERE username = ?')
     .run(Date.now(), row.username);
@@ -236,7 +253,7 @@ function resetPassword(code, newPassword) {
 
 /** 当前用户详情（含 email/验证状态） */
 function getUser(username) {
-  return publicUser(getRow(username));
+  return publicUser(getActiveRow(username));
 }
 
 /* ---------------- 举报 ---------------- */
@@ -441,6 +458,44 @@ function docIdByShareToken(shareToken) {
 /** 私有文档实体目录 */
 function privateDir(docId) { return path.join(dbm.dataDir, dbm.PRIVATE_DIR, docId); }
 
+/* ---------------- 账号自助：改邮箱 / 注销 ---------------- */
+
+/** 修改绑定邮箱：仅登录后可用；需新的未占用邮箱，改后清空验证状态并重发验证信。 */
+function changeEmail(username, newEmail) {
+  if (!username) throw new AuthError('请先登录', 401);
+  const u = getRow(username);
+  if (!u) throw new AuthError('用户不存在', 404);
+  const email = String(newEmail == null ? '' : newEmail).trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new AuthError('请输入有效邮箱', 400);
+  const emailExists = dbm.db.prepare('SELECT 1 FROM users WHERE lower(email) = ?').get(email);
+  if (emailExists) throw new AuthError('该邮箱已被注册', 409);
+  const code = randomCode();
+  dbm.db.prepare('UPDATE users SET email = ?, email_verified = 0, verification_code = ?, verification_expires = ?, updated_at = ? WHERE username = ?')
+    .run(email, hashToken(code), Date.now() + VERIFY_TTL_MS, Date.now(), username);
+  sendVerificationEmail(email, code);
+  return { ok: true, email, emailVerified: false, sentTo: email };
+}
+
+/** 自助注销：删除登录会话/用量/元数据；实体移除由 server 调用外部 remove 回调完成（跨模块避免依赖 server）。 */
+function deleteAccount(username, { removeDocs } = {}) {
+  if (!username) throw new AuthError('请先登录', 401);
+  const u = getRow(username);
+  if (!u) throw new AuthError('用户不存在', 404);
+  const now = Date.now();
+  dbm.db.transaction(() => {
+    dbm.db.prepare('DELETE FROM sessions WHERE username = ?').run(username);
+    dbm.db.prepare('DELETE FROM user_usage WHERE username = ?').run(username);
+    dbm.db.prepare('UPDATE meta SET owner = NULL, share_token = NULL, share_expires_at = NULL WHERE owner = ?').run(username);
+    dbm.db.prepare('UPDATE users SET deleted_at = ?, email = NULL, email_verified = 0, verification_code = NULL, verification_expires = NULL, password_reset_token = NULL, password_reset_expires = NULL, failed_attempts = 0, locked_until = 0, last_login_at = NULL, updated_at = ? WHERE username = ?')
+      .run(now, now, username);
+  })();
+  if (typeof removeDocs === 'function') {
+    try { removeDocs(username); } catch (e) { console.error('[auth] removeDocs failed for', username, e); }
+  }
+  return { ok: true, username };
+}
+
+
 /* ---------------- 兼容辅助：批量读取 ---------------- */
 
 /** 返回全部 meta 记录的对象映射（docId -> meta），兼容旧 readJson(META_FILE) 用法 */
@@ -456,7 +511,7 @@ function readAllMeta() {
 module.exports = {
   init, AuthError,
   register, login, logout, changePassword, userByToken,
-  verifyEmailCode, requestEmailVerification, forgotPassword, resetPassword, getUser,
+  verifyEmailCode, requestEmailVerification, forgotPassword, resetPassword, getUser, changeEmail, deleteAccount,
   createReport, listReports, setReportStatus,
   ensureMeta, getMeta, setVisibility, updateMeta, share, getShare, revokeShare,
   deleteMeta, canRead, isShareValid, docIdByShareToken, privateDir,

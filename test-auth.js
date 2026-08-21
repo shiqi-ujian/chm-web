@@ -26,7 +26,7 @@ if (!CHM || !fs.existsSync(CHM)) {
 
 const srv = spawn(process.execPath, [path.join(root, 'src', 'server.js')], {
   cwd: root,
-  env: { ...process.env, PORT: String(PORT), CHM_SITE: SITE, CHM_DATA: DATA, ALLOW_LEGACY_REGISTER: '1', NO_CSRF: '1' },
+  env: { ...process.env, PORT: String(PORT), CHM_SITE: SITE, CHM_DATA: DATA, ALLOW_LEGACY_REGISTER: '1', NO_CSRF: '1', NO_CAPTCHA: '1' },
   stdio: 'pipe',
 });
 let log = '';

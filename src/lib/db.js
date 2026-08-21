@@ -50,6 +50,7 @@ function open(dir) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       username   TEXT PRIMARY KEY,
+      deleted_at INTEGER,
       salt       TEXT NOT NULL,
       hash       TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -110,6 +111,7 @@ function open(dir) {
   `);
 
   // 老库升级：为 users 补列（幂等）
+  ensureColumn('users', 'deleted_at', 'INTEGER');
   ensureColumn('users', 'email', 'TEXT');
   ensureColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'verification_code', 'TEXT');

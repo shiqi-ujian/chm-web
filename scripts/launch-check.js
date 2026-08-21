@@ -35,6 +35,8 @@ const smtpUser = boolEnv(process.env.SMTP_USER);
 const smtpPass = boolEnv(process.env.SMTP_PASS);
 const smtpFrom = boolEnv(process.env.SMTP_FROM);
 const smtpConfigured = smtpHost && smtpUser && smtpPass && smtpFrom;
+// 生产建议不设 NO_CAPTCHA（人机校验开启）；本地/测试可设 NO_CAPTCHA=1 跳过算术题。
+check('人机校验未全局关闭（NO_CAPTCHA 不设为 1）', process.env.NO_CAPTCHA !== '1', process.env.NO_CAPTCHA === '1' ? 'NO_CAPTCHA=1' : 'OK');
 check('SMTP 四件套已配置', smtpConfigured || !!boolEnv(process.env.ALLOW_LEGACY_REGISTER),
   smtpConfigured ? 'SMTP_HOST/USER/PASS/FROM 已设置' : (boolEnv(process.env.ALLOW_LEGACY_REGISTER) ? 'ALLOW_LEGACY_REGISTER=1（开发模式，未走真实邮件）' : '缺少 SMTP_*'));
 

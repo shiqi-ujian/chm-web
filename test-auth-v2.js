@@ -14,7 +14,7 @@ const SITE = path.join(tmpRoot, 'site');
 const DATA = path.join(tmpRoot, 'data');
 fs.mkdirSync(SITE, { recursive: true });
 
-const env = { ...process.env, PORT: String(PORT), CHM_SITE: SITE, CHM_DATA: DATA, ALLOW_LEGACY_REGISTER: '0', NO_CSRF: '1', ADMIN_TOKEN: 'admin-secret-test' };
+const env = { ...process.env, PORT: String(PORT), CHM_SITE: SITE, CHM_DATA: DATA, ALLOW_LEGACY_REGISTER: '0', NO_CSRF: '1', NO_CAPTCHA: '1', ADMIN_TOKEN: 'admin-secret-test' };
 const srv = spawn(process.execPath, [path.join(root, 'src', 'server.js')], { cwd: root, env, stdio: 'pipe' });
 let log = '';
 srv.stdout.on('data', (d) => { log += d; });
@@ -58,7 +58,10 @@ async function main() {
   } catch (_) {}
   const verify = await json('POST', '/api/verify-email', { token: verifToken });
   ok('verify email via link 200', verify.st === 200 && !!verify.body.token, String(verify.st) + ' ' + (verify.body.error || ''));
+  // 登录支持用户名或邮箱（邮箱大小写不敏感）
   const login = await json('POST', '/api/login', { username: 'carol', password: 'secret1' });
+  const loginEmail = await json('POST', '/api/login', { username: 'carol@example.com', password: 'secret1' });
+  ok('login by email works', loginEmail.st === 200 && !!loginEmail.body.token, JSON.stringify(loginEmail.body));
   const me = await json('GET', '/api/me', null, { 'X-User-Token': login.body.token || '' });
   ok('me returns emailVerified', me.body.user && me.body.info && me.body.info.emailVerified === true, JSON.stringify(me.body));
 
@@ -83,6 +86,23 @@ async function main() {
   ok('old password login after reset 401', oldLogin.st === 401, String(oldLogin.st));
   const newLogin = await json('POST', '/api/login', { username: 'carol', password: 'newsecret1' });
   ok('new password login 200', newLogin.st === 200, !!newLogin.body.token);
+
+  // ---- 修改邮箱（登录后可改，改后需重验） ----
+  const ceAnon = await json('POST', '/api/change-email', { email: 'newcarol@example.com' });
+  ok('change-email anon 401', ceAnon.st === 401, String(ceAnon.st));
+  const ce = await json('POST', '/api/change-email', { email: 'newcarol@example.com' }, { 'X-User-Token': newLogin.body.token });
+  ok('change-email 200', ce.st === 200 && ce.body.ok, JSON.stringify(ce.body));
+  const meAfterCe = await json('GET', '/api/me', null, { 'X-User-Token': newLogin.body.token });
+  ok('me shows unverified after email change', meAfterCe.body.info && meAfterCe.body.info.email === 'newcarol@example.com' && meAfterCe.body.info.emailVerified === false, JSON.stringify(meAfterCe.body));
+
+  // ---- 自助注销 ----
+  const daAnon = await json('POST', '/api/delete-account', {});
+  ok('delete-account anon 401', daAnon.st === 401, String(daAnon.st));
+  // 直接使用已登录且已验证的 carol 会话注销（省去新用户验证步骤）
+  const da = await json('POST', '/api/delete-account', {}, { 'X-User-Token': newLogin.body.token });
+  ok('delete-account 200', da.st === 200 && da.body.ok === true, JSON.stringify(da.body));
+  const meDel = await json('GET', '/api/me', null, { 'X-User-Token': newLogin.body.token });
+  ok('after delete-account session invalid', meDel.body.user === null, JSON.stringify(meDel.body));
 
   // 举报
   const rep = await json('POST', '/api/report', { url: '/d/some-doc/', docId: 'some-doc', reason: '侵犯版权', contact: 'owner@example.com' });

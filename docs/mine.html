@@ -186,7 +186,7 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
     <div id="mineList"></div>
   </div>
   <div class="card" id="pwCard" style="max-width:820px;margin:28px auto 0;display:none">
-    <div class="eyebrow">账号</div>
+    <div class="eyebrow">账号设置</div>
     <h2 style="font-size:17px;margin:0 0 4px">修改密码</h2>
     <div class="sub">改完后其它设备上的登录会自动失效，当前会话保持。</div>
     <div style="display:flex;flex-direction:column;gap:10px;max-width:420px;margin-top:14px">
@@ -196,6 +196,19 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
       <div class="err" id="cpErr"></div>
       <div style="display:flex;align-items:center;gap:10px"><button class="btn" id="cpGo" type="button">保存新密码</button></div>
     </div>
+    <h2 style="font-size:17px;margin:22px 0 4px">修改绑定邮箱</h2>
+    <div class="sub">改后需重新验证新邮箱，未验证前不能登录。</div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:420px;margin-top:14px">
+      <input class="in" id="ceEmail" type="email" placeholder="新邮箱" autocomplete="email">
+      <div class="err" id="ceErr"></div>
+      <div style="display:flex;align-items:center;gap:10px"><button class="btn ghost" id="ceGo" type="button">发送验证邮件到新邮箱</button></div>
+    </div>
+    <h2 style="font-size:17px;margin:22px 0 4px;color:var(--err)">注销账号</h2>
+    <div class="sub">注销后账号不可登录，你上传的文档会一并删除。</div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:420px;margin-top:14px">
+      <div class="err" id="daErr"></div>
+      <div style="display:flex;align-items:center;gap:10px"><button class="btn danger" id="daGo" type="button">删除我的账号与全部文档</button></div>
+    </div>
   </div></div>
 <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示<br>
   <a href="terms.html">用户协议</a> · <a href="privacy.html">隐私政策</a> · <a href="disclaimer.html">免责声明</a> · <a href="report.html">侵权举报</a> · <a href="https://docs.qq.com/form/page/DWkh0VFdOb2tFVFJV" target="_blank" rel="noopener">📝 问题反馈</a></div>
@@ -204,13 +217,17 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
   <div class="box">
     <h3 id="authTitle">登录</h3>
     <div id="authFieldsLogin">
-      <label class="field">用户名</label><input class="in" id="au" autocomplete="username">
+      <label class="field">用户名或邮箱</label><input class="in" id="au" autocomplete="username" placeholder="用户名或注册邮箱">
       <label class="field">密码</label><input class="in" id="ap" type="password" autocomplete="current-password">
     </div>
     <div id="authFieldsReg" style="display:none">
       <label class="field">用户名</label><input class="in" id="au2" autocomplete="username">
       <label class="field">邮箱</label><input class="in" id="ae" type="email" autocomplete="email" placeholder="用于验证与找回密码">
       <label class="field">密码</label><input class="in" id="ap2" type="password" autocomplete="new-password">
+      <div class="auth-challenge" style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <span id="authChallengeQ" style="font-size:13.5px;color:var(--ink)"></span>
+        <input class="in" id="authChallengeA" style="flex:1;min-width:120px" autocomplete="off" placeholder="答案" inputmode="numeric">
+      </div>
       <label style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12.5px;color:var(--mut);cursor:pointer">
         <input type="checkbox" id="acceptTerms" style="margin-top:2px">
         <span>我已阅读并同意 <a href="terms.html" target="_blank">《用户协议》</a> 与 <a href="privacy.html" target="_blank">《隐私政策》</a></span>
@@ -259,7 +276,11 @@ function loadMe(){if(!window.fetch||!USER_TOKEN)return;fetch('/api/me',{headers:
 var modal=document.getElementById('authModal');
 window.__openAuth=function(){if(modal)modal.classList.add('on');};
 window.__closeAuth=function(){if(modal)modal.classList.remove('on');};
-function doAuth(){var er=document.getElementById('authErr');
+var authChallengeToken='',authChallengeAnswer=null;
+  function loadAuthChallenge(){try{var cq=document.getElementById('authChallengeQ');if(!cq)return;if(authChallengeAnswer!=null)return;if(!window.fetch)return;
+    fetch('/api/auth-challenge').then(function(r){return r.json();}).then(function(j){if(!j||!j.token)return;authChallengeToken=j.token;cq.textContent='人机验证：'+j.question;authChallengeAnswer=null;document.getElementById('authChallengeA').value='';})
+    .catch(function(){});}catch(e){}}
+  function doAuth(){var er=document.getElementById('authErr');
   var title=document.getElementById('authTitle').textContent;
   if(title.indexOf('忘记')===0){
     var af=document.getElementById('af').value.trim();if(!af){er.textContent='请输入用户名或邮箱';return;}
@@ -274,7 +295,9 @@ function doAuth(){var er=document.getElementById('authErr');
     var ru=document.getElementById('au2').value.trim(),re=document.getElementById('ae').value.trim(),rp=document.getElementById('ap2').value,acc=document.getElementById('acceptTerms');
     if(!ru||!re||!rp){er.textContent='请填写用户名、邮箱和密码';return;}
     if(!acc||!acc.checked){er.textContent='请阅读并同意用户协议与隐私政策';return;}
-    bodyObj={username:ru,email:re,password:rp,acceptTerms:true};
+    var chA=document.getElementById('authChallengeA');
+    if(chA&&!chA.value.trim()){er.textContent='请完成人机验证（算术题）';return;}
+    bodyObj={username:ru,email:re,password:rp,acceptTerms:true,challengeToken:authChallengeToken,challengeAnswer:chA?chA.value.trim():''};
   }else{
     var u=document.getElementById('au').value.trim(),p=document.getElementById('ap').value;
     if(!u||!p){er.textContent='请填写用户名和密码';return;}
@@ -305,6 +328,7 @@ if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
     document.getElementById('authFieldsReg').style.display='none';
     document.getElementById('authForgot').style.display='none';
     document.getElementById('authForgotLink').style.display='';
+    loadAuthChallenge();
   }
   document.getElementById('authSwitch').addEventListener('click',function(){
     var reg=document.getElementById('authTitle').textContent==='登录';
@@ -318,6 +342,7 @@ if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
     document.getElementById('authForgot').style.display='none';
     document.getElementById('authForgotLink').style.display=reg?'none':'';
     document.getElementById('authErr').textContent='';
+    loadAuthChallenge();
   });
   var fl=document.getElementById('authForgotLink');
   if(fl)fl.addEventListener('click',function(){
@@ -475,6 +500,29 @@ loadMe();
         else{er.style.color='';er.textContent=(x.j&&x.j.error)||'修改失败';}})
       .catch(function(e){if(cpGo)cpGo.disabled=false;er.style.color='';er.textContent='网络错误：'+e.message;});}
   if(cpGo)cpGo.addEventListener('click',changePw);
+
+  // ---- 修改绑定邮箱 / 注销账号（仅登录后可见，随账号区一起显示） ----
+  var ceGo=document.getElementById('ceGo'),daGo=document.getElementById('daGo');
+  function changeEmail(){var e=document.getElementById('ceEmail'),er=document.getElementById('ceErr');
+    var v=(e&&e.value||'').trim();if(!v){er.style.color='';er.textContent='请输入新邮箱';return;}
+    if(!/@[^@]+@[^@]+./.test(v)){er.style.color='';er.textContent='邮箱格式不正确';return;}
+    er.textContent='';if(ceGo)ceGo.disabled=true;
+    fetch('/api/change-email',{method:'POST',headers:Object.assign({'Content-Type':'application/json'},userHeaders()),body:JSON.stringify({email:v})})
+      .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+        if(ceGo)ceGo.disabled=false;
+        if(x.st===200){er.style.color='#16a34a';er.textContent='已发送验证邮件到新邮箱，请查收并完成验证';if(e)e.value='';}
+        else{er.style.color='';er.textContent=(x.j&&x.j.error)||'修改失败';}})
+      .catch(function(e){if(ceGo)ceGo.disabled=false;er.style.color='';er.textContent='网络错误：'+e.message;});}
+  if(ceGo)ceGo.addEventListener('click',changeEmail);
+  function deleteAccount(){var er=document.getElementById('daErr');
+    if(!window.confirm('确认注销账号？你的账号与上传的全部文档都会被删除，不可恢复。'))return;
+    er.textContent='';if(daGo)daGo.disabled=true;
+    fetch('/api/delete-account',{method:'POST',headers:userHeaders()})
+      .then(function(r){return r.json().then(function(j){return {st:r.status,j:j};});}).then(function(x){
+        if(x.st===200){USER_TOKEN='';currentUser=null;try{localStorage.removeItem('chm_user');}catch(e){}renderAuth();afterMe();window.location.href='index.html';}
+        else{if(daGo)daGo.disabled=false;er.style.color='';er.textContent=(x.j&&x.j.error)||'注销失败';}})
+      .catch(function(e){if(daGo)daGo.disabled=false;er.style.color='';er.textContent='网络错误：'+e.message;});}
+  if(daGo)daGo.addEventListener('click',deleteAccount);
   load();loadUsage();showPw(!!window.currentUser);
   window.__onAuth=function(){load();loadUsage();showPw(!!window.currentUser);touchPrivateSearch();};
 })();
