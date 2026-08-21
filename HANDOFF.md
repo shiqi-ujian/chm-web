@@ -76,10 +76,17 @@
 - **前端/移动端**：窄屏汉堡菜单抽屉、上传权利勾选、移动端触控与阅读壳适配。
 - **合规**：新增 `terms.html` / `privacy.html` / `disclaimer.html` / `report.html`；举报入库；管理端 `admin.html` + `PATCH /admin/reports/<id>` 状态流转 + `POST /admin/remove-doc` 下架。
 - **邮件**：零依赖 SMTP 客户端（`SMTP_*` 配置，缺省写 `logs/mailer.log`）。
-- 自测：`test-auth-v2.js` 覆盖注册/验证/锁定/重置/举报/管理状态流转；`npm test` 15 项全绿。
+- **自测**：`test-auth-v2.js` 覆盖注册/验证/锁定/重置/举报/管理状态流转；`npm test` 15 项全绿。
+- **2026-08-20 晚补强**：未验证邮箱禁止登录（legacy 无邮箱豁免）；注册成功前端不再误报失败；验证链接 GET 自动登录跳首页；SMTP 三连坑修复（send 未定义/缺 RFC5322 From/未 resolve）与 `SMTP_FROM_NAME` 发件显示名（QQ SMTP 实测）。
 
+### M8 — 私密搜索/分享/体验/性能 ✅ 已完成（2026-08-20）
+- **私密文档全文搜索 + 分享链接生命周期**：「我的文档」可搜私密文档；分享链接设置/更新有效期、查看、撤销。
+- **私有阅读壳修复/性能**：`/p/` 前缀 + URL 归一化（目录高亮/上下页/进度恢复）；目录树惰性渲染（7000 节点 DOM 从 7000+ → 17）；`parseHhc` 线性化（20s → 17ms）。
+- **大文档写路径**：转私有/公开改 `rename` 迁移 + 壳重建 `skipIndexes` + `queueRebuildSite()` 异步合并，不再卡死。
+- **弱网**：静态文本 gzip + `Cache-Control`（`sw.js` 强制 no-cache）。
+- **安全/运维**：私有文档导出 ACL（无 `EXPORT_TOKEN` 时匿名 403）；启动用量校准 `reconcileUsage`。
 
-- **部署注意（M5/M6）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。**生产建议配置**：`UPLOAD_TOKEN`、`EXPORT_TOKEN`、`ADMIN_TOKEN`、`PUBLIC_BASE_URL` 与 `SMTP_*`。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
+- **部署注意（M5/M6/M7/M8）**：以上环境变量均为可选；除非在阿里云服务器环境变量与本地 `data/deploy-tokens.txt` 里同时设置，否则默认不开启配额/限流上限（保持免费易用）。**生产建议配置**：`UPLOAD_TOKEN`、`EXPORT_TOKEN`、`ADMIN_TOKEN`、`PUBLIC_BASE_URL` 与 `SMTP_*`（可加 `SMTP_FROM_NAME`）。部署令牌只放阿里云服务器环境变量 + 本机 gitignore 文件，**不要写入页面源码**。
 
 ---
 
@@ -145,10 +152,10 @@
    `node test-serve.js docs/d/7-zip` 等（见 `.github/workflows/test.yml` 里的命令序列）。
 4. **push 即自动测**：GitHub Actions 会在每次 push 跑全部 15 项测试，红了先看 CI 报错再提交。
 5. **上线部署（阿里云）**：
-   - 平时：push 到 main → GitHub → 阿里云自动拉取部署（链路已验证）。
+   - 平时：push 到 main → GitHub → 阿里云自动拉取部署（链路已验证；回家核对服务器侧 webhook/cron/systemd timer 是否真实生效）。
    - 若服务器侧中断：SSH 到阿里云后到 `/root/app`（以实际部署目录为准）执行 `git pull && npm install && bash .deploy-tools/deploy.sh restart`，或按服务器实际的 systemd/Docker 配置重启。
    - 运维命令见 `.deploy-tools/`（`deploy.sh status/logs/restart`、`backup.sh`、`ssh-run.js`）。
-6. **敏感信息**：部署令牌 `UPLOAD_TOKEN`/`EXPORT_TOKEN` 只放在**阿里云服务器环境变量/systemd 环境**与本机 `data/deploy-tokens.txt`（gitignored）；新机器如需手动部署，从服务器上已配置的环境变量复制（勿提交进仓库）。
+6. **敏感信息**：部署令牌 `UPLOAD_TOKEN`/`EXPORT_TOKEN`/`ADMIN_TOKEN` 只放在**阿里云服务器环境变量/systemd 环境**与本机 `data/deploy-tokens.txt`（gitignored）；新机器如需手动部署，从服务器上已配置的环境变量复制（勿提交进仓库）。
 7. **提交纪律**：保持单 `main` 直推（单人项目）；提交信息用 `feat:/fix:/docs:/deploy:` 前缀；`data/`、`out/`、`logs/`、`.dsh-vision-toolkit/` 永不提交。
 
 ---

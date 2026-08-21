@@ -71,6 +71,17 @@
 - [x] **部署方式**：`push 到 main → GitHub → 阿里云自动拉取部署`（链路已用临时验证文件实测通过）。
 - [x] **运维资产**：`.deploy-tools/` 提供 SSH 助手、Docker 部署脚本、systemd 服务、每日备份等脚本；`Dockerfile` 可直接构建生产镜像。
 - [x] **持久化**：站点与数据统一放在持久卷，`CHM_SITE` 与 `CHM_DATA` 分离，重启不丢上传 / 账号 / 私密文档。
+- [x] **性能与体验（2026-08-20 晚）**：大文档性能（hhc 线性化、惰性目录树、rename 迁移、异步重建、gzip+缓存）、邮箱验证闭环、SMTP 修复、私有导出 ACL。
+
+### M6 — 登录加固 + 移动端 + 合规（✅ 已完成）
+- [x] 注册强制邮箱 + 同意条款；邮箱验证；忘记/重置密码；失败锁定；CSRF；举报/管理后台。
+- [x] 2026-08-20 晚补强：未验证邮箱禁止登录 + 验证链接自动登录。
+
+### M7 — 私密搜索/分享/性能收尾（✅ 已完成，2026-08-20）
+- [x] 私密文档全文搜索、「我的文档」分享链接有效期/查看/撤销。
+- [x] 私有阅读壳 `/p/` 前缀 + URL 归一化；移动端体验第二批。
+- [x] 大文档性能：hhc 线性化（20s→17ms）、目录惰性渲染、rename 迁移、异步重建、gzip+缓存。
+- [x] 邮件：SMTP 三连坑修复、`SMTP_FROM_NAME` 发件显示名、QQ SMTP 实测；私有文档导出 ACL 安全修复。
 
 ---
 
@@ -100,6 +111,7 @@ git push origin main
 | `ADMIN_TOKEN` | 推荐 | 管理后台/举报下架接口令牌 |
 | `PUBLIC_BASE_URL` | 推荐 | 邮件里验证/重置链接的完整公网前缀 |
 | `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`/`SMTP_SECURE` | 推荐 | 真实发信；未配置时回退 `logs/mailer.log` |
+| `SMTP_FROM_NAME` | 可选 | 发件显示名；RFC2047 编码后收件人看到「CHM 网页 \<addr\>」而非裸地址 |
 | `RATE_AUTH_MAX`/`RATE_UPLOAD_MAX`/`RATE_EXPORT_MAX`/`RATE_SEARCH_MAX` | 可选 | 接口限流阈值 |
 | `MAX_GLOBAL_BYTES`/`MAX_USER_DOCS`/`MAX_USER_BYTES` | 可选 | 存储配额 |
 
@@ -273,13 +285,14 @@ npm 脚本对照：`npm run convert -- <chm> [outDir]`、`npm run serve -- <dir>
   - **字符集归一化**：解包后所有 html/css/hhc/hhk 按实际字符集转 UTF-8 并重写为合法 `<meta charset="utf-8">`（`charset.js#normalizeCharsets`），服务端对 html 按文件实际编码下发 charset 头（`sniffFileCharset`），修复 GBK 中文 CHM 整页乱码；`fix-charsets` 命令可修复存量文档。
 - [x] **M5：阿里云自建部署**：生产环境已完成从 Railway 到阿里云的迁移，`push → GitHub → 阿里云自动拉取`链路已验证，`.deploy-tools` 运维脚本与持久化方案已就绪。
 - [x] **M6：登录加固 + 移动端 + 合规**：注册强制邮箱与同意条款、邮箱验证、忘记/重置密码、登录失败锁定、CSRF 防护、移动端汉堡菜单与上传勾选、terms/privacy/disclaimer 合规页、举报与管理员下架接口；新增 `admin.html` 管理页；`npm test` 15 项全绿。
+- [x] **M7+：私密搜索/分享/性能收尾（2026-08-20）**：私密文档全文搜索与分享链接有效期/撤销；私有阅读壳 `/p/` 前缀 + URL 归一化；移动端体验第二批；大文档性能（hhc 线性化、目录惰性渲染、rename 迁移、异步重建、gzip+缓存）；邮箱验证强制登录 + SMTP 修复与 `SMTP_FROM_NAME`；私有导出 ACL 安全修复；未验证邮箱禁止登录 + 验证链接自动登录。
 
-## 后续优化方向（P1→P2，按需推进）
+## 后续优化方向（P2，按需推进）
 
 1. **批量上传即打包**：一次多选上传后直接打整批 zip 下载（当前是逐个入库→勾选导出）。
-2. **文档管理与产品体验**：重命名/标签/作者、按标签筛选、每用户用量页前端展示（后端 /api/usage 已就绪）。
-3. **上传流式化（可选）**：改用 `busboy` 流式接收大文件。
-4. **正文中文翻译**（涉及外部服务/预算，单独评估）。
+2. **上传流式化（可选）**：改用 `busboy` 流式接收大文件。
+3. **正文中文翻译**：涉及外部服务/预算，单独评估。
+4. **autosync 多设备部署说明**；**核对阿里云自动部署链路**（webhook / cron / systemd timer 是否真实生效）。
 
 ---
 
