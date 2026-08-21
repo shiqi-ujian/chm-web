@@ -180,11 +180,14 @@ a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
     <div id="authFieldsReg" style="display:none">
       <label class="field">用户名</label><input class="in" id="au2" autocomplete="username">
       <label class="field">邮箱</label><input class="in" id="ae" type="email" autocomplete="email" placeholder="用于验证与找回密码">
-      <label class="field">密码</label><input class="in" id="ap2" type="password" autocomplete="new-password">
+      <label class="field">密码</label><input class="in" id="ap2" type="password" autocomplete="new-password" placeholder="至少 6 位">
+      <label class="field">确认密码</label><input class="in" id="apc" type="password" autocomplete="new-password" placeholder="再次输入密码">
       <div class="auth-challenge" style="display:flex;align-items:center;gap:8px;margin-top:10px">
         <span id="authChallengeQ" style="font-size:13.5px;color:var(--ink)"></span>
         <input class="in" id="authChallengeA" style="flex:1;min-width:120px" autocomplete="off" placeholder="答案" inputmode="numeric">
+        <button type="button" class="btn ghost sm" id="authChallengeRetry" style="display:none">重试</button>
       </div>
+      <div class="err" id="authChallengeErr" style="display:none"></div>
       <label style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12.5px;color:var(--mut);cursor:pointer">
         <input type="checkbox" id="acceptTerms" style="margin-top:2px">
         <span>我已阅读并同意 <a href="terms.html" target="_blank">《用户协议》</a> 与 <a href="privacy.html" target="_blank">《隐私政策》</a></span>
@@ -233,10 +236,14 @@ function loadMe(){if(!window.fetch||!USER_TOKEN)return;fetch('/api/me',{headers:
 var modal=document.getElementById('authModal');
 window.__openAuth=function(){if(modal)modal.classList.add('on');};
 window.__closeAuth=function(){if(modal)modal.classList.remove('on');};
-var authChallengeToken='',authChallengeAnswer=null;
+var authChallengeToken='',authChallengeAnswer=null,authChallengeFails=0;
+  function setChallengeErr(msg,showRetry){try{var ce=document.getElementById('authChallengeErr'),cr=document.getElementById('authChallengeRetry');if(ce){ce.style.display=msg?'':'none';ce.textContent=msg||'';}if(cr)cr.style.display=showRetry?'':'none';}catch(e){}}
   function loadAuthChallenge(){try{var cq=document.getElementById('authChallengeQ');if(!cq)return;if(authChallengeAnswer!=null)return;if(!window.fetch)return;
-    fetch('/api/auth-challenge').then(function(r){return r.json();}).then(function(j){if(!j||!j.token)return;authChallengeToken=j.token;cq.textContent='人机验证：'+j.question;authChallengeAnswer=null;document.getElementById('authChallengeA').value='';})
-    .catch(function(){});}catch(e){}}
+    setChallengeErr('',false);
+    fetch('/api/auth-challenge').then(function(r){return r.json();}).then(function(j){
+      if(!j||!j.token){authChallengeFails++;if(authChallengeFails<3){setChallengeErr('人机验证加载失败，请点击重试',true);}else{setChallengeErr('人机验证暂时不可用，可直接提交（失败会提示）',false);}return;}
+      authChallengeFails=0;authChallengeToken=j.token;cq.textContent='人机验证：'+j.question;authChallengeAnswer=null;document.getElementById('authChallengeA').value='';setChallengeErr('',false);
+    }).catch(function(){authChallengeFails++;if(authChallengeFails<3){setChallengeErr('人机验证加载失败，请点击重试',true);}else{setChallengeErr('人机验证暂时不可用，可直接提交（失败会提示）',false);}});}catch(e){}}
   function doAuth(){var er=document.getElementById('authErr');
   var title=document.getElementById('authTitle').textContent;
   if(title.indexOf('忘记')===0){
@@ -249,8 +256,9 @@ var authChallengeToken='',authChallengeAnswer=null;
   var mode=title.indexOf('注册')===0?'register':'login';
   var bodyObj;
   if(mode==='register'){
-    var ru=document.getElementById('au2').value.trim(),re=document.getElementById('ae').value.trim(),rp=document.getElementById('ap2').value,acc=document.getElementById('acceptTerms');
+    var ru=document.getElementById('au2').value.trim(),re=document.getElementById('ae').value.trim(),rp=document.getElementById('ap2').value,rc=document.getElementById('apc')?document.getElementById('apc').value:'',acc=document.getElementById('acceptTerms');
     if(!ru||!re||!rp){er.textContent='请填写用户名、邮箱和密码';return;}
+    if(rp!==rc){er.textContent='两次输入的密码不一致';return;}
     if(!acc||!acc.checked){er.textContent='请阅读并同意用户协议与隐私政策';return;}
     var chA=document.getElementById('authChallengeA');
     if(chA&&!chA.value.trim()){er.textContent='请完成人机验证（算术题）';return;}
@@ -268,7 +276,7 @@ var authChallengeToken='',authChallengeAnswer=null;
       else if(x.st===200&&mode==='register'){
         // 注册成功但无 token（服务端返回 {ok:true,username,emailVerified:false}，需邮箱验证后登录）。
         // 原逻辑要求 x.j.token 才走成功分支 → 注册成功被误显示为「失败」，重试报「用户名已存在」。
-        er.style.color='#16a34a';er.textContent='注册成功，验证邮件已发送，请查收邮箱完成验证后登录';
+        er.style.color='#16a34a';er.innerHTML='注册成功，验证邮件已发送，请查收邮箱完成验证后登录。 <a href="#" id="regToLogin" style="color:var(--acc);margin-left:6px">去登录</a>';
       }
       else er.textContent=(x.j&&x.j.error)||'失败';
       if(x.j&&x.j.token)er.textContent='';
@@ -276,6 +284,8 @@ var authChallengeToken='',authChallengeAnswer=null;
     .catch(function(e){er.textContent='网络错误：'+e.message;});}
 if(lb)lb.addEventListener('click',function(){if(currentUser){fetch('/api/logout',{method:'POST',headers:userHeaders()}).catch(function(){});USER_TOKEN='';currentUser=null;
   try{localStorage.removeItem('chm_user');}catch(e){}renderAuth();afterMe();}else window.__openAuth();});
+function goLoginAfterReg(){try{var ru=document.getElementById('au2').value.trim();showLogin();document.getElementById('au').value=ru;document.getElementById('ap').value='';document.getElementById('authErr').textContent='注册成功，请用刚才的用户名/邮箱登录';document.getElementById('authErr').style.color='#16a34a';loadAuthChallenge();}catch(e){}}
+  document.addEventListener('click',function(e){if(e.target&&e.target.id==='regToLogin'){e.preventDefault();goLoginAfterReg();}});
 if(modal){document.getElementById('authGo').addEventListener('click',doAuth);
   function showLogin(){
     document.getElementById('authTitle').textContent='登录';
