@@ -352,7 +352,8 @@ ${NAV}
 <div class="hero${heroSmall ? ' small' : ''}">${heroInner}</div>
 <div class="wrap">${body}</div>
 <div class="foot">CHM 网页 · 免费 · 非营利 · 数据仅用于转换与展示<br>
-  <a href="terms.html">用户协议</a> · <a href="privacy.html">隐私政策</a> · <a href="disclaimer.html">免责声明</a> · <a href="report.html">侵权举报</a> · <a href="https://docs.qq.com/form/page/DWkh0VFdOb2tFVFJV" target="_blank" rel="noopener">📝 问题反馈</a></div>
+  <a href="terms.html">用户协议</a> · <a href="privacy.html">隐私政策</a> · <a href="disclaimer.html">免责声明</a> · <a href="report.html">侵权举报</a> · <a href="https://docs.qq.com/form/page/DWkh0VFdOb2tFVFJV" target="_blank" rel="noopener">📝 问题反馈</a><br>
+  <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">鄂ICP备2026045204号</a></div>
 ${MODAL}
 <script>
 ${SHARED_JS(pageScript).split('__NAV_ACTIVE__').join(esc(navActive || 'home'))}
