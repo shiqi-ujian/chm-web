@@ -167,12 +167,17 @@ mark.wz-hl.cur{outline:2px solid var(--accent)}
   .tb-btn{width:34px;padding:0}
   #crumb{max-width:30vw}
 }
+/* 桌面端 ☰：折叠/展开侧栏（移动端该按钮是抽屉开关，见 media 内 transform 规则） */
+@media(min-width:681px){
+  #app.side-closed #sidebar{display:none}
+}
 `;
 
 // 壳内 JS（独立函数生成，避免与外壳模板字符串插值冲突）
 function shellJs(t) {
   return `(function(){
 'use strict';
+/*chm-shell-v3*/
 var tocData = window.__TOC__ || [];
 var frame = document.getElementById('frame');
 var tocEl = document.getElementById('toc');
@@ -195,11 +200,14 @@ function normPath(p){
   try { return decodeURIComponent(p); } catch(e){ return p; }
 }
 /* 返回列表：从当前壳路径去掉最后两段（如 d/7-zip 或 p/xxxx），回到站点根；
-   兼容在线部署、GitHub Pages 子路径（/仓库名/d/<id>/ → /仓库名/）与离线 zip 导出。 */
+   兼容在线部署、GitHub Pages 子路径（/仓库名/d/<id>/ → /仓库名/）与离线 zip 导出。
+   注意：站点根部署时 pathname 恰好只有 2 段（/d/<id>/ 或 /p/<id>/），去掉两段为空
+   会拼出 '//'（协议相对空主机），浏览器导航无效 → 🏠 按钮"按了没反应"；必须回 '/'。 */
 var docListUrl = (function(){
   try {
     var parts = (window.location.pathname || '').split('/').filter(Boolean);
     if (parts.length <= 1) return './';
+    if (parts.length === 2) return '/';
     return '/' + parts.slice(0, parts.length - 2).join('/') + '/';
   } catch(e){ return './'; }
 })();
@@ -348,7 +356,8 @@ var mbMenu = document.getElementById('mb-menu'), mbPrev = document.getElementByI
 var mbFontM = document.getElementById('mb-font-m'), mbFontP = document.getElementById('mb-font-p');
 function openDrawer(){
   sidebar.classList.add('open');
-  mask.classList.add('on');
+  // 遮罩仅移动端抽屉需要；桌面端弹全屏遮罩会盖住顶栏按钮，造成"按钮按不了"
+  if (window.innerWidth <= 680) mask.classList.add('on');
   // 打开抽屉后尽量让当前章节可见（手机目录一般很长，避免每次都要手动翻找）
   try {
     var cur = urlToNode.get(currentUrl());
@@ -396,7 +405,13 @@ if (mbFontP) mbFontP.addEventListener('click', function(e){ e.stopPropagation();
 if (mbNext) mbNext.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i >= 0 && i < leafList.length-1) openPage(leafList[i+1].u); });
 if (mbPrev) mbPrev.addEventListener('click', function(){ var i = leafList.indexOf(urlToNode.get(currentUrl())); if (i > 0) openPage(leafList[i-1].u); });
 if (mbSearch) mbSearch.addEventListener('click', function(){ psBar.classList.add('on'); psQ.focus(); runPageSearch(); });
-document.getElementById('menu-btn').addEventListener('click', openDrawer);
+document.getElementById('menu-btn').addEventListener('click', function(){
+  if (window.innerWidth <= 680) { openDrawer(); return; }
+  // 桌面端：☰ 折叠/展开侧栏（此前只会弹全屏遮罩、按钮自身被盖住，看起来"按不了"）
+  document.getElementById('app').classList.toggle('side-closed');
+  mask.classList.remove('on');
+  sidebar.classList.remove('open');
+});
 var homeBtn = document.getElementById('home-btn');
 if (homeBtn) homeBtn.addEventListener('click', function(){ window.location.href = docListUrl; });
 if (mask) mask.addEventListener('click', closeDrawer);

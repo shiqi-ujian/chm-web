@@ -169,6 +169,7 @@ async function main() {
     ok('public shell rebuilt: home is relative (no /p/ prefix)', pubShell.st === 200 && pubHome && !pubHome[1].startsWith('/'),
       pubHome ? pubHome[1] : 'no home');
     ok('public shell has no /p/<id>/ absolute refs', !pubShell.body.includes('/p/' + idB + '/'));
+    ok('public shell is v3 (marker + docListUrl root fix)', pubShell.body.includes('/*chm-shell-v3*/') && pubShell.body.includes('parts.length === 2'));
   }
   const visPriv = await json('POST', '/api/doc/' + idB + '/visibility', { visibility: 'private' }, { 'X-User-Token': tok });
   ok('owner set private 200', visPriv.st === 200, String(visPriv.st));
@@ -181,6 +182,7 @@ async function main() {
     const privHome = /var home = '([^']*)'/.exec(privShell.body);
     ok('private shell home is absolute /p/<id>/ prefixed', privShell.st === 200 && privHome && privHome[1].startsWith('/p/' + idB + '/'),
       privHome ? privHome[1] : 'no home');
+    ok('private shell is v3 (marker + docListUrl root fix)', privShell.body.includes('/*chm-shell-v3*/') && privShell.body.includes('parts.length === 2'));
     if (privHome && privHome[1].startsWith('/p/' + idB + '/')) {
       const homeDoc = privHome[1].slice(('/p/' + idB).length); // /xxx.htm
       ok('private home doc reachable', (await get('/p/' + idB + homeDoc, tok)) === 200, homeDoc);

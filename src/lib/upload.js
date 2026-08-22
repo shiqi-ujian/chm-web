@@ -139,7 +139,7 @@ function rebuildDocShell(docDir, docId, title, o = {}) {
  * 扫描并重建全部存量私有文档阅读壳（启动自愈）：
  * - 修复旧壳 URL 前缀缺失（无 /p/<id>/ 前缀 → 正文 iframe 404）
  * - 升级旧壳 JS（无惰性渲染 ensureKids → 大文档目录树全展开卡死）
- * 已是新壳（绝对前缀 + 惰性渲染）跳过（省 IO）。
+ * 已是新壳（含 chm-shell-v3 标记）跳过（省 IO）。
  */
 function rebuildPrivateShells({ dataDir }) {
   const privRoot = path.join(path.resolve(dataDir), 'private');
@@ -155,8 +155,8 @@ function rebuildPrivateShells({ dataDir }) {
     try {
       const shell = path.join(dir, 'index.html');
       const content = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '';
-      if (content.indexOf('/p/' + n + '/') !== -1 && content.indexOf('ensureKids') !== -1) { skipped++; continue; }
-      rebuildDocShell(dir, n, n, { visibility: 'private', skipIndexes: true });
+      if (content.indexOf('/*chm-shell-v3*/') !== -1) { skipped++; continue; }
+      rebuildDocShell(dir, n, metaName(n) || n, { visibility: 'private', skipIndexes: true });
       rebuilt++;
       out.push(n);
     } catch (e) {
@@ -182,8 +182,8 @@ function rebuildStalePublicShells({ siteRoot }) {
     try {
       const shell = path.join(dir, 'index.html');
       const content = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : '';
-      if (content.indexOf('ensureKids') !== -1) { skipped++; continue; }
-      rebuildDocShell(dir, n, n, { visibility: 'public', skipIndexes: true });
+      if (content.indexOf('/*chm-shell-v3*/') !== -1) { skipped++; continue; }
+      rebuildDocShell(dir, n, metaName(n) || n, { visibility: 'public', skipIndexes: true });
       rebuilt++;
       out.push(n);
     } catch (e) {
@@ -192,6 +192,11 @@ function rebuildStalePublicShells({ siteRoot }) {
   }
   if (rebuilt) console.log(`[public-shell] upgraded ${rebuilt} public doc shell(s): ${out.join(', ')}`);
   return { rebuilt, skipped };
+}
+
+/** 取文档显示名（meta.name）；auth 未初始化/无记录时返回 null（回退目录名） */
+function metaName(docId) {
+  try { const m = require('./auth').getMeta(docId); return (m && m.name) || null; } catch (_) { return null; }
 }
 
 /**
