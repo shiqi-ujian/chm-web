@@ -187,6 +187,34 @@ async function main() {
     }
   }
 
+  // ---- 中文子路径私密浏览回归（/p/<id>/<中文路径> 曾因未 decode 子路径而 404）----
+  // 7-Zip 样例 CHM 内部全是 ASCII 文件名，覆盖不到中文路径；这里直接构造一个
+  // 带中文目录/文件的私有文档，用真实浏览器会发出的百分号编码 URL 请求。
+  {
+    const enc = (s) => s.split('/').map(encodeURIComponent).join('/');
+    const cjkId = '中文文档-cjk1';
+    const dave = await json('POST', '/api/register', { username: 'dave', password: 'secret1' });
+    const dl = await json('POST', '/api/login', { username: 'dave', password: 'secret1' });
+    const dTok = dl.body.token;
+    const privDir = path.join(DATA, 'private', cjkId);
+    fs.mkdirSync(path.join(privDir, '职业', '狂战士'), { recursive: true });
+    fs.writeFileSync(path.join(privDir, 'index.html'), '<!doctype html><html><meta charset="utf-8"><title>壳</title><body><script>window.__TOC__=[];<\/script></body></html>');
+    fs.writeFileSync(path.join(privDir, '职业', '狂战士', '图腾武者.htm'), '<!doctype html><html><meta charset="utf-8"><title>图腾武者</title><body>图腾武者正文</body></html>');
+    fs.mkdirSync(path.join(privDir, '职业', '狂战士', '图腾武者.files'), { recursive: true });
+    fs.writeFileSync(path.join(privDir, '职业', '狂战士', '图腾武者.files', 'img.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const dbx2 = new Database(path.join(DATA, 'app.db'));
+    dbx2.prepare('INSERT INTO meta (doc_id, owner, name, visibility, share_token, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+      .run(cjkId, 'dave', '中文文档', 'private', null, Date.now(), Date.now());
+    dbx2.close();
+    const encId = encodeURIComponent(cjkId);
+    ok('cjk private shell 200 (owner)', (await get('/p/' + encId + '/', dTok)) === 200);
+    ok('cjk private subpage 200 (owner)', (await get('/p/' + encId + '/' + enc('职业/狂战士/图腾武者.htm'), dTok)) === 200);
+    ok('cjk private .files resource 200 (owner)', (await get('/p/' + encId + '/' + enc('职业/狂战士/图腾武者.files/img.png'), dTok)) === 200);
+    ok('cjk private subpage anon 403', (await get('/p/' + encId + '/' + enc('职业/狂战士/图腾武者.htm'))) === 403);
+    await del('/api/doc/' + encId, { 'X-User-Token': dTok }); // 清理
+    ok('cjk private cleanup done', !fs.existsSync(privDir));
+  }
+
   // ---- /api/docs 过滤 ----
   const anonList = await json('GET', '/api/docs');
   ok('anon /api/docs hides private', !anonList.body.docs.some((d) => d.id === idB), JSON.stringify(anonList.body.docs.map((d) => d.id)));

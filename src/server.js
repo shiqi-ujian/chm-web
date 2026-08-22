@@ -405,7 +405,13 @@ function listDocs(username) {
   const m = /^\/p\/([^/]+)(\/.*)?$/.exec(urlPath);
   if (!m) { res.writeHead(404); res.end('Not Found'); return; }
   const id = decodeURIComponent(m[1]);
-  const sub = (m[2] || '/').replace(/^\/+/, '');
+  // 子路径必须整体 decode：new URL().pathname 返回百分号编码形式，中文文件名/目录
+  // （如 /职业/狂战士/图腾武者.htm）不解码会拿编码串去 path.resolve 找文件 → 404。
+  // 公开文档走 serveStatic（整条路径 decode）无此问题，私有壳/正文全挂。先 decode
+  // 再剥前导斜杠，避免 %2F 解码后成为绝对路径绕过；畸形编码（%zz）保留原样自然 404。
+  let sub = m[2] || '/';
+  try { sub = decodeURIComponent(sub); } catch (_) { /* 保持原样 */ }
+  sub = sub.replace(/^\/+/, '');
   const cookies = parseCookies(req);
   const shareToken = (new URL(req.url, 'http://x')).searchParams.get('share')
     || cookies['chm_share_' + id] || null;
