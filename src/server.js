@@ -70,6 +70,18 @@ const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0'; // 默认绑全接口；本机调试可设 127.0.0.1
 const MAX_BYTES = 80 * 1024 * 1024;
 
+// —— 战斗地图云端持久化：/api/map/<id>（能力式随机 id，无账号；前端把 mapid 放进 URL 即回访恢复）——
+const MAP_DIR = path.resolve(process.env.CHM_MAP_DIR || path.join(DATA_DIR, 'maps'));
+const MAP_MAX_BYTES = Number(process.env.MAP_MAX_BYTES) || 60 * 1024 * 1024;
+const MAP_ORIGIN = process.env.MAP_ORIGIN || 'https://map.chmweb.cn';
+function sanitizeMapId(id) { return String(id || '').replace(/[^A-Za-z0-9_-]/g, ''); }
+function setMapCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', MAP_ORIGIN);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '600');
+}
+
 // —— 鉴权(A 形态，A3 收紧)：用环境变量设 token 即开启对应防护；不设则保持不锁。
 //   UPLOAD_TOKEN 保护写操作（POST /api/upload）；EXPORT_TOKEN 保护文档导出。
 //   公网下除非请求头带有效 X-Auth-Token，否则须为已登录用户（同源 cookie）。
@@ -629,8 +641,10 @@ function route(req, res) {
   try { u = new URL(req.url, 'http://x'); } catch (_) { u = null; }
   if (!u) { res.writeHead(400, { 'Content-Type': 'text/plain' }); res.end('Bad Request'); return; }
   const urlPath = u.pathname;
-  // 写操作统一 CSRF 防护（本地测试/旧客户端可 NO_CSRF=1 关闭）
-  if (req.method !== 'GET' && req.method !== 'HEAD' && process.env.NO_CSRF !== '1' && !enforceCsrf(req, res)) {
+  // 战斗地图云端接口：公开、能力式随机 id，无需登录/CSRF（跨子域 map.chmweb.cn 调用）
+  const isMapApi = typeof urlPath === 'string' && /^\/api\/map\/.*$/.test(urlPath);
+  // 写操作统一 CSRF 防护（本地测试/旧客户端可 NO_CSRF=1 关闭；/api/map 豁免）
+  if (req.method !== 'GET' && req.method !== 'HEAD' && process.env.NO_CSRF !== '1' && !isMapApi && !enforceCsrf(req, res)) {
     sendJSON(res, 403, { ok: false, error: 'CSRF 校验失败，请刷新页面重试' }); return;
   }
   // 给所有页面响应种 CSRF cookie（简化，前端读 cookie 后放头）
@@ -844,6 +858,30 @@ function route(req, res) {
     handleExportDocs(req, res);
   } else if (req.method === 'POST' && urlPath === '/api/export-docs') {
     handleExportDocs(req, res);
+  } else if (req.method === 'OPTIONS' && /^\/api\/map\/.*$/.test(urlPath)) {
+    // CORS 预检（跨子域 map.chmweb.cn 的带 body 请求会先发 OPTIONS）
+    setMapCors(res); res.writeHead(204); res.end();
+  } else if ((req.method === 'GET' || req.method === 'POST') && /^\/api\/map\/[^/]+$/.test(urlPath)) {
+    setMapCors(res);
+    const id = sanitizeMapId(decodeURIComponent(urlPath.split('/')[3]));
+    if (!id) { sendJSON(res, 400, { ok: false, error: '非法 map id' }); return; }
+    if (req.method === 'GET') {
+      const fp = path.join(MAP_DIR, id + '.json');
+      if (!fs.existsSync(fp) || !fs.statSync(fp).isFile()) { sendJSON(res, 404, { ok: false, error: '地图不存在' }); return; }
+      let data = {};
+      try { data = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch (e) { console.error('map read parse failed', id, e); }
+      sendJSON(res, 200, { ok: true, data });
+    } else {
+      readBody(req, MAP_MAX_BYTES).then((buf) => {
+        let body;
+        try { body = buf.length ? JSON.parse(buf.toString('utf8')) : {}; } catch { sendJSON(res, 400, { ok: false, error: 'JSON 解析失败' }); return; }
+        try {
+          fs.mkdirSync(MAP_DIR, { recursive: true });
+          fs.writeFileSync(path.join(MAP_DIR, id + '.json'), JSON.stringify(body), 'utf8');
+          sendJSON(res, 200, { ok: true, id });
+        } catch (e) { console.error('map save failed', e); sendJSON(res, 500, { ok: false, error: '保存失败' }); }
+      }).catch((e) => { console.error('map body read failed', e); sendJSON(res, 413, { ok: false, error: '地图数据过大' }); });
+    }
   } else {
     serveStatic(req, res);
   }
