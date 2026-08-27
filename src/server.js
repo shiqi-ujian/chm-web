@@ -14,6 +14,7 @@ const dbm = require('./lib/db');
 const { QuotaError, SlidingWindow, initQuota, checkUploadQuota, releaseQuota, globalUsage, usageOf, reconcileUsage } = require('./lib/quota');
 const LibSearch = require('./lib/search');
 const { sniffFileCharset } = require('./lib/charset');
+const { createRelay } = require('./lib/relay');
 
 // 站点根（含欢迎页 index.html 和 d/ 文档目录）。默认本项目 docs/。
 const SITE_ROOT = path.resolve(process.env.CHM_SITE || path.join(__dirname, '..', 'docs'));
@@ -635,6 +636,11 @@ const server = http.createServer((req, res) => {
     else res.end();
   }
 });
+
+// —— combatmap 在线房间中继 hub（WebSocket /ws）——
+// 与 API 共用同一端口与 Caddy 反向代理（443/WSS），无需额外开放端口。
+const relay = createRelay(server, { path: '/ws' });
+
 function route(req, res) {
   // 防御：畸形请求行（如 path 为 '//'）会让 new URL 抛 ERR_INVALID_URL，解析失败按 400 处理。
   let u = null;
@@ -911,6 +917,7 @@ server.listen(Number(PORT), HOST, () => {
     if (reconciled.length) console.log('[startup] usage reconciled:', reconciled.map((u) => u.username + '=' + u.docs + '篇/' + u.bytes + 'B').join(', '));
   } catch (e) { console.error('[startup] reconcileUsage failed', e); }
   console.log('chm-web server listening: http://' + HOST + ':' + port);
+  console.log('  relay hub  : wss://<host>/ws (combatmap 在线房间中继)');
   console.log('  site root :', SITE_ROOT);
   const lockU = UPLOAD_TOKEN ? 'on' : 'off'; const lockE = EXPORT_TOKEN ? 'on' : 'off';
   console.log('  auth      : upload=' + lockU + '  export=' + lockE + '  (UPLOAD_TOKEN/EXPORT_TOKEN)');
