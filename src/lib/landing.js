@@ -677,18 +677,18 @@ const UPLOAD = page('上传 · CHM 网页', true, `
     xhr.upload.onprogress=function(e){if(e.lengthComputable&&onProg)onProg(e.loaded/e.total*100);};
     xhr.onloadstart=function(){if(onProg)onProg(0);};
     xhr.onload=function(){if(onProg)onProg(100,'正在转换（解包 + 生成阅读页）…');var j={};try{j=JSON.parse(xhr.responseText);}catch(e){}
-      if(xhr.status===200&&j.ok){ok.push(j.name||f.name);if(j.id)okId.push(j.id);}else{fail.push(f.name);failFiles.push(f);if(msg)msg.innerHTML='<span class="err">失败：'+escS(f.name)+'（'+(j&&j.error||'未知错误')+'）</span>';}cb();};
+      if(xhr.status===200&&j.ok){ok.push(j.name||f.name);if(j.id)okId.push(j.id);if(j.mhtConverted>0)mhtCount+=(j.mhtConverted||0);}else{fail.push(f.name);failFiles.push(f);if(msg)msg.innerHTML='<span class="err">失败：'+escS(f.name)+'（'+(j&&j.error||'未知错误')+'）</span>';}cb();};
     xhr.onerror=function(){fail.push(f.name);failFiles.push(f);cb();};
     xhr.send(fd);}
   function runBatch(){var files=all.slice();if(!files.length){msg.innerHTML='<span class="err">先选择 .chm 文件</span>';return;}
     var ag=document.getElementById('uploadAgree');if(!ag||!ag.checked){msg.innerHTML='<span class="err">请先勾选确认拥有合法权利/授权</span>';return;}
-    var mySeq=++seq;go.disabled=true;ok=[];fail=[];failFiles=[];okId=[];isDone=false;if(batchDone)batchDone.style.display='none';if(retryBtn)retryBtn.style.display='none';
+    var mySeq=++seq;go.disabled=true;ok=[];fail=[];failFiles=[];okId=[];mhtCount=0;isDone=false;if(batchDone)batchDone.style.display='none';if(retryBtn)retryBtn.style.display='none';
     function finish(){go.disabled=false;all=[];sel();hideProg();isDone=!!ok.length;
       if(isDone&&batchDone){batchDone.style.display='';packBtn.textContent=ok.length>1?'⬇ 把刚上传的 '+ok.length+' 篇一起打包成 zip 下载':'⬇ 把刚上传的这篇打包成 zip 下载';
         if(failFiles.length&&retryBtn){retryBtn.style.display='';retryBtn.textContent='↻ 重试失败的 '+failFiles.length+' 个';}}
       var msgTail='';
       if(okId.length){var mineUrl='mine.html';if(window.currentUser)msgTail='<a class="btn ghost sm" href="'+mineUrl+'" style="margin-left:10px">去「我的文档」管理</a>';}
-      msg.innerHTML=(fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>'))+msgTail;}
+      msg.innerHTML=(fail.length?('<span class="err">完成 '+ok.length+'，失败 '+fail.length+' 个（'+escS(fail.join('、'))+'）</span>'):('<span class="ok">全部转换成功！'+ok.length+' 篇已就绪，可在「我的文档」打开。</span>'+(mhtCount?('<br><span class="ok" style="font-size:12.5px">ℹ️ 检测到 '+mhtCount+' 个 .mht 页面，已自动转为可浏览 HTML。</span>'):'')))+msgTail;}
     (function loop(i){if(i>=files.length)return finish();var f=files[i];
       go.textContent='转换中 '+i+'/'+files.length;
       setProg(0,(files.length>1?('第 '+(i+1)+'/'+files.length+' 个 · '):'')+escS(f.name)+' — 上传中…');

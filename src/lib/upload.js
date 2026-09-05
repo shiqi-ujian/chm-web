@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { extractChm } = require('./chm');
 const { copyDocContent } = require('./sanitize');
 const { normalizeCharsets } = require('./charset');
+const { convertMht } = require('./mht');
 
 class UploadError extends Error {
   constructor(msg, status) { super(msg); this.status = status || 400; }
@@ -67,7 +68,7 @@ async function processUpload(buf, origName, o = {}) {
     ? path.join(dataDir, 'private', id)
     : path.join(siteRoot, 'd', id);
   try {
-    await convertOne(tmpChm, docDir, id, path.parse(origName).name, o);
+    const convResult = await convertOne(tmpChm, docDir, id, path.parse(origName).name, o);
   } catch (e) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     throw new UploadError('转换失败：' + (e && e.message || e), 500);
@@ -87,6 +88,8 @@ async function processUpload(buf, origName, o = {}) {
     href: (isPrivate ? 'p/' : 'd/') + id + '/',
     url: (isPrivate ? '/p/' : '/d/') + id + '/',
     isPrivate,
+    // 含 .mht(MHTML) 内容页时已自动转成可浏览 HTML，提示前端
+    mhtConverted: convResult.mhtConverted || 0,
   };
 }
 
@@ -100,13 +103,20 @@ async function convertOne(input, outDir, id, name, o = {}) {
   copyDocContent(tmp, outDir);
   fs.rmSync(tmp, { recursive: true, force: true });
   // 统一转 UTF-8：修复 GBK 页面 + 非法 <meta content="...charset=..."> 声明导致的整页乱码
-  try { normalizeCharsets(outDir); } catch (e) { console.error('normalizeCharsets failed', e); }
+  let mhtConverted = 0;
+  try {
+    normalizeCharsets(outDir);
+    // 把 .mht(MHTML 单文件) 内容页转成可浏览自包含 HTML（Word 导出 CHM 常见）
+    const mhtReport = convertMht(outDir);
+    mhtConverted = mhtReport.converted || 0;
+  } catch (e) { console.error('normalize/mht failed', e); }
   // 修复链接大小写与实际文件不一致（Linux 严格区分大小写）
   try { require('./fixlinks').fixLinks(outDir); } catch (e) { console.error('fixlinks failed', e); }
   // 生成阅读壳 index.html + keywords.json（复用 preview parser）
   try { rebuildDocShell(outDir, id, name, o); } catch (e) {
     // 生成不了壳也不至于致命
   }
+  return { docId: id, title: name, mhtConverted };
 }
 
 /**
