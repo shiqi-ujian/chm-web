@@ -66,8 +66,17 @@ function parseMht(rawBuf) {
   // 顶部 MIME 头
   const topEnd = raw.indexOf('\r\n\r\n');
   const topHdr = topEnd >= 0 ? raw.slice(0, topEnd) : raw;
+  const top = parseHdr(topHdr);
   const bm = topHdr.match(/boundary\s*=\s*"?([^";\s]+)"?/i);
-  if (!bm) return null;
+
+  if (!bm) {
+    // 单 part（Word 也常见）：没有 boundary，整段 body 就是主内容（QP/base64）。
+    if (topEnd === -1) return null;
+    const body = decodeCTE(Buffer.from(raw.slice(topEnd + 4), 'latin1'), top.cte);
+    if (!/text\/html/i.test(top.contentType) || body.length < 2) return null;
+    return { main: { h: top, body }, resources: [], single: true };
+  }
+
   const boundary = bm[1];
   const marker = '--' + boundary;
 
@@ -148,6 +157,21 @@ function decodeEntities(html) {
   return s;
 }
 
+/** 把页面里的 file:///C:/xxx/… 绝对资源引用改成相对路径（Word 导出，资源与页面同目录的 .files/）。 */
+function relativizeFileRefs(html, contentLocation) {
+  let out = String(html);
+  if (contentLocation) {
+    const norm = String(contentLocation).replace(/\\/g, '/');
+    const dirPrefix = norm.replace(/[^/]*$/, ''); // file:///C:/2669BA50/
+    if (dirPrefix && dirPrefix.length > 'file:///'.length) out = out.split(dirPrefix).join('');
+  }
+  // 兜底：把残留的 file:/// 前缀与反斜杠路径统一成相对
+  out = out.replace(/file:\/\/\/[A-Za-z]:\//gi, '');
+  out = out.replace(/file:\/\/\//gi, '');
+  out = out.replace(/\\/g, '/'); // 统一分隔符，便于相对解析
+  return out;
+}
+
 /** 把 html 串里的资源引用替换成 data URI，并改写 .mht → .html。 */
 function inlineResources(html, resources) {
   let out = html;
@@ -171,6 +195,7 @@ function convertOne(mhtFile) {
     const { main, resources } = parsed;
     let html = decode(main.body); // 自动探测 GBK → UTF-8
     html = decodeEntities(html);  // Word 常把中文存成 &#N; 数值实体，解码成真汉字
+    html = relativizeFileRefs(html, main.h.location); // file:///C:/xxx/ 绝对资源引用 → 相对路径
     html = inlineResources(html, resources);
     html = rewriteMetaCharset(html); // 刷成合法 <meta charset="utf-8">
     const htmlPath = mhtFile.replace(/\.mht$/i, '.html');
