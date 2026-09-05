@@ -172,6 +172,19 @@ function relativizeFileRefs(html, contentLocation) {
   return out;
 }
 
+/** 脱掉抓取源埋的隐藏 SEO 噪音：style 含 display:none / mso-hide / visibility:hidden 的 <span>/<div>。 */
+function stripHiddenSeo(html) {
+  let out = String(html);
+  const re = /<(span|div)\b[^>]*style\s*=\s*(['"])[^'"]*(?:display\s*:\s*none|mso-hide|visibility\s*:\s*hidden)[^'"]*\2[^>]*>[\s\S]*?<\/\1>/gi;
+  let guard = 0;
+  while (guard++ < 30) {
+    const before = out;
+    out = out.replace(re, '');
+    if (out === before) break;
+  }
+  return out;
+}
+
 /** 把 html 串里的资源引用替换成 data URI，并改写 .mht → .html。 */
 function inlineResources(html, resources) {
   let out = html;
@@ -195,6 +208,7 @@ function convertOne(mhtFile) {
     const { main, resources } = parsed;
     let html = decode(main.body); // 自动探测 GBK → UTF-8
     html = decodeEntities(html);  // Word 常把中文存成 &#N; 数值实体，解码成真汉字
+    html = stripHiddenSeo(html);  // 去掉抓取源埋的 display:none/mso-hide 隐藏 SEO 噪音
     html = relativizeFileRefs(html, main.h.location); // file:///C:/xxx/ 绝对资源引用 → 相对路径
     html = inlineResources(html, resources);
     html = rewriteMetaCharset(html); // 刷成合法 <meta charset="utf-8">
@@ -261,4 +275,4 @@ function convertMht(dir) {
   return report;
 }
 
-module.exports = { convertMht, convertOne, parseMht };
+module.exports = { convertMht, convertOne, parseMht, stripHiddenSeo };
