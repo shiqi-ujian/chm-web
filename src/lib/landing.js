@@ -516,14 +516,17 @@ const WELCOME = page('CHM 网页 · 免费在线阅读工具', false, `
   var sres=document.getElementById('sres'),siteq=document.getElementById('siteq');
   var siKw=[],siRec=[],api=false;
   function escA(x){return escS(x).replace(/'/g,'&#39;');}
-  function loadSite(){try{if(!window.fetch)return;fetch('site-index.json').then(function(r){return r.json();}).then(function(j){siKw=j.keywords||[];siRec=j.records||[];}).catch(function(){});}catch(e){}}
+  var siteLoading=null;
+  function loadSite(){if(!window.fetch)return Promise.resolve();if(siKw.length||siRec.length)return Promise.resolve();if(siteLoading)return siteLoading;
+    try{siteLoading=fetch('site-index.json').then(function(r){return r.json();}).then(function(j){siKw=j.keywords||[];siRec=j.records||[];}).catch(function(){}).then(function(){siteLoading=null;});}catch(e){siteLoading=null;return Promise.resolve();}return siteLoading;}
   function probeApi(){try{fetch('/api/search?q=__p__').then(function(r){api=r.status===200;}).catch(function(){});}catch(e){}}
-  loadSite();probeApi();
+  probeApi();
   function render(rows){var h='';if(!rows.length)h='<div style="padding:14px;color:var(--mut);font-size:14px">无匹配结果</div>';
     else{var c=null;rows.slice(0,20).forEach(function(r){if(r.grp&&r.grp!==c){h+='<div style="padding:8px 16px 2px;font-size:12px;color:var(--mut)">'+escS(r.grp)+'</div>';c=r.grp;}
       h+='<a href="'+escS(r.href)+'" style="display:block;padding:9px 16px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink)"><b style="display:block;font-size:14px">'+escS(r.t)+'</b><span style="color:var(--mut);font-size:12px">'+escS(r.p||'')+'</span></a>';});}
     sres.innerHTML=h;sres.style.display='block';}
-  function local(q){q=String(q||'').toLowerCase();var rows=[];(siKw||[]).slice(0,120).forEach(function(k){if((k.name||'').toLowerCase().indexOf(q)!==-1)rows.push({grp:k.dn||k.doc||'',href:k.href||'',t:k.name,p:k.dn||k.doc||''});});
+  function local(q){if(siKw.length||siRec.length)return localNow(q);loadSite().then(function(){localNow(q);});}
+  function localNow(q){q=String(q||'').toLowerCase();var rows=[];(siKw||[]).slice(0,120).forEach(function(k){if((k.name||'').toLowerCase().indexOf(q)!==-1)rows.push({grp:k.dn||k.doc||'',href:k.href||'',t:k.name,p:k.dn||k.doc||''});});
     (siRec||[]).forEach(function(rep){var lt=(rep.text||'').toLowerCase(),at=lt.indexOf(q);if(at===-1)return;
       var pg=(rep.text.match(/\\[page:([^\\]]+)\\]/)||[])[1]||'';var ctx=rep.text.slice(Math.max(0,at-30),at+100).replace(/\\s+/g,' ');
       rows.push({grp:rep.name||rep.doc||'',href:'d/'+(rep.doc||'')+'/'+pg,t:pg||'',p:ctx});});
@@ -955,7 +958,7 @@ function build({ outDir, docs }) {
       icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }]
     }, null, 2));
   fs.writeFileSync(path.join(dir, 'sw.js'), `'use strict';
-const CACHE = 'chm-pwa-v1';
+const CACHE = 'chm-pwa-v2';
 const ASSETS = [
   './',
   './index.html',
