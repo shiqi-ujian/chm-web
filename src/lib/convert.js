@@ -8,6 +8,7 @@ const landing = require('./landing');
 const { copyDocContent } = require('./sanitize');
 const { fixLinks } = require('./fixlinks');
 const { normalizeCharsets } = require('./charset');
+const { convertMht } = require('./mht');
 
 async function convert(input, outArg) {
   const abs = path.resolve(input);
@@ -16,6 +17,8 @@ async function convert(input, outArg) {
   const dir = out;
   // 统一转 UTF-8：修复 GBK 页面 + 非法 <meta content="...charset=..."> 声明导致的整页乱码
   normalizeCharsets(dir);
+  // 把 .mht(MHTML 单文件) 内容页转成可浏览的自包含 HTML（Word 导出 CHM 常见）
+  convertMht(dir);
   // 修复 hhc/hhk/正文链接大小写与实际文件不一致（Linux 严格区分大小写）
   fixLinks(dir);
   const files = scan(dir);

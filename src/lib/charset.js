@@ -163,4 +163,4 @@ function sniffFileCharset(file) {
   } catch { return null; }
 }
 
-module.exports = { decode, readText, sniffMetaCharset, normalizeCharsets, sniffFileCharset };
+module.exports = { decode, readText, sniffMetaCharset, normalizeCharsets, sniffFileCharset, rewriteMetaCharset };
