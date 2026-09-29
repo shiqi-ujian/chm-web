@@ -21,7 +21,9 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
 // 邮箱验证 / 重置令牌有效期
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 60 * 60 * 1000;
-// 登录失败锁定：连续失败次数 / 锁定时长
+// 登录失败锁定：连续失败次数 / 锁定时长。
+// 失败计数带时间衰减（滑动窗口）：距上次失败超过 LOCK_MS 即重新计数，
+// 避免「锁过一次后每次输错都重新锁定、等于永久锁死」。仅登录成功时清零。
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MS = 10 * 60 * 1000;
 
@@ -89,7 +91,7 @@ function register(body) {
   const salt = crypto.randomBytes(16).toString('hex');
   const now = Date.now();
   const verifCode = randomCode();
-  dbm.db.prepare('INSERT INTO users (username, salt, hash, created_at, email, email_verified, verification_code, verification_expires, failed_attempts, locked_until, last_login_at, created_ip, terms_accepted_at, updated_at) VALUES (?,?,?,?,?,?,?,?,0,0,NULL,?,?,?)')
+  dbm.db.prepare('INSERT INTO users (username, salt, hash, created_at, email, email_verified, verification_code, verification_expires, failed_attempts, locked_until, last_failed_at, last_login_at, created_ip, terms_accepted_at, updated_at) VALUES (?,?,?,?,?,?,?,?,0,0,0,NULL,?,?,?)')
     .run(username, salt, hashPassword(password, salt), now, email, 0, hashToken(verifCode), now + VERIFY_TTL_MS, b.ip || null, now, now);
   sendVerificationEmail(email, verifCode);
   return { ok: true, username, emailVerified: false };
@@ -109,10 +111,13 @@ function login({ username, password }) {
   }
   const hash = hashPassword(password, u.salt);
   if (hash !== u.hash) {
-    const attempts = (u.failed_attempts || 0) + 1;
+    // 计数按滑动窗口衰减：距上次失败超过 LOCK_MS 视为新一轮，从 1 重新计。
+    // 用 u.username 而非输入（邮箱登录输错也必须累计到真实账号上）。
+    const decayed = (u.last_failed_at && now - u.last_failed_at > LOCK_MS) ? 0 : (u.failed_attempts || 0);
+    const attempts = decayed + 1;
     const locked = attempts >= MAX_FAILED_ATTEMPTS ? now + LOCK_MS : 0;
-    dbm.db.prepare('UPDATE users SET failed_attempts = ?, locked_until = ?, updated_at = ? WHERE username = ?')
-      .run(attempts, locked, now, username);
+    dbm.db.prepare('UPDATE users SET failed_attempts = ?, locked_until = ?, last_failed_at = ?, updated_at = ? WHERE username = ?')
+      .run(attempts, locked, now, now, u.username);
     if (locked) throw new AuthError('登录失败次数过多，请 10 分钟后再试', 423);
     throw new AuthError('用户名或密码错误', 401);
   }
@@ -123,7 +128,7 @@ function login({ username, password }) {
     throw new AuthError('请先验证邮箱再登录：点击注册邮件中的验证链接即可（未收到可联系管理员）', 403);
   }
   const userKey = u.username;
-  dbm.db.prepare('UPDATE users SET failed_attempts = 0, locked_until = 0, last_login_at = ?, updated_at = ? WHERE username = ?')
+  dbm.db.prepare('UPDATE users SET failed_attempts = 0, locked_until = 0, last_failed_at = 0, last_login_at = ?, updated_at = ? WHERE username = ?')
     .run(now, now, userKey);
   const token = randomToken();
   dbm.db.prepare('INSERT INTO sessions (token, username, created_at) VALUES (?,?,?)')
@@ -211,7 +216,7 @@ function verifyEmailCode(code) {
     // 已验证邮箱的账号再次点击验证链接：直接返回成功（幂等）
     return { ok: true, username: row.username, token: null, already: true };
   }
-  dbm.db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL, verification_expires = NULL, updated_at = ? WHERE username = ?')
+  dbm.db.prepare('UPDATE users SET email_verified = 1, verification_code = NULL, verification_expires = NULL, failed_attempts = 0, locked_until = 0, last_failed_at = 0, updated_at = ? WHERE username = ?')
     .run(Date.now(), row.username);
   // 验证成功即建立会话（点邮件链接 = 完成验证并自动登录）
   const token = randomToken();
@@ -245,7 +250,8 @@ function resetPassword(code, newPassword) {
   if (next.length < 6) throw new AuthError('新密码至少 6 位', 400);
   if (next.length > 128) throw new AuthError('密码过长', 400);
   const salt = crypto.randomBytes(16).toString('hex');
-  dbm.db.prepare('UPDATE users SET salt = ?, hash = ?, password_reset_token = NULL, password_reset_expires = NULL, last_login_at = ?, updated_at = ? WHERE username = ?')
+  // 重置密码同时清除失败计数与锁定：否则用户重置完仍被 423 挡在门外
+  dbm.db.prepare('UPDATE users SET salt = ?, hash = ?, password_reset_token = NULL, password_reset_expires = NULL, failed_attempts = 0, locked_until = 0, last_failed_at = 0, last_login_at = ?, updated_at = ? WHERE username = ?')
     .run(salt, hashPassword(next, salt), Date.now(), Date.now(), row.username);
   dbm.db.prepare('DELETE FROM sessions WHERE username = ?').run(row.username);
   return { ok: true, username: row.username };
@@ -486,7 +492,7 @@ function deleteAccount(username, { removeDocs } = {}) {
     dbm.db.prepare('DELETE FROM sessions WHERE username = ?').run(username);
     dbm.db.prepare('DELETE FROM user_usage WHERE username = ?').run(username);
     dbm.db.prepare('UPDATE meta SET owner = NULL, share_token = NULL, share_expires_at = NULL WHERE owner = ?').run(username);
-    dbm.db.prepare('UPDATE users SET deleted_at = ?, email = NULL, email_verified = 0, verification_code = NULL, verification_expires = NULL, password_reset_token = NULL, password_reset_expires = NULL, failed_attempts = 0, locked_until = 0, last_login_at = NULL, updated_at = ? WHERE username = ?')
+    dbm.db.prepare('UPDATE users SET deleted_at = ?, email = NULL, email_verified = 0, verification_code = NULL, verification_expires = NULL, password_reset_token = NULL, password_reset_expires = NULL, failed_attempts = 0, locked_until = 0, last_failed_at = 0, last_login_at = NULL, updated_at = ? WHERE username = ?')
       .run(now, now, username);
   })();
   if (typeof removeDocs === 'function') {

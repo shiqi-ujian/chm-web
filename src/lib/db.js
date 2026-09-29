@@ -62,6 +62,7 @@ function open(dir) {
       password_reset_expires INTEGER,
       failed_attempts INTEGER NOT NULL DEFAULT 0,
       locked_until INTEGER NOT NULL DEFAULT 0,
+      last_failed_at INTEGER NOT NULL DEFAULT 0,
       last_login_at INTEGER,
       created_ip TEXT,
       terms_accepted_at INTEGER,
@@ -120,6 +121,7 @@ function open(dir) {
   ensureColumn('users', 'password_reset_expires', 'INTEGER');
   ensureColumn('users', 'failed_attempts', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'locked_until', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'last_failed_at', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('users', 'last_login_at', 'INTEGER');
   ensureColumn('users', 'created_ip', 'TEXT');
   ensureColumn('users', 'terms_accepted_at', 'INTEGER');

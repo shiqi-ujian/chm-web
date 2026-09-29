@@ -2,6 +2,25 @@
 
 > 由 agent 在每次反馈修复发布后维护（来源：QQ 群收集表 / 问题反馈入口）。最新在上。
 
+## 2026-09-29
+
+- **修复上传功能全线 500（严重）**：9/5 的提交把 `src/lib/upload.js` 的 `convResult` 声明在 `try` 块内、却在块外引用
+  （用于把 `mhtConverted` 透传给前端），导致**每一次上传都抛 `ReferenceError` 并返回 500**；
+  而文档、文件、元数据其实都已写入，`catch` 还把配额回滚了 → 用户以为失败会重传（已出现重复文档），
+  用量统计与实际磁盘占用漂移。本次把声明提到 `try` 之外；`test-auth.js` 的上传用例恢复通过。
+- **500 响应不再回显内部异常文本**：原先返回 `服务器错误：convResult is not defined` 这类内部符号名，
+  现统一为“服务器内部错误，请稍后重试”（4 处 500 出口），细节仍写服务端日志。
+- **登录失败锁定三连修正式上线**（8/23 完成、一直未提交未部署）：新增 `users.last_failed_at` 滑动窗口衰减，
+  修掉「锁一次永久锁死」；邮箱登录输错也累计到真实账号（原先 UPDATE 落在邮箱串上不生效）；
+  `resetPassword` / `verifyEmailCode` 清空计数与锁定。`test-db.js` 新增 lock-fix 回归段。
+- **运维修复**：
+  - `watchdog.sh` / `alert.sh` / `backup.sh` 等脚本补可执行位（此前 cron 直接执行报 `Permission denied`，
+    **健康探活自 8/19 装配起从未真正跑过**，所以 9/27 的 OOM 停机没有任何告警）；
+  - 新增 `.deploy-tools/autodeploy.sh` 并装配到服务器：`flock` 串行化（旧版两个 cron 实例并发会留下
+    `.git/index.lock`，把 9/5 之后的所有自动部署全部卡死）+ `github.com:22` → `ssh.github.com:443` 双通道重试；
+  - 补充站点 `favicon.ico`（此前一个月 1051 次 404）。
+- **回归**：`npm test` 19 项全绿（此前 GitHub Actions 自 9/5 的 `ada1e57` 起连续 failure）。
+
 ## 2026-08-21
 
 - **注册表单体验优化**：

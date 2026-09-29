@@ -67,8 +67,11 @@ async function processUpload(buf, origName, o = {}) {
   const docDir = visibility === 'private'
     ? path.join(dataDir, 'private', id)
     : path.join(siteRoot, 'd', id);
+  // 注意：convResult 必须声明在 try 之外——返回值在 try/finally 之后还要用（mhtConverted 透传），
+  // 写成块内 const 会让每次上传都在第 92 行抛 ReferenceError 并返回 500（文档其实已入库）。
+  let convResult;
   try {
-    const convResult = await convertOne(tmpChm, docDir, id, path.parse(origName).name, o);
+    convResult = await convertOne(tmpChm, docDir, id, path.parse(origName).name, o);
   } catch (e) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     throw new UploadError('转换失败：' + (e && e.message || e), 500);

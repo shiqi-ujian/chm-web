@@ -86,11 +86,28 @@ bash .deploy-tools/install-cron.sh
 已有对应 cron 时幂等跳过；环境变量（如 `CHM_BACKUP_DIR`、`ALERT_WEBHOOK_URL`）
 需在 cron 环境中配置（crontab 里或 `/etc/environment`）。
 
+## 服务器侧自动部署（push 即上线）
+
+```bash
+# 装配（幂等，覆盖旧的 /root/chm-web-autodeploy.sh）
+cp /root/app/.deploy-tools/autodeploy.sh /root/chm-web-autodeploy.sh
+chmod +x /root/chm-web-autodeploy.sh
+crontab -l | grep autodeploy   # 应为 */2 * * * * /root/chm-web-autodeploy.sh >> /var/log/chm-web-deploy.log 2>&1
+```
+
+`autodeploy.sh` 每 2 分钟把 `/root/app` 同步到 `origin/main`，版本变化才 `systemctl restart chm-web`。
+2026-09-29 加固：`flock` 串行化（旧版两个实例并发会留下 `.git/index.lock` 卡死后续所有部署）、
+`github.com:22` → `ssh.github.com:443` 双通道重试（国内链路超时/DNS 失败时自动回落）、陈旧锁清理。
+
+> ⚠️ 服务器上的 git 工作区由该脚本 `git reset --hard` 接管：**直接在服务器改代码会被下一轮 pull 覆盖**，
+> 必须走 `push → 服务器 pull → 重启`。
+
 ## 文件说明
 
 | 文件 | 作用 |
 |---|---|
 | `deploy.sh` | Docker 容器启动/重启/日志/状态 |
+| `autodeploy.sh` | 服务器侧 cron 自动部署（同步 origin/main + 变化才重启；双通道重试） |
 | `chm-web.service` | systemd 单元示例 |
 | `watchdog.sh` | 健康探活 + 自动重启 + 告警 |
 | `backup.sh` | 每日备份（默认一致 SQLite 快照 + tar） |

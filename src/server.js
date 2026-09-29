@@ -285,7 +285,7 @@ async function handleJson(req, res, fn) {
     sendJSON(res, 200, { ok: true, ...(r || {}) });
   } catch (e) {
     if (e instanceof auth.AuthError || e instanceof UploadError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
-    else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
+    else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器内部错误，请稍后重试' }); }
   }
 }
 
@@ -369,7 +369,8 @@ async function handleUpload(req, res) {
     // 上传/转换失败时回收配额
     if (quotaRegistered) releaseQuota(username, file.data.length);
     if (e instanceof UploadError || e instanceof auth.AuthError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
-    else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
+    // 内部异常只进服务端日志：不把堆栈/内部符号名（如 convResult is not defined）回显给用户。
+    else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器内部错误，请稍后重试；若持续失败请在反馈入口提交（附上传文件名）' }); }
   }
 }
 
@@ -632,7 +633,7 @@ const server = http.createServer((req, res) => {
     route(req, res);
   } catch (e) {
     console.error('handler error', req.method, req.url, (e && e.stack) || e);
-    if (!res.headersSent) sendJSON(res, 500, { ok: false, error: '服务器错误：' + ((e && e.message) || e) });
+    if (!res.headersSent) sendJSON(res, 500, { ok: false, error: '服务器内部错误，请稍后重试' });
     else res.end();
   }
 });
@@ -850,7 +851,7 @@ function route(req, res) {
       sendJSON(res, 200, { ok: true, id, removed });
     } catch (e) {
       if (e instanceof auth.AuthError) sendJSON(res, e.status || 400, { ok: false, error: e.message });
-      else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器错误：' + (e.message || e) }); }
+      else { console.error(e); sendJSON(res, 500, { ok: false, error: '服务器内部错误，请稍后重试' }); }
     }
   } else if (req.method === 'GET' && urlPath.startsWith('/s/')) {
     handleShare(req, res, urlPath);
