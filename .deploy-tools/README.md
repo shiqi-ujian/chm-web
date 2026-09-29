@@ -86,6 +86,32 @@ bash .deploy-tools/install-cron.sh
 已有对应 cron 时幂等跳过；环境变量（如 `CHM_BACKUP_DIR`、`ALERT_WEBHOOK_URL`）
 需在 cron 环境中配置（crontab 里或 `/etc/environment`）。
 
+## 体积上限与内存预算（2026-09-29 加护栏）
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `MAX_BYTES` | `209715200`（200MB，服务器 unit 里设置） | 单个 `.chm` 上传上限（含 multipart 开销另有 64KB 余量） |
+| `EXPORT_MAX_BYTES` | 150MB | `GET /api/export-docs`（二进制直出）的选中内容上限 |
+| `EXPORT_JSON_MAX_BYTES` | 60MB | `POST /api/export-docs`（zip→base64 塞进 JSON）的选中内容上限 |
+| `EXPORT_SITE_MAX_BYTES` | 150MB | `/site-export.zip` 整站导出的内容上限 |
+
+**为什么要卡这些数**：`src/lib/zip.js` 目前把整个 zip 在内存里拼装，实测**峰值 RSS ≈ 输入体积 ×3~4**；
+POST 那条路还要 `zip.toString('base64')` + `JSON.stringify`，再翻约 4 倍压缩包体积。
+9/5 与 9/27 两次 OOM（各 1.0~1.24GB RSS 被内核 kill）就是导出打爆内存：9/5 的 nginx 错误日志实锤是
+`POST /api/export-docs`（用户在上传页点「打包成 zip 下载」）。
+所以：**要导出更大的集合，必须先把 zip.js 改成流式写盘/写响应**，然后再抬这三个上限。
+
+配套改动（都需要一起动，否则请求会在前一层被拒）：
+
+- nginx：`client_max_body_size 210m;`（chmweb.cn 的 server 块）——原来 100m，比应用上限还低；
+- systemd：`Environment=MAX_BYTES=209715200`；
+- 上传 body 读取已按 `Content-Length` **预分配单块缓冲**（原来 `chunks[] + Buffer.concat` 是 2 倍瞬时占用）；
+- 服务器已加 **2GB swap**（`/swapfile`，`vm.swappiness=20`）：内存打满时先换页而不是被 OOM kill。
+
+回归测试：`node test-limits.js samples/7-zip.chm`（正向：限内上传/导出都正常；反向：三条导出路径 + 上传超限都返回 413 且文案带上限）。
+
+
+
 ## 服务器侧自动部署（push 即上线）
 
 ```bash

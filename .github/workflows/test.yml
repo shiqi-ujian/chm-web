@@ -33,6 +33,7 @@ jobs:
           node test-export-docs.js
           node test-auth.js samples/7-zip.chm
           node test-quota.js samples/7-zip.chm
+          node test-limits.js samples/7-zip.chm
           node test-xss.js
           node test-search-api.js
           node test-atomic.js

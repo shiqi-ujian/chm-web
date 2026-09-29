@@ -69,7 +69,42 @@ function verifyAuthChallenge(body) {
 }
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0'; // 默认绑全接口；本机调试可设 127.0.0.1
-const MAX_BYTES = 80 * 1024 * 1024;
+// 单次上传体积上限（可用环境变量调，无需改代码/发版）。注意同时要改 nginx 的
+// client_max_body_size，否则请求在 nginx 层就被拒（413/400）。内存预算见文件末尾的 UPLOAD 注释。
+const MAX_BYTES = Number(process.env.MAX_BYTES) || 80 * 1024 * 1024;
+// multipart 表单自身的开销（boundary + 字段），比文件本体略大，给一点余量
+const MULTIPART_OVERHEAD = 64 * 1024;
+
+// —— 导出内存护栏（2026-09-29 加）——
+// 背景：zip 目前是**整包在内存里拼**（src/lib/zip.js 的 Buffer.concat），实测单文档导出
+// 峰值 RSS ≈ 输入体积的 3~4 倍；POST 路径还要 `zip.toString('base64')` + JSON.stringify，
+// 再翻约 4 倍压缩包体积。9/5 与 9/27 两次 OOM 就是这么来的（nginx 日志实锤 9/5 是 POST /api/export-docs）。
+// 因此在构建 zip 之前先按输入体积拦一刀；要导出更大的集合，应先把 zip.js 改成流式写盘/写响应。
+const EXPORT_MAX_BYTES = Number(process.env.EXPORT_MAX_BYTES) || 150 * 1024 * 1024;
+const EXPORT_JSON_MAX_BYTES = Number(process.env.EXPORT_JSON_MAX_BYTES) || 60 * 1024 * 1024;
+const EXPORT_SITE_MAX_BYTES = Number(process.env.EXPORT_SITE_MAX_BYTES) || 150 * 1024 * 1024;
+
+/** 体积可读化：小于 10MB 显示一位小数，避免小体积被 toFixed(0) 显示成 0MB */
+function fmtMB(bytes) {
+  const mb = Number(bytes || 0) / 1048576;
+  return (mb < 10 ? mb.toFixed(1) : mb.toFixed(0)) + 'MB';
+}
+
+/** 上传超限的统一文案（带上当前上限，用户才知道该压到多大） */
+function uploadTooLargeMsg() {
+  return '文件过大：单个 .chm 上限 ' + Math.round(MAX_BYTES / 1048576) + 'MB';
+}
+
+/** 导出超限的统一文案：给出实测体积、上限与替代做法 */
+function exportTooLargeMsg(bytes, cap, hint) {
+  return '导出体积过大：选中内容约 ' + fmtMB(bytes) + '，超过当前上限 ' + fmtMB(cap)
+    + '（zip 目前在内存里拼装，超限会打爆服务器内存）。' + hint;
+}
+
+/** 一组导出目录的体积合计（用于导出前的护栏判断） */
+function dirsBytes(dirs) {
+  return dirs.reduce((n, d) => n + dirBytes(d.dir), 0);
+}
 
 // —— 战斗地图云端持久化：/api/map/<id>（能力式随机 id，无账号；前端把 mapid 放进 URL 即回访恢复）——
 const MAP_DIR = path.resolve(process.env.CHM_MAP_DIR || path.join(DATA_DIR, 'maps'));
@@ -328,15 +363,28 @@ async function handleUpload(req, res) {
   const boundary = m && (m[1] || m[2]);
   if (!boundary) { sendJSON(res, 400, { ok: false, error: 'multipart/form-data 需带 boundary' }); return; }
 
-  // 累积 body
-  const chunks = [];
+  // 累积 body。这里按 Content-Length **预分配单一缓冲区**再逐块 copy：
+  // 旧写法 chunks[] + Buffer.concat 会有 2 倍瞬时占用（100MB 上传 ≈ 200MB 常驻），
+  // 在 1.6G 内存的机器上是踩 OOM 的一半原因。
+  const declared = Number(req.headers['content-length'] || 0);
+  const bodyLimit = MAX_BYTES + MULTIPART_OVERHEAD;
+  if (declared && declared > bodyLimit) {
+    sendJSON(res, 413, { ok: false, error: uploadTooLargeMsg() });
+    req.resume();
+    return;
+  }
   let size = 0;
+  let overflow = false;
+  let buf = declared > 0 ? Buffer.allocUnsafe(declared) : null;
+  const chunks = buf ? null : [];
   for await (const c of req) {
     size += c.length;
-    if (size > MAX_BYTES) { sendJSON(res, 413, { ok: false, error: '文件过大' }); req.resume(); return; }
-    chunks.push(c);
+    if (size > bodyLimit) { overflow = true; continue; } // 继续排空，保证 413 能发出去
+    if (buf) c.copy(buf, size - c.length);
+    else chunks.push(c);
   }
-  const buf = Buffer.concat(chunks);
+  if (overflow) { sendJSON(res, 413, { ok: false, error: uploadTooLargeMsg() }); return; }
+  buf = buf ? buf.subarray(0, size) : Buffer.concat(chunks);
   const form = parseMultipart(buf, boundary);
   const file = form.file;
   if (!file || !file.filename || !file.data) { sendJSON(res, 400, { ok: false, error: '未收到文件' }); return; }
@@ -531,6 +579,16 @@ function handleSiteExport(req, res) {
     else if (currentUser(req)) { /* 登录用户放行 */ }
     else { deny(req, res); return; }
   }
+  // 内存护栏：整站 zip 在内存里拼装，输入体积 ×3~4 就是峰值 RSS（620MB 站点 → 约 2GB）
+  const siteBytes = dirBytes(SITE_ROOT);
+  if (siteBytes > EXPORT_SITE_MAX_BYTES) {
+    sendJSON(res, 413, {
+      ok: false,
+      error: exportTooLargeMsg(siteBytes, EXPORT_SITE_MAX_BYTES,
+        '请在服务器上用 rsync/scp 取 /var/chm-web/data/site，或临时提高 EXPORT_SITE_MAX_BYTES 后重试。'),
+    });
+    return;
+  }
   const r = exportSite({ siteRoot: SITE_ROOT });
   const name = 'chm-web-site-' + Date.now() + '.zip';
   res.writeHead(200, {
@@ -577,6 +635,14 @@ function handleExportDocs(req, res) {
         }
       }
       if (!dirs.length) throw new auth.AuthError('没有可导出的文档', 404);
+      // 内存护栏：POST 路径要把 zip 转 base64 塞进 JSON（压缩包体积 ×2.66 的字符串 + 一份序列化副本），
+      // 上限比二进制直出更紧；超出时提示改走 GET 直下（那里是 res.end(zip)）。
+      const totalBytes = dirsBytes(dirs);
+      if (totalBytes > EXPORT_JSON_MAX_BYTES) {
+        throw new auth.AuthError(exportTooLargeMsg(totalBytes, EXPORT_JSON_MAX_BYTES,
+          '请改用直接下载：/api/export-docs?ids=' + dirs.map((d) => d.rel.replace(/^[dp]\//, '')).join(',')
+          + '（浏览器打开即下载），或分批导出。'), 413);
+      }
       const r = exportDocDirs({
         siteRoot: SITE_ROOT,
         dataDir: DATA_DIR,
@@ -592,6 +658,22 @@ function handleExportDocs(req, res) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  // 内存护栏：GET 直出二进制，仍按输入体积拦一刀（实测峰值 ≈ 输入 ×3~4）
+  let exportBytes = 0;
+  for (const id of ids) {
+    const pub = path.join(SITE_ROOT, 'd', id);
+    const priv = auth.privateDir(id);
+    if (fs.existsSync(pub)) exportBytes += dirBytes(pub);
+    else if (fs.existsSync(priv)) exportBytes += dirBytes(priv);
+  }
+  if (exportBytes > EXPORT_MAX_BYTES) {
+    sendJSON(res, 413, {
+      ok: false,
+      error: exportTooLargeMsg(exportBytes, EXPORT_MAX_BYTES,
+        '请分批导出（每次少选几篇），或临时提高 EXPORT_MAX_BYTES 后重试。'),
+    });
+    return;
+  }
   const r = exportDocs({ siteRoot: SITE_ROOT, ids });
   const name = 'chm-web-docs-' + Date.now() + '.zip';
   res.writeHead(200, {

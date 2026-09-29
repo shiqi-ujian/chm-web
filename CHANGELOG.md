@@ -4,6 +4,25 @@
 
 ## 2026-09-29
 
+### 第二批：上传上限提高 + 导出 OOM 护栏（同日）
+
+- **定位两次 OOM 的真凶**：不是上传，是**导出**。`src/lib/zip.js` 把整包 zip 在内存里拼装，
+  实测峰值 RSS ≈ 输入体积 ×3~4；`POST /api/export-docs` 还要把 zip 转 base64 塞进 JSON（再翻约 4 倍）。
+  9/5 与 9/27 各被内核 kill 一次（1.24GB / 1.0GB RSS），nginx 错误日志实锤 9/5 就是
+  「上传页 → 打包成 zip 下载」触发的 `POST /api/export-docs`。
+- **上传上限 80MB → 200MB**（`MAX_BYTES` 改为环境变量，服务器 unit 里设 200MB；同步把 nginx
+  `client_max_body_size` 从 100m 提到 210m —— 原来 nginx 比应用还严，9/23 有用户传 179MB 直接被 nginx 挡回 413）。
+- **上传 body 读取按 `Content-Length` 预分配单块缓冲**：旧的 `chunks[] + Buffer.concat` 有 2 倍瞬时占用。
+- **导出加体积护栏**（构建 zip 之前拦，避免把服务器打爆）：`EXPORT_MAX_BYTES`(150MB，GET 直出)、
+  `EXPORT_JSON_MAX_BYTES`(60MB，POST base64 路径)、`EXPORT_SITE_MAX_BYTES`(150MB，整站导出)。
+  超限返回 413 并给出体积/上限/替代做法（POST 路径会提示改用 `/api/export-docs?ids=...` 直接下载；
+  整站导出提示用 rsync/scp）。**要恢复「导出任意大小」需要先把 zip.js 改成流式写盘/写响应**。
+- **服务器加 2GB swap**（`/swapfile` + fstab，`vm.swappiness=20`）：内存打满时先换页，不再让内核直接 kill 服务。
+- **新增回归** `test-limits.js`（正向：限内上传/导出正常；反向：上传超限 + 三条导出路径全部 413 且文案带上限），
+  已接入 `npm test` 与 CI（共 20 项）。
+
+### 第一批：上传 500 修复 + 登录锁定 + 运维加固
+
 - **修复上传功能全线 500（严重）**：9/5 的提交把 `src/lib/upload.js` 的 `convResult` 声明在 `try` 块内、却在块外引用
   （用于把 `mhtConverted` 透传给前端），导致**每一次上传都抛 `ReferenceError` 并返回 500**；
   而文档、文件、元数据其实都已写入，`catch` 还把配额回滚了 → 用户以为失败会重传（已出现重复文档），

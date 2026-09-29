@@ -41,7 +41,7 @@ function safeId(seed) {
 async function processUpload(buf, origName, o = {}) {
   const siteRoot = path.resolve(o.siteRoot);
   const dataDir = path.resolve(o.dataDir || path.join(siteRoot, '..', 'data'));
-  const maxBytes = o.maxBytes || 80 * 1024 * 1024; // 默认 80MB
+  const maxBytes = o.maxBytes || Number(process.env.MAX_BYTES) || 80 * 1024 * 1024; // 默认 80MB，可用 MAX_BYTES 覆盖
   const visibility = o.visibility === 'private' ? 'private' : 'public';
   const owner = o.owner || null;
 
